@@ -486,9 +486,157 @@ function ParallelArrayScan(f, m) {
   }
 }
 
-function ParallelArrayScatter(targets, zero, f, length) {
-  // TODO: N-dimensional
-  // TODO: Parallelize. %ThrowError or any calling of intrinsics isn't safe.
+function ParallelArrayScatter(targets, zero, f, length, m) {
+
+  var self = this;
+
+  if (length === undefined)
+    length = self.shape[0];
+
+  // The Divide-Scatter-Vector strategy:
+  // 1. Slice |targets| array of indices ("scatter-vector") into N
+  //    parts.
+  // 2. Each of the N threads prepares an output buffer and a
+  //    write-log.
+  // 3. Each thread scatters according to one of the N parts into its
+  //    own output bufer, tracking written indices in the write-log
+  //    and resolving any resulting local collisions in parallel.
+  // 4. Merge the parts (either in parallel recursively, or in one
+  //    pass sequentially), again using the write-logs to detect
+  //    collisions.
+
+  // The Divide-Output-Range strategy:
+  // 0. ASSUMPTION: Collisions do not occur (hinted when conflict
+  //    function |f| is undefined, and thus exception should be thrown
+  //    in response to collision).
+  // 1. Slice the range of indices [0..|length|-1] into N parts.
+  //    Allocate a single shared output buffer of length |length|.
+  // 2. Each of the N threads scans (the entirety of) the |targets|
+  //    array, seeking occurrences of indices from that thread's part
+  //    of the range, and writing the results into the shared output
+  //    buffer.
+
+  // SO:
+  //
+  // If |targets.length| >> |length|, Divide-Scatter-Vector seems like
+  // a clear win over Divide-Output-Range (regardless of |f|), since
+  // for the latter, the expense of redundantly scanning the |targets|
+  // will diminish the gain from processing |length| in parallel,
+  // while for the former, the expense of merging post-process is
+  // small compared to the gain from processing |targets| in parallel.
+  //
+  // If |targets.length| << |length| and |f| is undefined, then
+  // Divide-Output-Range seems like it *could* win over
+  // Divide-Scatter-Vector.
+
+  var buffer = %DenseArray(length);
+
+  ///////////////////////////////////////////////////////////////////////////
+  // Parallel version(s)
+
+  if (!%InParallelSection() && TryParallel(m)) {
+    var slices = %ParallelSlices();
+
+    // If conditions are right, attempt Divide-Output-Range
+    if (f === undefined && targets.length < length) {
+      if (length > slices) { // Ensure work for each worker thread.
+        if (ParDivideOutputRange(buffer, length))
+          return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
+      }
+    }
+
+    // Otherwise, attempt Divide-Scatter-Vector
+    if (targets.length > slices) { // Ensure work for each worker thread.
+      if (ParDivideScatterVector(buffer, length))
+        return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
+    }
+  }
+
+  ///////////////////////////////////////////////////////////////////////////
+  // Sequential version
+
+  if (TrySequential(m)) {
+    return ParallelArrayScatterSeq(targets, zero, f, length)
+  }
+
+  return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
+
+  function ParDivideOutputRange(buffer, length) {
+    return false;
+  }
+
+  function ParDivideScatterVector(buffer, length) {
+    var localbuffers = %DenseArray(slices);
+    var localconflicts = %DenseArray(slices);
+
+    if (!%ParallelDo(fill1, CheckParallel(m)))
+      return false;
+
+    // In principle, we could parallelize the merge work as well.
+    // But for this first cut, just do the merge sequentially.
+
+    // localbuffer[0] == buffer; merge the rest in.
+    var conflict = localconflicts[0];
+    for (var i = 1; i < slices; i++) {
+      var otherbuffer = localbuffers[i];
+      var otherconflicts = localconflicts[i];
+      for (var j = 0; j < length; j++) {
+        if (otherconflicts[j]) {
+          if (conflict[j]) {
+
+          } else {
+            conflict[j] = true;
+          }
+        }
+      }
+    }
+
+    function fill1(id, n, warmup) {
+      var localbuffer;
+      if (id == 0) {
+        localbuffer = buffer;
+      } else {
+        localbuffer = %DenseArray(length);
+      }
+      %UnsafeSetElement(localbuffers, id, localbuffer);
+      var loglen = length; // ((length + 31) / 32) | 0;
+      var conflicts = %DenseArray(loglen);
+      %UnsafeSetElement(localconflicts, id, conflicts);
+      for (var i = 0; i < loglen; i++) {
+        %UnsafeSetElement(log, i, false);
+      }
+      var [start, end] = ComputeTileBounds(min(self.shape[0], targets.length), id, n);
+      if (warmup) { end = TruncateEnd(start, end); }
+      for (var i = start; i < end; i++) {
+        var x = self.get(i);
+        if (conflict[i]) {
+          localbuffer[targets[i]] = f(x, localbuffer[targets[i]]);
+        } else {
+          localbuffer[targets[i]] = x;
+          conflict[i] = true;
+        }
+      }
+    }
+    
+  }
+
+  function ParallelArrayScatterSeq(targets, zero, f, length) {
+    // TODO: N-dimensional
+
+    var source = self.buffer;
+
+    if (targets.length >>> 0 !== targets.length)
+      %ThrowError(JSMSG_BAD_ARRAY_LENGTH, "");
+    if (length && length >>> 0 !== length)
+      %ThrowError(JSMSG_BAD_ARRAY_LENGTH, "");
+
+    var buffer = [];
+    buffer.length = length || source.length;
+    fill(buffer, 0, 1, targets, zero, f, source);
+
+    return %NewParallelArray(ParallelArrayView, [buffer.length], buffer, 0);
+  }
+
   function fill(result, id, n, targets, zero, f, source) {
     var length = result.length;
 
@@ -522,19 +670,6 @@ function ParallelArrayScatter(targets, zero, f, length) {
       }
     }
   }
-
-  var source = this.buffer;
-
-  if (targets.length >>> 0 !== targets.length)
-    %ThrowError(JSMSG_BAD_ARRAY_LENGTH, "");
-  if (length && length >>> 0 !== length)
-    %ThrowError(JSMSG_BAD_ARRAY_LENGTH, "");
-
-  var buffer = [];
-  buffer.length = length || source.length;
-  fill(buffer, 0, 1, targets, zero, f, source);
-
-  return %NewParallelArray(ParallelArrayView, [buffer.length], buffer, 0);
 }
 
 function ParallelArrayFilter(filters, m) {
