@@ -537,16 +537,23 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
   if (!%InParallelSection() && TryParallel(m)) {
     var slices = %ParallelSlices();
 
-    // If conditions are right, attempt Divide-Output-Range
-    if (f === undefined && targets.length < length) {
-      if (length > slices) { // Ensure work for each worker thread.
+    // If client explicitly requested a strategy, attempt it first.
+    if (ForceDivideOutputRange(m)) {
+      if (ParDivideOutputRange(buffer, length))
+        return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
+    } else if (ForceDivideScatterVector(m)) {
+      if (ParDivideScatterVector(buffer, length))
+        return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
+    } else {
+      // If no explicit strategy request, employ heuristics
+
+      // If conditions are right, attempt Divide-Output-Range
+      if (f === undefined && targets.length < length) {
         if (ParDivideOutputRange(buffer, length))
           return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
       }
-    }
 
-    // Otherwise, attempt Divide-Scatter-Vector
-    if (targets.length > slices) { // Ensure work for each worker thread.
+      // Otherwise, attempt Divide-Scatter-Vector
       if (ParDivideScatterVector(buffer, length))
         return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
     }
@@ -561,63 +568,155 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
   return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
 
+  function ForceDivideScatterVector(m) {
+    return m && m.strategy && m.strategy == "divide-scatter-vector";
+  }
+
+  function ForceDivideOutputRange(m) {
+    return m && m.strategy && m.strategy == "divide-output-range";
+  }
+
   function ParDivideOutputRange(buffer, length) {
+    if (length <= slices)  // Ensure work for each worker thread.
+      return false;
+
     return false;
   }
 
   function ParDivideScatterVector(buffer, length) {
+    if (targets.length <= slices) // Ensure work for each worker thread.
+      return false;
+
+    var dieoncollide = (f === undefined);
     var localbuffers = %DenseArray(slices);
     var localconflicts = %DenseArray(slices);
 
-    if (!%ParallelDo(fill1, CheckParallel(m)))
+    var loglen = length; // ((length + 31) / 32) | 0;
+
+    var conflicts = %DenseArray(loglen);
+
+    localbuffers[0] = buffer;
+    localconflicts[0] = conflicts;
+    for (var i = 1; i < slices; i++) {
+      localbuffers[i] = %DenseArray(length);
+      localconflicts[i] = %DenseArray(loglen);
+    }
+
+    var volatilecollideflag = %DenseArray(1);
+
+    if (!FillBuffers())
       return false;
 
-    // In principle, we could parallelize the merge work as well.
-    // But for this first cut, just do the merge sequentially.
+    if (!MergeBuffers())
+      return false;
 
-    // localbuffer[0] == buffer; merge the rest in.
-    var conflict = localconflicts[0];
-    for (var i = 1; i < slices; i++) {
-      var otherbuffer = localbuffers[i];
-      var otherconflicts = localconflicts[i];
-      for (var j = 0; j < length; j++) {
-        if (otherconflicts[j]) {
-          if (conflict[j]) {
+    return ParFillScatterGaps(buffer, length, conflicts);
 
-          } else {
-            conflict[j] = true;
+    function FillBuffers() {
+      if (dieoncollide) {
+        volatilecollideflag[0] = false;
+        if (!%ParallelDo(fill1a, CheckParallel(m)))
+          return false;
+        if (volatilecollideflag[0]) {
+            %ThrowError(JSMSG_PAR_ARRAY_SCATTER_CONFLICT);
+        }
+      } else {
+        if (!%ParallelDo(fill1b, CheckParallel(m)))
+          return false;
+      }
+      return true;
+    }
+
+    function MergeBuffers() {
+      // In principle, we could parallelize the merge work as well.
+      // But for this first cut, just do the merge sequentially.
+
+      // localbuffer[0] == buffer; merge the rest in.
+      var conflict = localconflicts[0];
+      for (var i = 1; i < slices; i++) {
+        var otherbuffer = localbuffers[i];
+        var otherconflicts = localconflicts[i];
+        for (var j = 0; j < length; j++) {
+          if (otherconflicts[j]) {
+            if (conflict[j]) {
+              if (dieoncollide)
+                %ThrowError(JSMSG_PAR_ARRAY_SCATTER_CONFLICT);
+              else
+                buffer[j] = f(otherbuffer[j], buffer[j]);
+            } else {
+              buffer[j] = otherbuffer[j];
+              conflict[j] = true;
+            }
           }
         }
       }
+
+      return true;
     }
 
-    function fill1(id, n, warmup) {
-      var localbuffer;
-      if (id == 0) {
-        localbuffer = buffer;
-      } else {
-        localbuffer = %DenseArray(length);
-      }
-      %UnsafeSetElement(localbuffers, id, localbuffer);
-      var loglen = length; // ((length + 31) / 32) | 0;
-      var conflicts = %DenseArray(loglen);
-      %UnsafeSetElement(localconflicts, id, conflicts);
+    function min(a,b) { return (a < b) ? a : b; }
+
+    function fill1a(id, n, warmup) {
+      var localbuffer = localbuffers[id];
+      var conflicts = localconflicts[id];
       for (var i = 0; i < loglen; i++) {
-        %UnsafeSetElement(log, i, false);
+        %UnsafeSetElement(conflicts, i, false);
       }
-      var [start, end] = ComputeTileBounds(min(self.shape[0], targets.length), id, n);
+      var len = min(targets.length, self.shape[0]);
+      var [start, end] = ComputeTileBounds(len, id, n);
       if (warmup) { end = TruncateEnd(start, end); }
       for (var i = start; i < end; i++) {
+        if (volatilecollideflag[0])
+          break;
         var x = self.get(i);
-        if (conflict[i]) {
-          localbuffer[targets[i]] = f(x, localbuffer[targets[i]]);
+        var t = targets[i];
+        if (conflicts[t]) {
+          %UnsafeSetElement(volatilecollideflag, 0, true);
+          break;
         } else {
-          localbuffer[targets[i]] = x;
-          conflict[i] = true;
+          %UnsafeSetElement(localbuffer, t, x);
+          %UnsafeSetElement(conflicts, t, true);
         }
       }
     }
+
+    function fill1b(id, n, warmup) {
+      var localbuffer = localbuffers[id];
+      var conflicts = localconflicts[id];
+      for (var i = 0; i < loglen; i++) {
+        %UnsafeSetElement(conflicts, i, false);
+      }
+      var len = min(targets.length, self.shape[0]);
+      var [start, end] = ComputeTileBounds(len, id, n);
+      if (warmup) { end = TruncateEnd(start, end); }
+      for (var i = start; i < end; i++) {
+        var x = self.get(i);
+        var t = targets[i];
+        if (conflicts[t]) {
+          var u = localbuffer[t];
+          x = f(x, u);
+        } else {
+          %UnsafeSetElement(conflicts, t, true);
+        }
+        %UnsafeSetElement(localbuffer, t, x);
+      }
+    }
     
+  }
+
+  function ParFillScatterGaps(buffer, length, writes) {
+    if (!%ParallelDo(fill, CheckParallel(m)))
+      return false;
+
+    function fill(id, n, warmup) {
+      var [start, end] = ComputeTileBounds(length, id, n);
+      for (var i = start; i < end; i++) {
+        if (!writes[i]) {
+          %UnsafeSetElement(buffer, i, zero);
+        }
+      }
+    }
+
   }
 
   function ParallelArrayScatterSeq(targets, zero, f, length) {
