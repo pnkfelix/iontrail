@@ -84,10 +84,16 @@ IonBuilder::inlineNativeCall(JSNative native, uint32_t argc, bool constructing)
         return inlineNewParallelArray(argc, constructing);
     if (native == ParallelArrayObject::construct)
         return inlineParallelArray(argc, constructing);
+    if (native == intrinsic_DenseArray)
+        return inlineDenseArray(argc, constructing);
 
     // Self-hosting
     if (native == intrinsic_ThrowError)
         return inlineThrowError(argc, constructing);
+#ifdef DEBUG
+    if (native == intrinsic_Dump)
+        return inlineDump(argc, constructing);
+#endif
 
     return InliningStatus_NotInlined;
 }
@@ -1062,6 +1068,61 @@ IonBuilder::inlineParallelArrayTail(uint32_t argc, HandleFunction target, MDefin
 }
 
 IonBuilder::InliningStatus
+IonBuilder::inlineDenseArray(uint32_t argc, bool constructing)
+{
+    if (constructing || argc != 1)
+        return InliningStatus_NotInlined;
+
+    // For now, in seq. mode we just call the C function.  In
+    // par. mode we use inlined MIR.
+    ExecutionMode executionMode = info().executionMode();
+    switch (executionMode) {
+      case SequentialExecution: return inlineDenseArrayForSequentialExecution(argc);
+      case ParallelExecution: return inlineDenseArrayForParallelExecution(argc);
+    }
+
+    JS_NOT_REACHED("unknown ExecutionMode");
+}
+
+IonBuilder::InliningStatus
+IonBuilder::inlineDenseArrayForSequentialExecution(uint32_t argc)
+{
+    // not yet implemented; in seq. mode the C function is not so bad
+    return InliningStatus_NotInlined;
+}
+
+IonBuilder::InliningStatus
+IonBuilder::inlineDenseArrayForParallelExecution(uint32_t argc)
+{
+    MDefinitionVector argv;
+    if (!discardCall(argc, argv, current))
+        return InliningStatus_Error;
+
+    // Create the new parallel array object.  Parallel arrays have specially
+    // constructed type objects, so we can only perform the inlining if we
+    // already have one of these type objects.
+    types::StackTypeSet *returnTypes = getInlineReturnTypeSet();
+    if (returnTypes->getKnownTypeTag() != JSVAL_TYPE_OBJECT)
+        return InliningStatus_NotInlined;
+    if (returnTypes->getObjectCount() != 1)
+        return InliningStatus_NotInlined;
+    types::TypeObject *typeObject = returnTypes->getTypeObject(0);
+
+    RootedObject templateObject(cx, NewDenseAllocatedArray(cx, 0));
+    if (!templateObject)
+        return InliningStatus_Error;
+    templateObject->setType(typeObject);
+
+    MParNewDenseArray *newObject = new MParNewDenseArray(graph().parSlice(),
+                                                         argv[1],
+                                                         templateObject);
+    current->add(newObject);
+    current->push(newObject);
+
+    return InliningStatus_Inlined;
+}
+
+IonBuilder::InliningStatus
 IonBuilder::inlineThrowError(uint32_t argc, bool constructing)
 {
     // In Parallel Execution, convert %ThrowError() into a bailout.
@@ -1089,6 +1150,37 @@ IonBuilder::inlineThrowError(uint32_t argc, bool constructing)
     current = newBlock(pc);
     if (!current)
         return InliningStatus_Error;
+
+    MConstant *udef = MConstant::New(UndefinedValue());
+    current->add(udef);
+    current->push(udef);
+
+    return InliningStatus_Inlined;
+}
+
+IonBuilder::InliningStatus
+IonBuilder::inlineDump(uint32_t argc, bool constructing)
+{
+    // In Parallel Execution, call ParDump.  We just need a debugging
+    // aid!
+
+    if (constructing)
+        return InliningStatus_NotInlined;
+
+    ExecutionMode executionMode = info().executionMode();
+    switch (executionMode) {
+      case SequentialExecution:
+        return InliningStatus_NotInlined;
+      case ParallelExecution:
+        break;
+    }
+
+    MDefinitionVector argv;
+    if (!discardCall(argc, argv, current))
+        return InliningStatus_Error;
+
+    MParDump *dump = new MParDump(argv[1]);
+    current->add(dump);
 
     MConstant *udef = MConstant::New(UndefinedValue());
     current->add(udef);

@@ -449,7 +449,11 @@ class IonBuilder : public MIRGenerator
     InliningStatus inlineParallelArray(uint32_t argc, bool constructing);
     InliningStatus inlineParallelArrayTail(uint32_t argc, HandleFunction target, MDefinition *ctor,
                                            int32_t discards);
+    InliningStatus inlineDenseArray(uint32_t argc, bool constructing);
+    InliningStatus inlineDenseArrayForSequentialExecution(uint32_t argc);
+    InliningStatus inlineDenseArrayForParallelExecution(uint32_t argc);
     InliningStatus inlineThrowError(uint32_t argc, bool constructing);
+    InliningStatus inlineDump(uint32_t argc, bool constructing);
 
     InliningStatus inlineNativeCall(JSNative native, uint32_t argc, bool constructing);
 

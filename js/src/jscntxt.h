@@ -85,7 +85,7 @@ typedef HashMap<CallsiteCloneKey,
                 CallsiteCloneKey,
                 SystemAllocPolicy> CallsiteCloneTable;
 
-JSFunction *
+RawFunction
 CloneFunctionAtCallsite(JSContext *cx, HandleFunction fun, HandleScript script, jsbytecode *pc);
 
 /* Detects cycles when traversing an object graph. */
@@ -2222,9 +2222,14 @@ class ContextAllocPolicy
 };
 
 JSBool intrinsic_ThrowError(JSContext *cx, unsigned argc, Value *vp);
+JSBool intrinsic_DenseArray(JSContext *cx, unsigned argc, Value *vp);
 JSBool intrinsic_UnsafeSetElement(JSContext *cx, unsigned argc, Value *vp);
 JSBool intrinsic_InParallelSection(JSContext *cx, unsigned argc, Value *vp);
 JSBool intrinsic_NewParallelArray(JSContext *cx, unsigned argc, Value *vp);
+
+#ifdef DEBUG
+JSBool intrinsic_Dump(JSContext *cx, unsigned argc, Value *vp);
+#endif
 
 } /* namespace js */
 

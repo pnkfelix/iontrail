@@ -141,8 +141,16 @@ ion::ParCheckInterrupt(ForkJoinSlice *slice)
     return true;
 }
 
+void
+ion::ParDumpValue(Value *v)
+{
+#ifdef DEBUG
+    js_DumpValue(*v);
+#endif
+}
+
 bool
-ion::ParExtendArray(ParExtendArrayArgs *args)
+ion::ParPush(ParPushArgs *args)
 {
     // It is awkward to have the MIR pass the current slice in, so
     // just fetch it from TLS.  Extending the array is kind of the
@@ -150,6 +158,30 @@ ion::ParExtendArray(ParExtendArrayArgs *args)
     ForkJoinSlice *slice = js::ForkJoinSlice::current();
     return (args->object->parExtendDenseArray(slice->allocator,
                                               &args->value, 1) == JSObject::ED_OK);
+}
+
+JSObject *
+ion::ParExtendArray(ForkJoinSlice *slice, JSObject *array, uint32_t length)
+{
+    if (array->parExtendDenseArray(slice->allocator, NULL, length) != JSObject::ED_OK)
+        return NULL;
+    return array;
+}
+
+ParCompareResult
+ion::ParCompareStrings(JSString *str1, JSString *str2)
+{
+    // NYI---the rope case
+    if (!str1->isLinear())
+        return ParCompareUnknown;
+    if (!str2->isLinear())
+        return ParCompareUnknown;
+
+    JSLinearString &linearStr1 = str1->asLinear();
+    JSLinearString &linearStr2 = str2->asLinear();
+    if (EqualStrings(&linearStr1, &linearStr2))
+        return ParCompareEq;
+    return ParCompareNe;
 }
 
 void

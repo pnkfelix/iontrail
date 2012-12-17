@@ -335,7 +335,7 @@ bool
 CodeGenerator::visitParLambda(LParLambda *lir)
 {
     Register resultReg = ToRegister(lir->output());
-    Register threadContextReg = ToRegister(lir->threadContext());
+    Register parSliceReg = ToRegister(lir->parSlice());
     Register scopeChainReg    = ToRegister(lir->scopeChain());
     Register tempReg1 = ToRegister(lir->getTemp0());
     Register tempReg2 = ToRegister(lir->getTemp1());
@@ -343,7 +343,7 @@ CodeGenerator::visitParLambda(LParLambda *lir)
 
     JS_ASSERT(scopeChainReg != resultReg);
 
-    emitParAllocateGCThing(resultReg, threadContextReg, tempReg1, tempReg2, fun);
+    emitParAllocateGCThing(resultReg, parSliceReg, tempReg1, tempReg2, fun);
     emitLambdaInit(resultReg, scopeChainReg, fun);
     return true;
 }
@@ -588,7 +588,7 @@ CodeGenerator::visitFunctionEnvironment(LFunctionEnvironment *lir)
 }
 
 bool
-CodeGenerator::visitParThreadContext(LParThreadContext *lir)
+CodeGenerator::visitParSlice(LParSlice *lir)
 {
     const Register tempReg = ToRegister(lir->getTempReg());
 
@@ -605,7 +605,7 @@ CodeGenerator::visitParWriteGuard(LParWriteGuard *lir)
 
     const Register tempReg = ToRegister(lir->getTempReg());
     masm.setupUnalignedABICall(2, tempReg);
-    masm.passABIArg(ToRegister(lir->threadContext()));
+    masm.passABIArg(ToRegister(lir->parSlice()));
     masm.passABIArg(ToRegister(lir->object()));
     masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, ParWriteGuard));
 
@@ -616,6 +616,20 @@ CodeGenerator::visitParWriteGuard(LParWriteGuard *lir)
     // branch to the OOL failure code if false is returned
     masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, bail);
 
+    return true;
+}
+
+bool
+CodeGenerator::visitParDump(LParDump *lir)
+{
+    ValueOperand value = ToValue(lir, 0);
+    masm.reserveStack(sizeof(Value));
+    masm.movePtr(StackPointer, CallTempReg0);
+    masm.storeValue(value, Address(CallTempReg0, 0));
+    masm.setupUnalignedABICall(1, CallTempReg1);
+    masm.passABIArg(CallTempReg0);
+    masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, ParPush));
+    masm.freeStack(sizeof(Value));
     return true;
 }
 
@@ -1549,10 +1563,10 @@ CodeGenerator::visitParCheckOverRecursed(LParCheckOverRecursed *lir)
     // See above: the only difference between this code and
     // visitCheckOverRecursed() is that this code runs in parallel mode
     // and hence uses the ionStackLimit from the current thread state
-    Register threadContextReg = ToRegister(lir->threadContext());
+    Register parSliceReg = ToRegister(lir->parSlice());
     Register limitReg = ToRegister(lir->getTempReg());
 
-    masm.loadPtr(Address(threadContextReg, offsetof(ForkJoinSlice, perThreadData)), limitReg);
+    masm.loadPtr(Address(parSliceReg, offsetof(ForkJoinSlice, perThreadData)), limitReg);
     masm.loadPtr(Address(limitReg, offsetof(PerThreadData, ionStackLimit)), limitReg);
 
     // Conditional forward (unlikely) branch to failure.
@@ -1626,7 +1640,7 @@ CodeGenerator::visitParCheckOverRecursedFailure(ParCheckOverRecursedFailure *ool
     Label abort;
 
     regs.save();
-    masm.movePtr(ToRegister(ool->lir()->threadContext()), CallTempReg0);
+    masm.movePtr(ToRegister(ool->lir()->parSlice()), CallTempReg0);
     masm.setupUnalignedABICall(1, CallTempReg1);
     masm.passABIArg(CallTempReg0);
     masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, ParCheckOverRecursed));
@@ -1648,10 +1662,10 @@ bool
 CodeGenerator::visitParCheckInterrupt(LParCheckInterrupt *lir)
 {
     JS_ASSERT(gen->info().executionMode() == ParallelExecution);
-    const Register threadContextReg = ToRegister(lir->threadContext());
+    const Register parSliceReg = ToRegister(lir->parSlice());
     const Register tempReg = ToRegister(lir->getTempReg());
     masm.setupUnalignedABICall(1, tempReg);
-    masm.passABIArg(threadContextReg);
+    masm.passABIArg(parSliceReg);
     masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, ParCheckInterrupt));
 
     Label *bail;
@@ -2118,12 +2132,12 @@ bool
 CodeGenerator::visitParNewCallObject(LParNewCallObject *lir)
 {
     Register resultReg = ToRegister(lir->output());
-    Register threadContextReg = ToRegister(lir->threadContext());
+    Register parSliceReg = ToRegister(lir->parSlice());
     Register tempReg1 = ToRegister(lir->getTemp0());
     Register tempReg2 = ToRegister(lir->getTemp1());
     JSObject *templateObj = lir->mir()->templateObj();
 
-    emitParAllocateGCThing(resultReg, threadContextReg, tempReg1, tempReg2, templateObj);
+    emitParAllocateGCThing(resultReg, parSliceReg, tempReg1, tempReg2, templateObj);
 
     // TO INVESTIGATE: does ! lir->slots()->isRegister() imply that
     // there is no slots array at all?  And also, do we need to
@@ -2134,6 +2148,44 @@ CodeGenerator::visitParNewCallObject(LParNewCallObject *lir)
         JS_ASSERT(slotsReg != resultReg);
         masm.storePtr(slotsReg, Address(resultReg, JSObject::offsetOfSlots()));
     }
+
+    return true;
+}
+
+bool
+CodeGenerator::visitParNewDenseArray(LParNewDenseArray *lir)
+{
+    Register parSliceReg = ToRegister(lir->parSlice());
+    Register lengthReg = ToRegister(lir->length());
+    Register tempReg0 = ToRegister(lir->getTemp0());
+    Register tempReg1 = ToRegister(lir->getTemp1());
+    Register tempReg2 = ToRegister(lir->getTemp2());
+    JSObject *templateObj = lir->mir()->templateObject();
+
+    // Allocate the array into tempReg2.  Don't use resultReg because it
+    // may alias parSliceReg etc.
+    emitParAllocateGCThing(tempReg2, parSliceReg, tempReg0, tempReg1, templateObj);
+
+    // Invoke a C helper to allocate the elements.  For convenience,
+    // this helper also returns the array back to us, or NULL, which
+    // obviates the need to preserve the register across the call.  In
+    // reality, we should probably just have the C helper also
+    // *allocate* the array, but that would require that it initialize
+    // the various fields of the object, and I didn't want to
+    // duplicate the code in initGCThing() that already does such an
+    // admirable job.
+    masm.setupUnalignedABICall(3, CallTempReg3);
+    masm.passABIArg(parSliceReg);
+    masm.passABIArg(tempReg2);
+    masm.passABIArg(lengthReg);
+    masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, ParExtendArray));
+
+    Register resultReg = ToRegister(lir->output());
+    JS_ASSERT(resultReg == ReturnReg);
+    Label *bail;
+    if (!ensureOutOfLineParallelAbort(&bail))
+        return false;
+    masm.branchTestPtr(Assembler::Zero, resultReg, resultReg, bail);
 
     return true;
 }
@@ -2176,11 +2228,11 @@ bool
 CodeGenerator::visitParNew(LParNew *lir)
 {
     Register objReg = ToRegister(lir->output());
-    Register threadContextReg = ToRegister(lir->threadContext());
+    Register parSliceReg = ToRegister(lir->parSlice());
     Register tempReg1 = ToRegister(lir->getTemp0());
     Register tempReg2 = ToRegister(lir->getTemp1());
     JSObject *templateObject = lir->mir()->templateObject();
-    emitParAllocateGCThing(objReg, threadContextReg, tempReg1, tempReg2,
+    emitParAllocateGCThing(objReg, parSliceReg, tempReg1, tempReg2,
                            templateObject);
     return true;
 }
@@ -2202,7 +2254,7 @@ public:
 
 bool
 CodeGenerator::emitParAllocateGCThing(const Register &objReg,
-                                      const Register &threadContextReg,
+                                      const Register &parSliceReg,
                                       const Register &tempReg1,
                                       const Register &tempReg2,
                                       JSObject *templateObj)
@@ -2212,7 +2264,7 @@ CodeGenerator::emitParAllocateGCThing(const Register &objReg,
     if (!ool || !addOutOfLineCode(ool))
         return false;
 
-    masm.parNewGCThing(objReg, threadContextReg, tempReg1, tempReg2,
+    masm.parNewGCThing(objReg, parSliceReg, tempReg1, tempReg2,
                        templateObj, ool->entry());
     masm.bind(ool->rejoin());
     masm.initGCThing(objReg, templateObj);
@@ -2591,6 +2643,34 @@ CodeGenerator::visitBinaryV(LBinaryV *lir)
         JS_NOT_REACHED("Unexpected binary op");
         return false;
     }
+}
+
+bool
+CodeGenerator::visitParCompareS(LParCompareS *lir)
+{
+    JSOp op = lir->mir()->jsop();
+    Register left = ToRegister(lir->left());
+    Register right = ToRegister(lir->right());
+
+    JS_ASSERT((op == JSOP_EQ || op == JSOP_STRICTEQ) ||
+              (op == JSOP_NE || op == JSOP_STRICTNE));
+
+    masm.setupUnalignedABICall(2, CallTempReg2);
+    masm.passABIArg(left);
+    masm.passABIArg(right);
+    masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, ParCompareStrings));
+
+    // Check for cases that we do not currently handle in par exec
+    Label *bail;
+    if (!ensureOutOfLineParallelAbort(&bail))
+        return false;
+    masm.branch32(Assembler::Equal, ReturnReg, Imm32(ParCompareUnknown), bail);
+
+    if (op == JSOP_NE || op == JSOP_STRICTNE) {
+        masm.xor32(Imm32(1), ReturnReg);
+    }
+
+    return true;
 }
 
 typedef bool (*StringCompareFn)(JSContext *, HandleString, HandleString, JSBool *);
@@ -3195,15 +3275,15 @@ CodeGenerator::visitOutOfLineStoreElementHole(OutOfLineStoreElementHole *ool)
         Label abort;
 
         regs.save();
-        masm.reserveStack(sizeof(ParExtendArrayArgs));
-        masm.storePtr(object, Address(StackPointer, offsetof(ParExtendArrayArgs, object)));
+        masm.reserveStack(sizeof(ParPushArgs));
+        masm.storePtr(object, Address(StackPointer, offsetof(ParPushArgs, object)));
         masm.storeConstantOrRegister(value, Address(StackPointer,
-                                                    offsetof(ParExtendArrayArgs, value)));
+                                                    offsetof(ParPushArgs, value)));
         masm.movePtr(StackPointer, CallTempReg0);
         masm.setupUnalignedABICall(1, CallTempReg1);
         masm.passABIArg(CallTempReg0);
-        masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, ParExtendArray));
-        masm.freeStack(sizeof(ParExtendArrayArgs));
+        masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, ParPush));
+        masm.freeStack(sizeof(ParPushArgs));
         masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, &abort);
         regs.restore();
         masm.jump(ool->rejoin());

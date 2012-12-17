@@ -29,6 +29,7 @@
     _(NewCallObject)                \
     _(NewStringObject)              \
     _(ParNew)                       \
+    _(ParNewDenseArray)             \
     _(ParNewCallObject)             \
     _(ParBailout)                   \
     _(InitProp)                     \
@@ -62,6 +63,7 @@
     _(Compare)                      \
     _(CompareD)                     \
     _(CompareS)                     \
+    _(ParCompareS)                  \
     _(CompareV)                     \
     _(CompareAndBranch)             \
     _(CompareDAndBranch)            \
@@ -116,6 +118,7 @@
     _(GuardShape)                   \
     _(GuardClass)                   \
     _(ParWriteGuard)                \
+    _(ParDump)                      \
     _(TypeBarrier)                  \
     _(MonitorTypes)                 \
     _(InitializedLength)            \
@@ -146,7 +149,7 @@
     _(StoreFixedSlotV)              \
     _(StoreFixedSlotT)              \
     _(FunctionEnvironment)          \
-    _(ParThreadContext)             \
+    _(ParSlice)                     \
     _(GetPropertyCacheV)            \
     _(GetPropertyCacheT)            \
     _(GetElementCacheV)             \

@@ -22,14 +22,21 @@ void ParBailout(uint32_t id);
 bool ParCheckOverRecursed(ForkJoinSlice *slice);
 bool ParCheckInterrupt(ForkJoinSlice *context);
 
+void ParDumpValue(Value *v);
+
 // We pass the arguments in a structure because, in code gen, it is
 // convenient to store them on the stack to avoid constraining the reg
 // alloc for the slow path.
-struct ParExtendArrayArgs {
+struct ParPushArgs {
     JSObject *object;
     Value value;
 };
-bool ParExtendArray(ParExtendArrayArgs *args);
+bool ParPush(ParPushArgs *args);
+
+JSObject *ParExtendArray(ForkJoinSlice *slice, JSObject *array, uint32_t length);
+
+enum ParCompareResult { ParCompareNe = false, ParCompareEq = true, ParCompareUnknown = 2 };
+ParCompareResult ParCompareStrings(JSString *str1, JSString *str2);
 
 void ParallelAbort(JSScript *script);
 

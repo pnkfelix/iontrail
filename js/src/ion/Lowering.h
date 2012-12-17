@@ -86,6 +86,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitNewStringObject(MNewStringObject *ins);
     bool visitParNew(MParNew *ins);
     bool visitParNewCallObject(MParNewCallObject *ins);
+    bool visitParNewDenseArray(MParNewDenseArray *ins);
     bool visitParBailout(MParBailout *ins);
     bool visitInitProp(MInitProp *ins);
     bool visitCheckOverRecursed(MCheckOverRecursed *ins);
@@ -144,9 +145,10 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitConstantElements(MConstantElements *ins);
     bool visitLoadSlot(MLoadSlot *ins);
     bool visitFunctionEnvironment(MFunctionEnvironment *ins);
-    bool visitParThreadContext(MParThreadContext *ins);
+    bool visitParSlice(MParSlice *ins);
     bool visitParWriteGuard(MParWriteGuard *ins);
     bool visitParCheckInterrupt(MParCheckInterrupt *ins);
+    bool visitParDump(MParDump *ins);
     bool visitStoreSlot(MStoreSlot *ins);
     bool visitTypeBarrier(MTypeBarrier *ins);
     bool visitMonitorTypes(MMonitorTypes *ins);
