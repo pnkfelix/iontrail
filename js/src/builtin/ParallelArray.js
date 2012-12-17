@@ -492,12 +492,12 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
   var self = this;
 
-  m.print("PAS  A");
+  m && m.print && m.print("PAS  A");
 
   if (length === undefined)
     length = self.shape[0];
 
-  m.print("PAS  B");
+  m && m.print && m.print("PAS  B");
 
   // The Divide-Scatter-Vector strategy:
   // 1. Slice |targets| array of indices ("scatter-vector") into N
@@ -540,40 +540,40 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
   ///////////////////////////////////////////////////////////////////////////
   // Parallel version(s)
 
-  m.print("PAS  C");
+  m && m.print && m.print("PAS  C");
 
   if (!%InParallelSection() && TryParallel(m)) {
     var slices = %ParallelSlices();
 
-    m.print("PAS  D");
+    m && m.print && m.print("PAS  D");
 
     // If client explicitly requested a strategy, attempt it first.
     if (ForceDivideOutputRange(m)) {
 
-      m.print("PAS  E");
+      m && m.print && m.print("PAS  E");
 
       if (ParDivideOutputRange(buffer, length))
         return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
     } else if (ForceDivideScatterVector(m)) {
-      m.print("PAS  F");
+      m && m.print && m.print("PAS  F");
       if (ParDivideScatterVector(buffer, length))
         return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
     } else {
-      m.print("PAS  G");
+      m && m.print && m.print("PAS  G");
       // If no explicit strategy request, employ heuristics
 
       // If conditions are right, attempt Divide-Output-Range
       if (f === undefined && targets.length < length) {
-        m.print("PAS  H");
+        m && m.print && m.print("PAS  H");
         if (ParDivideOutputRange(buffer, length)) {
-          m.print("PAS  I");
+          m && m.print && m.print("PAS  I");
           return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
         }
       }
 
       // Otherwise, attempt Divide-Scatter-Vector
       if (ParDivideScatterVector(buffer, length)) {
-        m.print("PAS  J");
+        m && m.print && m.print("PAS  J");
         return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
       }
     }
@@ -582,13 +582,13 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
   ///////////////////////////////////////////////////////////////////////////
   // Sequential version
 
-  m.print("PAS  K");
+  m && m.print && m.print("PAS  K");
   if (TrySequential(m)) {
-    m.print("PAS  L");
+    m && m.print && m.print("PAS  L");
     return ParallelArrayScatterSeq(targets, zero, f, length);
   }
 
-  m.print("PAS  M");
+  m && m.print && m.print("PAS  M");
 
   return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
 
@@ -689,35 +689,35 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
     var volatilecollideflag = %DenseArray(1);
 
-    m.print("PDSV  A");
+    m && m.print && m.print("PDSV  A");
     if (!FillBuffers())
       return false;
 
-    m.print("PDSV  B");
+    m && m.print && m.print("PDSV  B");
     if (!MergeBuffers())
       return false;
 
-    m.print("PDSV  C");
+    m && m.print && m.print("PDSV  C");
 
     return ParFillScatterGaps(buffer, length, conflicts);
 
     function FillBuffers() {
-      m.print("PDSV FB A");
+      m && m.print && m.print("PDSV FB A");
       if (dieoncollide) {
         volatilecollideflag[0] = false;
-        m.print("PDSV FB B");
+        m && m.print && m.print("PDSV FB B");
         if (!%ParallelDo(fill1a, CheckParallel(m)))
           return false;
-        m.print("PDSV FB C");
+        m && m.print && m.print("PDSV FB C");
         if (volatilecollideflag[0]) {
             %ThrowError(JSMSG_PAR_ARRAY_SCATTER_CONFLICT);
         }
       } else {
-        m.print("PDSV FB D");
+        m && m.print && m.print("PDSV FB D");
         if (!%ParallelDo(fill1b, CheckParallel(m)))
           return false;
       }
-      m.print("PDSV FB E");
+      m && m.print && m.print("PDSV FB E");
       return true;
     }
 
@@ -848,7 +848,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
       if (t >= length)
         %ThrowError(JSMSG_PAR_ARRAY_SCATTER_BOUNDS);
 
-      m.print("PASS i:"+i+" t:"+t+" conflict[t]:"+conflict[t]+" source[i]:"+source[i]+" result[t]:"+result[t]+" f(source[i], result[t]):"+(f ? f(source[i], result[t]):"undef"));
+      m && m.print && m.print("PASS i:"+i+" t:"+t+" conflict[t]:"+conflict[t]+" source[i]:"+source[i]+" result[t]:"+result[t]+" f(source[i], result[t]):"+(f ? f(source[i], result[t]):"undef"));
 
       if (conflict[t]) {
         if (!f)
