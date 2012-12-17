@@ -674,20 +674,16 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
     var dieoncollide = (f === undefined);
     var localbuffers = %DenseArray(slices);
-    var localconflicts = %DenseArray(slices);
-
-    var loglen = length; // ((length + 31) / 32) | 0;
-
-    var conflicts = %DenseArray(loglen);
-
     localbuffers[0] = buffer;
-    localconflicts[0] = conflicts;
     for (var i = 1; i < slices; i++) {
-      localbuffers[i] = %DenseArray(length);
-      localconflicts[i] = %DenseArray(loglen);
+        localbuffers[i] = %DenseArray(length);
+    }
+    var localconflicts = %DenseArray(slices);
+    for (var i = 0; i < slices; i++) {
+        localconflicts[i] = %DenseArray(length);
     }
 
-    var volatilecollideflag = %DenseArray(1);
+    var loglen = length; // ((length + 31) / 32) | 0;
 
     m && m.print && m.print("PDSV  A");
     if (!FillBuffers())
@@ -699,19 +695,16 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
     m && m.print && m.print("PDSV  C");
 
+    var conflicts = localconflicts[0];
     return ParFillScatterGaps(buffer, length, conflicts);
 
     function FillBuffers() {
       m && m.print && m.print("PDSV FB A");
       if (dieoncollide) {
-        volatilecollideflag[0] = false;
         m && m.print && m.print("PDSV FB B");
         if (!%ParallelDo(fill1a, CheckParallel(m)))
           return false;
         m && m.print && m.print("PDSV FB C");
-        if (volatilecollideflag[0]) {
-            %ThrowError(JSMSG_PAR_ARRAY_SCATTER_CONFLICT);
-        }
       } else {
         m && m.print && m.print("PDSV FB D");
         if (!%ParallelDo(fill1b, CheckParallel(m)))
@@ -756,17 +749,15 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
       for (var i = 0; i < loglen; i++) {
         %UnsafeSetElement(conflicts, i, false);
       }
+
       var len = min(targets.length, self.shape[0]);
       var [start, end] = ComputeTileBounds(len, id, n);
       if (warmup) { end = TruncateEnd(start, end); }
       for (var i = start; i < end; i++) {
-        if (volatilecollideflag[0])
-          break;
         var x = self.get(i);
         var t = targets[i];
         if (conflicts[t]) {
-          %UnsafeSetElement(volatilecollideflag, 0, true);
-          break;
+          %ThrowError(JSMSG_PAR_ARRAY_SCATTER_CONFLICT);
         } else {
           %UnsafeSetElement(localbuffer, t, x);
           %UnsafeSetElement(conflicts, t, true);
@@ -777,9 +768,6 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     function fill1b(id, n, warmup) {
       var localbuffer = localbuffers[id];
       var conflicts = localconflicts[id];
-      for (var i = 0; i < loglen; i++) {
-        %UnsafeSetElement(conflicts, i, false);
-      }
       var len = min(targets.length, self.shape[0]);
       var [start, end] = ComputeTileBounds(len, id, n);
       if (warmup) { end = TruncateEnd(start, end); }
