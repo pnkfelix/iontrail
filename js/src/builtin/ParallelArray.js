@@ -571,7 +571,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
   m && m.print && m.print("PAS  C");
 
-  if (!%InParallelSection() && TryParallel(m)) {
+  if (!%InParallelSection() && TRY_PARALLEL(m)) {
     var slices = %ParallelSlices();
 
     m && m.print && m.print("PAS  D");
@@ -612,7 +612,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
   // Sequential version
 
   m && m.print && m.print("PAS  K");
-  if (TrySequential(m)) {
+  if (TRY_SEQUENTIAL(m)) {
     m && m.print && m.print("PAS  L");
     return ParallelArrayScatterSeq(targets, zero, f, length);
   }
