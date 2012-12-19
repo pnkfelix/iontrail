@@ -79,7 +79,9 @@ IonBuilder::inlineNativeCall(JSNative native, uint32_t argc, bool constructing)
     if (native == intrinsic_UnsafeSetElement)
         return inlineUnsafeSetElement(argc, constructing);
     if (native == intrinsic_InParallelSection)
-        return inlineInParallelSection(argc, constructing);
+        return inlineInOrEnterParallelSection(argc, constructing, false);
+    if (native == intrinsic_EnterParallelSection)
+        return inlineInOrEnterParallelSection(argc, constructing, true);
     if (native == intrinsic_NewParallelArray)
         return inlineNewParallelArray(argc, constructing);
     if (native == ParallelArrayObject::construct)
@@ -931,7 +933,7 @@ IonBuilder::inlineUnsafeSetTypedArrayElement(uint32_t argc, int arrayType)
 }
 
 IonBuilder::InliningStatus
-IonBuilder::inlineInParallelSection(uint32_t argc, bool constructing)
+IonBuilder::inlineInOrEnterParallelSection(uint32_t argc, bool constructing, bool enter)
 {
     if (constructing)
         return InliningStatus_NotInlined;
@@ -947,7 +949,8 @@ IonBuilder::inlineInParallelSection(uint32_t argc, bool constructing)
       case ParallelExecution: willBeInParallelSection = true; break;
     }
 
-    MConstant *ins = MConstant::New(BooleanValue(willBeInParallelSection));
+    MConstant *ins = MConstant::New(BooleanValue(enter ? !willBeInParallelSection
+                                                       : willBeInParallelSection));
     current->add(ins);
     current->push(ins);
 
@@ -970,7 +973,7 @@ IonBuilder::inlineNewParallelArray(uint32_t argc, bool constructing)
         ctor = makeCallsiteClone(target, ctor);
 
     // Discard 2 arguments: the old 'this' and the init function.
-    return inlineParallelArrayTail(argc, target, ctor, 2);
+    return inlineParallelArrayTail(argc, target, ctor, target ? NULL : ctorTypes, 2);
 }
 
 IonBuilder::InliningStatus
@@ -993,12 +996,12 @@ IonBuilder::inlineParallelArray(uint32_t argc, bool constructing)
     current->add(ctor);
 
     // Discard 1 argument: the old 'this'.
-    return inlineParallelArrayTail(argc, target, ctor, 1);
+    return inlineParallelArrayTail(argc, target, ctor, NULL, 1);
 }
 
 IonBuilder::InliningStatus
 IonBuilder::inlineParallelArrayTail(uint32_t argc, HandleFunction target, MDefinition *ctor,
-                                    int32_t discards)
+                                    types::StackTypeSet *ctorTypes, int32_t discards)
 {
     // Rewrites either %NewParallelArray(...) or new ParallelArray(...) from a
     // call to a native ctor into a call to the relevant function in the
@@ -1023,7 +1026,7 @@ IonBuilder::inlineParallelArrayTail(uint32_t argc, HandleFunction target, MDefin
     if (target && !target->isNative())
         targetArgs = Max<uint32_t>(target->nargs, argc);
 
-    MCall *call = MCall::New(target, targetArgs + 1, argc, false);
+    MCall *call = MCall::New(target, targetArgs + 1, argc, false, pc, ctorTypes);
     if (!call)
         return InliningStatus_Error;
 
