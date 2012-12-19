@@ -601,16 +601,28 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
   }
 
   function ParDivideOutputRange(buffer, length) {
+    m && m.print && m.print("PDOR  A slices:"+slices+" length:"+length);
+
     if (length <= slices)  // Ensure work for each worker thread.
       return false;
 
     var writes = %DenseArray(length);
 
+    m && m.print && m.print("PDOR  B");
+
     if (!%ParallelDo(initialize, CheckParallel(m), writes))
       return false;
 
+    m && m.print && m.print("PDOR  C");
+    m && m.print && m.print("PDOR  C slices:"+slices+
+                            " targets:"+targets+
+                            " length:"+length+
+                            " buffer:"+buffer);
+
     if (!%ParallelDo(fillsubrange, CheckParallel(m)))
       return false;
+
+    m && m.print && m.print("PDOR  D");
 
     // Note: In principle, it seems like one might be better off
     // delaying zeroing the gaps of the buffer, since we might
@@ -686,27 +698,43 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     var loglen = length; // ((length + 31) / 32) | 0;
 
     m && m.print && m.print("PDSV  A");
+
     if (!FillBuffers())
       return false;
 
     m && m.print && m.print("PDSV  B");
+
+    function stringify(x) { return "["+x+"]"; }
+    m && m.print && m.print("PDSV  B"+
+                            " slices:"+slices+
+                            " localbuffers:"+localbuffers.map(stringify)+
+                            " localconflicts:"+localconflicts.map(stringify));
+
     if (!MergeBuffers())
       return false;
 
-    m && m.print && m.print("PDSV  C");
+    m && m.print && m.print("PDSV  C ");
 
     var conflicts = localconflicts[0];
+
+    m && m.print && m.print("PDSV  C"+
+                            " slices:"+slices+
+                            " buffer:"+buffer+
+                            " conflicts:"+conflicts+
+                            " localbuffers:"+localbuffers.map(stringify)+
+                            " localconflicts:"+localconflicts.map(stringify));
+
     return ParFillScatterGaps(buffer, length, conflicts);
 
     function FillBuffers() {
       m && m.print && m.print("PDSV FB A");
       if (dieoncollide) {
-        m && m.print && m.print("PDSV FB B");
+        m && m.print && m.print("PDSV FB B fill1a entry");
         if (!%ParallelDo(fill1a, CheckParallel(m)))
           return false;
         m && m.print && m.print("PDSV FB C");
       } else {
-        m && m.print && m.print("PDSV FB D");
+        m && m.print && m.print("PDSV FB D fill1b entry");
         if (!%ParallelDo(fill1b, CheckParallel(m)))
           return false;
       }
@@ -724,7 +752,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
         var otherbuffer = localbuffers[i];
         var otherconflicts = localconflicts[i];
         for (var j = 0; j < length; j++) {
-          if (otherconflicts[j]) {
+          if (otherconflicts[j] != 0) {
             if (conflict[j]) {
               if (dieoncollide)
                 %ThrowError(JSMSG_PAR_ARRAY_SCATTER_CONFLICT);
@@ -732,7 +760,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
                 buffer[j] = f(otherbuffer[j], buffer[j]);
             } else {
               buffer[j] = otherbuffer[j];
-              conflict[j] = true;
+              conflict[j] += 1;
             }
           }
         }
@@ -747,7 +775,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
       var localbuffer = localbuffers[id];
       var conflicts = localconflicts[id];
       for (var i = 0; i < loglen; i++) {
-        %UnsafeSetElement(conflicts, i, false);
+        %UnsafeSetElement(conflicts, i, 0);
       }
 
       var len = min(targets.length, self.shape[0]);
@@ -756,11 +784,11 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
       for (var i = start; i < end; i++) {
         var x = self.get(i);
         var t = targets[i];
-        if (conflicts[t]) {
+        if (conflicts[t] != 0) {
           %ThrowError(JSMSG_PAR_ARRAY_SCATTER_CONFLICT);
         } else {
           %UnsafeSetElement(localbuffer, t, x);
-          %UnsafeSetElement(conflicts, t, true);
+          %UnsafeSetElement(conflicts, t, conflicts[t]+1);
         }
       }
     }
@@ -768,6 +796,10 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     function fill1b(id, n, warmup) {
       var localbuffer = localbuffers[id];
       var conflicts = localconflicts[id];
+      for (var i = 0; i < loglen; i++) {
+        %UnsafeSetElement(conflicts, i, 0);
+      }
+
       var len = min(targets.length, self.shape[0]);
       var [start, end] = ComputeTileBounds(len, id, n);
       if (warmup) { end = TruncateEnd(start, end); }
@@ -775,11 +807,14 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
         var x = self.get(i);
         var t = targets[i];
         var u = localbuffer[t];
-        if (conflicts[t]) {
-          x = f(x, u);
+        var c = conflicts[t] | 0;
+        if (c != 0) {
+          var y = f(x, u);
+          x = y;
         }
-        %UnsafeSetElement(conflicts, t, true);
         %UnsafeSetElement(localbuffer, t, x);
+        c = (c+1)|0;
+        %UnsafeSetElement(conflicts, t, c);
       }
     }
   }
