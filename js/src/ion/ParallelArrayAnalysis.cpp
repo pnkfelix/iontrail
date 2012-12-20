@@ -223,33 +223,49 @@ class ParallelArrayVisitor : public MInstructionVisitor
     SAFE_OP(ParNewDenseArray)
     SAFE_OP(ParNewCallObject)
     SAFE_OP(ParLambda)
+    SAFE_OP(ParDump)
 };
 
 bool
 ParallelCompileContext::appendToWorklist(HandleFunction fun)
 {
+    JS_ASSERT(fun);
+
     if (!fun->isInterpreted())
         return true;
 
     RootedScript script(cx_, fun->nonLazyScript());
 
     // Skip if we're disabled.
-    if (!script->canParallelIonCompile())
+    if (!script->canParallelIonCompile()) {
+        Spew(SpewCompile, "Skipping %p:%s:%u, canParallelIonCompile() is false",
+             fun.get(), script->filename, script->lineno);
         return true;
+    }
 
     // Skip if we're compiling off thread.
-    if (script->parallelIon == ION_COMPILING_SCRIPT)
+    if (script->parallelIon == ION_COMPILING_SCRIPT) {
+        Spew(SpewCompile, "Skipping %p:%s:%u, off-main-thread compilation in progress",
+             fun.get(), script->filename, script->lineno);
         return true;
+    }
 
     // Skip if the code is expected to result in a bailout.
-    if (script->parallelIon && script->parallelIon->bailoutExpected())
+    if (script->parallelIon && script->parallelIon->bailoutExpected()) {
+        Spew(SpewCompile, "Skipping %p:%s:%u, bailout expected",
+             fun.get(), script->filename, script->lineno);
         return true;
+    }
 
     // Skip if we haven't warmed up to get some type info. We're betting
     // that the parallel kernel will be non-branchy for the most part, so
     // this threshold is usually very low (1).
-    if (script->getUseCount() < js_IonOptions.usesBeforeCompileParallel)
+    if (script->getUseCount() < js_IonOptions.usesBeforeCompileParallel) {
+        Spew(SpewCompile, "Skipping %p:%s:%u, use count %u < %u",
+             fun.get(), script->filename, script->lineno,
+             script->getUseCount(), js_IonOptions.usesBeforeCompileParallel);
         return true;
+    }
 
     // TODO: Have worklist use an auto hash set or something.
     for (uint32_t i = 0; i < worklist_.length(); i++) {
