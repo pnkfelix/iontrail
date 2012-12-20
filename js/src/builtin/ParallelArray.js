@@ -596,12 +596,8 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
   var self = this;
 
-  m && m.print && m.print("PAS  A");
-
   if (length === undefined)
     length = self.shape[0];
-
-  m && m.print && m.print("PAS  B");
 
   // The Divide-Scatter-Vector strategy:
   // 1. Slice |targets| array of indices ("scatter-vector") into N
@@ -644,35 +640,25 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
   ///////////////////////////////////////////////////////////////////////////
   // Parallel version(s)
 
-  m && m.print && m.print("PAS  C");
-
   if (TRY_PARALLEL(m) && %EnterParallelSection()) {
     var slices = %ParallelSlices();
 
-    m && m.print && m.print("PAS  D");
-
     // If client explicitly requested a strategy, attempt it first.
     if (ForceDivideOutputRange(m)) {
-
-      m && m.print && m.print("PAS  E");
 
       if (ParDivideOutputRange(buffer, length))
         %LeaveParallelSection();
         return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
     } else if (ForceDivideScatterVector(m)) {
-      m && m.print && m.print("PAS  F");
       if (ParDivideScatterVector(buffer, length))
         %LeaveParallelSection();
         return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
     } else {
-      m && m.print && m.print("PAS  G");
       // If no explicit strategy request, employ heuristics
 
       // If conditions are right, attempt Divide-Output-Range
       if (f === undefined && targets.length < length) {
-        m && m.print && m.print("PAS  H");
         if (ParDivideOutputRange(buffer, length)) {
-          m && m.print && m.print("PAS  I");
           %LeaveParallelSection();
           return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
         }
@@ -680,7 +666,6 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
       // Otherwise, attempt Divide-Scatter-Vector
       if (ParDivideScatterVector(buffer, length)) {
-        m && m.print && m.print("PAS  J");
         %LeaveParallelSection();
         return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
       }
@@ -691,13 +676,9 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
   ///////////////////////////////////////////////////////////////////////////
   // Sequential version
 
-  m && m.print && m.print("PAS  K");
   if (TRY_SEQUENTIAL(m)) {
-    m && m.print && m.print("PAS  L");
     return ParallelArrayScatterSeq(targets, zero, f, length);
   }
-
-  m && m.print && m.print("PAS  M");
 
   return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
 
@@ -710,27 +691,15 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
   }
 
   function ParDivideOutputRange(buffer, length) {
-    m && m.print && m.print("PDOR  A slices:"+slices+" length:"+length);
-
     if (length <= slices)  // Ensure work for each worker thread.
       return false;
 
     var writes = %DenseArray(length);
 
-    m && m.print && m.print("PDOR  B");
-
     // FIXME: Just throw away some work for now to warmup every time
     initialize(0, 1, true, writes);
     if (!%ParallelDo(initialize, CheckParallel(m), false, writes))
       return false;
-
-    m && m.print && m.print("PDOR  C");
-    m && m.print && m.print("PDOR  C warmup"+
-                            " slices:"+slices+
-                            " targets:"+targets+
-                            " length:"+length+
-                            " buffer:"+buffer+
-                            " writes:"+writes);
 
     // FIXME: Just throw away some work for now to warmup every time
     fillsubrange(0, 1, true);
@@ -741,18 +710,8 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
         writes[i] = false;
      })();
 
-
-    m && m.print && m.print("PDOR  C entry"+
-                            " slices:"+slices+
-                            " targets:"+targets+
-                            " length:"+length+
-                            " buffer:"+buffer+
-                            " writes:"+writes);
-
     if (!%ParallelDo(fillsubrange, CheckParallel(m), false))
       return false;
-
-    m && m.print && m.print("PDOR  D");
 
     // Note: In principle, it seems like one might be better off
     // delaying zeroing the gaps of the buffer, since we might
@@ -825,8 +784,6 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
     var loglen = length; // ((length + 31) / 32) | 0;
 
-    function stringify(x) { return "["+x+"]"; }
-
     for (var j = 0; j < slices; j++) {
       var localbuffer = localbuffers[j];
       for (var i = 0; i < length; i++) {
@@ -838,54 +795,25 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
       }
     }
 
-    m && m.print && m.print("PDSV  A");
-
-    m && m.print && m.print("PDSV  A"+
-                            " slices:"+slices+
-                            " targets:"+"["+targets+"]"+
-                            " localbuffers:"+localbuffers.map(stringify)+
-                            " localconflicts:"+localconflicts.map(stringify));
-
     if (!FillBuffers())
       return false;
-
-    m && m.print && m.print("PDSV  B");
-
-    m && m.print && m.print("PDSV  B"+
-                            " slices:"+slices+
-                            " localbuffers:"+localbuffers.map(stringify)+
-                            " localconflicts:"+localconflicts.map(stringify));
 
     if (!MergeBuffers())
       return false;
 
-    m && m.print && m.print("PDSV  C ");
-
     var conflicts = localconflicts[0];
-
-    m && m.print && m.print("PDSV  C"+
-                            " slices:"+slices+
-                            " buffer:"+buffer+
-                            " conflicts:"+conflicts+
-                            " localbuffers:"+localbuffers.map(stringify)+
-                            " localconflicts:"+localconflicts.map(stringify));
 
     return ParFillScatterGaps(buffer, length, conflicts);
 
     function FillBuffers() {
 
-      m && m.print && m.print("PDSV FB A");
       if (dieoncollide) {
         // FIXME: Just throw away some work for now to warmup every time
-        m && m.print && m.print("PDSV FB B fill1a warmup");
         fill1a(0, 2, true);
         fill1a(1, 2, true);
-        m && m.print && m.print("PDSV FB B fill1a entry");
         if (!%ParallelDo(fill1a, CheckParallel(m), false))
           return false;
-        m && m.print && m.print("PDSV FB C");
       } else {
-        m && m.print && m.print("PDSV FB D fill1b warmup");
         // FIXME: Just throw away some work for now to warmup every time
         fill1b(0, 2, true);
         fill1b(1, 2, true);
@@ -897,20 +825,10 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
           }
         }
 
-    m && m.print && m.print("PDSV FB D fill1b entry "+
-                            " slices:"+slices+
-                            " buffer:"+buffer+
-                            " conflicts:"+conflicts+
-                            " localbuffers:"+localbuffers.map(stringify)+
-                            " localconflicts:"+localconflicts.map(stringify));
-
         if (!%ParallelDo(fill1b, CheckParallel(m), false)) {
-          m && m.print && m.print("PDSV FB D fill1b failure");
           return false;
         }
-        m && m.print && m.print("PDSV FB D fill1b success");
       }
-      m && m.print && m.print("PDSV FB E");
       return true;
     }
 
@@ -1043,8 +961,6 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
       if (t >= length)
         %ThrowError(JSMSG_PAR_ARRAY_SCATTER_BOUNDS);
-
-      m && m.print && m.print("PASS i:"+i+" t:"+t+" conflict[t]:"+conflict[t]+" source[i]:"+source[i]+" result[t]:"+result[t]+" f(source[i], result[t]):"+(f ? f(source[i], result[t]):"undef"));
 
       if (conflict[t]) {
         if (!f)
