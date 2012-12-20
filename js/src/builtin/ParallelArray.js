@@ -735,7 +735,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     // FIXME: Just throw away some work for now to warmup every time
     fillsubrange(0, 1, true);
     (function () {
-      var [start, end] = ComputeTileBounds(length, 0, 1);
+      var [start, end] = ComputeSliceBounds(length, 0, 1);
       end = TruncateEnd(start, end);
       for (var i = start; i < end; i++)
         writes[i] = false;
@@ -765,7 +765,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
 
     function initialize(id, n, warmup, array) {
-      var [start, end] = ComputeTileBounds(length, id, n);
+      var [start, end] = ComputeSliceBounds(length, id, n);
       if (warmup) { end = TruncateEnd(start, end); }
       for (var i = start; i < end; i++) {
         %UnsafeSetElement(array, i, false);
@@ -774,7 +774,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     }
 
     function fillsubrange(id, n, warmup) {
-      var [start, end] = ComputeTileBounds(length, id, n);
+      var [start, end] = ComputeSliceBounds(length, id, n);
       if (warmup) { end = TruncateEnd(start, end); }
       for (var i = 0; i < targets.length; i++) {
         var idx = targets[i];
@@ -798,7 +798,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     }
 
     function zerogaps(id, n, warmup) {
-      var [start, end] = ComputeTileBounds(length, id, n);
+      var [start, end] = ComputeSliceBounds(length, id, n);
       if (warmup) { end = TruncateEnd(start, end); }
       for (var i = start; i < end; i++) {
         if (!writes[i]) {
@@ -876,10 +876,11 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
       m && m.print && m.print("PDSV FB A");
       if (dieoncollide) {
-        m && m.print && m.print("PDSV FB B fill1a entry");
         // FIXME: Just throw away some work for now to warmup every time
+        m && m.print && m.print("PDSV FB B fill1a warmup");
         fill1a(0, 2, true);
         fill1a(1, 2, true);
+        m && m.print && m.print("PDSV FB B fill1a entry");
         if (!%ParallelDo(fill1a, CheckParallel(m), false))
           return false;
         m && m.print && m.print("PDSV FB C");
@@ -950,7 +951,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
       }
 
       var len = min(targets.length, self.shape[0]);
-      var [start, end] = ComputeTileBounds(len, id, n);
+      var [start, end] = ComputeSliceBounds(len, id, n);
       if (warmup) { end = TruncateEnd(start, end); }
       for (var i = start; i < end; i++) {
         var x = self.get(i);
@@ -966,7 +967,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
     function fill1b(id, n, warmup) {
       var len = min(targets.length, self.shape[0]);
-      var [start, end] = ComputeTileBounds(len, id, n);
+      var [start, end] = ComputeSliceBounds(len, id, n);
 
       var localbuffer = localbuffers[id];
       var conflicts = localconflicts[id];
@@ -995,7 +996,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     return %ParallelDo(fill, CheckParallel(m), false);
 
     function fill(id, n, warmup) {
-      var [start, end] = ComputeTileBounds(length, id, n);
+      var [start, end] = ComputeSliceBounds(length, id, n);
       for (var i = start; i < end; i++) {
         if (!writes[i]) {
           %UnsafeSetElement(buffer, i, zero);
