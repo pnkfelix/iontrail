@@ -605,11 +605,11 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
   // 2. Each of the N threads prepares an output buffer and a
   //    write-log.
   // 3. Each thread scatters according to one of the N parts into its
-  //    own output bufer, tracking written indices in the write-log
+  //    own output buffer, tracking written indices in the write-log
   //    and resolving any resulting local collisions in parallel.
-  // 4. Merge the parts (either in parallel recursively, or in one
-  //    pass sequentially), again using the write-logs to detect
-  //    collisions.
+  // 4. Merge the parts (either in parallel or sequentially), using
+  //    the write-logs as both the basis for finding merge-inputs and
+  //    for detecting collisions.
 
   // The Divide-Output-Range strategy:
   // 1. Slice the range of indices [0..|length|-1] into N parts.
@@ -627,13 +627,18 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
   // a clear win over Divide-Output-Range, since for the latter, the
   // expense of redundantly scanning the |targets| will diminish the
   // gain from processing |length| in parallel, while for the former,
-  // the expense of merging post-process is small compared to the gain
-  // from processing |targets| in parallel.
+  // the total expense of building separate output buffers and the
+  // merging post-process is small compared to the gain from
+  // processing |targets| in parallel.
   //
   // If |targets.length| << |length|, then Divide-Output-Range seems
   // like it *could* win over Divide-Scatter-Vector.  (But when is
-  // |targets.length| << |length| ?  Seems like an odd situation
-  // and an uncommon case at best.)
+  // |targets.length| << |length| or even |targets.length| < |length|?
+  // Seems like an odd situation and an uncommon case at best.)
+  //
+  // The unanswered question is which strategy performs better when
+  // |targets.length| approximately equals |length|, especially for
+  // special cases like collision-free scatters and permutations.
 
   var buffer = %DenseArray(length);
 
@@ -698,29 +703,28 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
     // FIXME: Just throw away some work for now to warmup every time
     initialize(0, 1, true, writes);
+
+    // Warmup fillsubrange function before calling initialize so that
+    // initialize step clears side-effects of fillsubrange.
+    fillsubrange(0, 1, true);
+
     if (!%ParallelDo(initialize, CheckParallel(m), false, writes))
       return false;
-
-    // FIXME: Just throw away some work for now to warmup every time
-    fillsubrange(0, 1, true);
-    (function () {
-      var [start, end] = ComputeSliceBounds(length, 0, 1);
-      end = TruncateEnd(start, end);
-      for (var i = start; i < end; i++)
-        writes[i] = false;
-     })();
 
     if (!%ParallelDo(fillsubrange, CheckParallel(m), false))
       return false;
 
     // Note: In principle, it seems like one might be better off
     // delaying zeroing the gaps of the buffer, since we might
-    // not need to zero any at all.
-    // But thus far Felix has not been able to get reliable
-    // conditional execution of %UnsafeSetElement, so he is
-    // just zero'ing the whole buffer in |initialize|.
-    // if (!%ParallelDo(zerogaps, CheckParallel(m))) return false;
-
+    // not need to zero any at all, i.e. via something like:
+    //
+    //   return ParFillScatterGaps(buffer, length, writes);
+    //
+    // Thus far Felix has not been able to get such code
+    // to reliably execute in parallel; it often bails out (perhaps
+    // because the writing of zero usually is the exceptional case).
+    // So instead he is just zeroing the whole buffer to zero
+    // at the outset in initialize.
     return %NewParallelArray(ParallelArrayView, [length], buffer, 0);
 
     function initialize(id, n, warmup, array) {
@@ -752,16 +756,6 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
           %UnsafeSetElement(buffer, idx, value);
 
           %UnsafeSetElement(writes, idx, true);
-        }
-      }
-    }
-
-    function zerogaps(id, n, warmup) {
-      var [start, end] = ComputeSliceBounds(length, id, n);
-      if (warmup) { end = TruncateEnd(start, end); }
-      for (var i = start; i < end; i++) {
-        if (!writes[i]) {
-          %UnsafeSetElement(buffer, i, zero);
         }
       }
     }
@@ -809,14 +803,14 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
       if (dieoncollide) {
         // FIXME: Just throw away some work for now to warmup every time
-        fill1a(0, 2, true);
-        fill1a(1, 2, true);
-        if (!%ParallelDo(fill1a, CheckParallel(m), false))
+        fill_dieoncollide(0, 2, true);
+        fill_dieoncollide(1, 2, true);
+        if (!%ParallelDo(fill_dieoncollide, CheckParallel(m), false))
           return false;
       } else {
         // FIXME: Just throw away some work for now to warmup every time
-        fill1b(0, 2, true);
-        fill1b(1, 2, true);
+        fill_handlecollide(0, 2, true);
+        fill_handlecollide(1, 2, true);
 
         // Cleanup the state that was "corrupted" by the above fill calls.
         for (var j = 0; j < slices; j++) {
@@ -825,7 +819,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
           }
         }
 
-        if (!%ParallelDo(fill1b, CheckParallel(m), false)) {
+        if (!%ParallelDo(fill_handlecollide, CheckParallel(m), false)) {
           return false;
         }
       }
@@ -850,7 +844,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
                 buffer[j] = f(otherbuffer[j], buffer[j]);
             } else {
               buffer[j] = otherbuffer[j];
-              conflict[j] += 1;
+              conflict[j] = true;
             }
           }
         }
@@ -861,7 +855,7 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
     function min(a,b) { return (a < b) ? a : b; }
 
-    function fill1a(id, n, warmup) {
+    function fill_dieoncollide(id, n, warmup) {
       var localbuffer = localbuffers[id];
       var conflicts = localconflicts[id];
       for (var i = 0; i < loglen; i++) {
@@ -874,16 +868,16 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
       for (var i = start; i < end; i++) {
         var x = self.get(i);
         var t = targets[i];
-        if (conflicts[t] != 0) {
+        if (conflicts[t]) {
           %ThrowError(JSMSG_PAR_ARRAY_SCATTER_CONFLICT);
         } else {
           %UnsafeSetElement(localbuffer, t, x);
-          %UnsafeSetElement(conflicts, t, conflicts[t]+1);
+          %UnsafeSetElement(conflicts, t, true);
         }
       }
     }
 
-    function fill1b(id, n, warmup) {
+    function fill_handlecollide(id, n, warmup) {
       var len = min(targets.length, self.shape[0]);
       var [start, end] = ComputeSliceBounds(len, id, n);
 
@@ -895,15 +889,12 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
       for (var i = start; i < end; i++) {
         var x = self.get(i);
         var t = targets[i];
-        var u = localbuffer[t];
-        var c = conflicts[t];
-        if (c != 0) {
-          var y = f(x, u);
-          x = y;
+        if (conflicts[t]) {
+          var u = localbuffer[t];
+          x = f(x, u);
         }
         %UnsafeSetElement(localbuffer, t, x);
-        c = (c+1);
-        %UnsafeSetElement(conflicts, t, c);
+        %UnsafeSetElement(conflicts, t, true);
       }
     }
   }
