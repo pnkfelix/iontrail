@@ -262,10 +262,13 @@ class ParallelArrayVisitor : public MInstructionVisitor
     UNSAFE_OP(PowHalf)
     UNSAFE_OP(RegExpTest)
 
+    UNSAFE_OP(NewDeclEnvObject)
+    UNSAFE_OP(DefFun)
+    UNSAFE_OP(CreateThisWithTemplate)
+
     IMPOSSIBLE_OP(CallInstanceOf)
     IMPOSSIBLE_OP(FunctionBoundary)
     IMPOSSIBLE_OP(GuardString)
-    IMPOSSIBLE_OP(CallsiteCloneCache)
 
     IMPOSSIBLE_OP(In)
     IMPOSSIBLE_OP(InArray)
