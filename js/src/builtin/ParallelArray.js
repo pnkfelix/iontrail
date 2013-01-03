@@ -42,6 +42,15 @@ function ComputeAllSliceBounds(length, numSlices) {
   return info;
 }
 
+function ComputeAllSliceBoundsGeneric(length, numSlices, f) {
+  var info = [];
+  for (var i = 0; i < numSlices; i++) {
+    var [start, end] = f(length, i, numSlices);
+    info.push(SLICE_INFO(start, end));
+  }
+  return info;
+}
+
 function TruncateEnd(start, end) {
   var end1 = start + 3;
   if (end1 < end) return end1;
@@ -757,7 +766,13 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
       outputbuffer[i] = zero;
 
     ParallelDo(fill, CheckParallel(m));
+    m && m.print && m.print("premerge");
+    m && m.print && m.print(localbuffers);
+    m && m.print && m.print(localconflicts);
     mergeBuffers();
+    m && m.print && m.print("postmerge");
+    m && m.print && m.print(localbuffers);
+    m && m.print && m.print(localconflicts);
     return NewParallelArray(ParallelArrayView, [length], outputbuffer, 0);
 
     function fill(id, n, warmup) {
@@ -781,6 +796,16 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     }
 
     function mergeBuffers() {
+      if (m && m.merge == "par") {
+        mergeBuffers_parallel();
+      } else if (m && m.merge == "seq") {
+        mergeBuffers_sequential();
+      } else {
+        mergeBuffers_parallel();
+      }
+    }
+
+    function mergeBuffers_sequential_1() {
       // Merge buffers 1..N into buffer 0.  In principle, we could
       // parallelize the merge work as well.  But for this first cut,
       // just do the merge sequentially.
@@ -802,31 +827,100 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
       }
     }
 
-    function mergeBuffers_parallel() {
-      ParallelDo(mergeSlice, CheckParallel(m));
-    }
-
-    function mergeSlice(id, n, warmup) {
-      var [k,l] = ComputeSliceBounds(length, id, numSlices);
-      // Merge buffers 1..N into buffer 0 for indices [k,l).
+    function mergeBuffers_sequential() {
+      // Merge buffers 1..N into buffer 0.  In principle, we could
+      // parallelize the merge work as well.  But for this first cut,
+      // just do the merge sequentially.
       var buffer = localbuffers[0];
       var conflicts = localconflicts[0];
-      for (var i = 1; i < numSlices; i++) {
-        var otherbuffer = localbuffers[i];
-        var otherconflicts = localconflicts[i];
-        for (var j = k; j < l; j++) {
+      for (var j = 0; j < length; j++) {
+        for (var i = 1; i < numSlices; i++) {
+          var otherbuffer = localbuffers[i];
+          var otherconflicts = localconflicts[i];
           if (otherconflicts[j]) {
             if (conflicts[j]) {
-              UnsafeSetElement(buffer, j, collide(otherbuffer[j], buffer[j]));
+              buffer[j] = collide(otherbuffer[j], buffer[j]);
             } else {
-              UnsafeSetElement(buffer, j, otherbuffer[j]);
-              UnsafeSetElement(conflicts, j,  true);
+              buffer[j] = otherbuffer[j];
+              conflicts[j] = true;
             }
           }
         }
       }
     }
 
+    function mergeBuffers_parallel() {
+      // The work to be done is:
+      // Merge buffers 1..M, each of length N (where M is numSlices)
+      // into buffer 0.
+      //
+      // So there are (M-1)*N units of work, and the cleanest opportunity
+      // for parallelism is by slicing up the length: letting each
+      // thread handle *all* of the input buffers but restricted to
+      // the index subset [j..j+L-1] where L = floor(N/M).
+      //
+      // To track the state and avoid repeats in the computation,
+      // the info for each slice needs to maintain two cursors:
+      // the current localbuffer, and the current index.
+
+      function mergeSliceBounds(length, id, numSlices) {
+        var [start, end] = ComputeSliceBounds(length, id, numSlices);
+        return [{buf:1, idx:start}, {buf:numSlices, idx:end}];
+      }
+      var info = ComputeAllSliceBoundsGeneric(length, numSlices, mergeSliceBounds);
+      m && m.print && m.print(["length: ", length,
+                               "numSlices: ", numSlices,
+                               "info: ",info]);
+      ParallelDo(mergeSlice, CheckParallel(m));
+
+      function mergeSlice(id, n, warmup) {
+        var chunkPos = info[SLICE_POS(id)];
+        var chunkEnd = info[SLICE_END(id)];
+
+        var chunkEnd_buf = chunkEnd.buf;
+        var chunkEnd_idx = chunkEnd.idx;
+
+        if (warmup) {
+          if (chunkEnd_buf > chunkPos.buf)
+            chunkEnd_buf = chunkPos.buf + 1;
+          if (chunkEnd_idx > chunkPos.idx)
+            chunkEnd_idx = chunkPos.idx + 2;
+        }
+
+        var buffer = localbuffers[0];
+        var conflicts = localconflicts[0];
+
+        while (chunkPos.idx < chunkEnd_idx && chunkPos.buf < chunkEnd_buf) {
+          var b = chunkPos.buf;
+          var i = chunkPos.idx;
+
+          var nextChunk;
+          if (i + 1 < chunkEnd.idx) {
+            nextChunk = {buf: b,     idx: i + 1};
+          } else {
+            var [start, end] = ComputeSliceBounds(length, id, numSlices);
+            nextChunk = {buf: b + 1, idx: start};
+          }
+
+          var otherbuffer = localbuffers[b];
+          var otherconflicts = localbuffers[b];
+          if (otherconflicts[i]) {
+            var store = otherbuffer[i];
+            if (conflicts[i]) {
+              store = collide(store, buffer[i]);
+            }
+
+            chunkPos = nextChunk;
+            UnsafeSetElement(buffer, i, store,
+                             conflicts, i, true,
+                             info, SLICE_POS(id), chunkPos);
+          } else {
+            chunkPos = nextChunk;
+            UnsafeSetElement(info, SLICE_POS(id), chunkPos);
+          }
+        }
+      }
+    }
   }
 
   function seq() {
