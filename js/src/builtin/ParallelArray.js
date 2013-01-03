@@ -801,6 +801,32 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
         }
       }
     }
+
+    function mergeBuffers_parallel() {
+      ParallelDo(mergeSlice, CheckParallel(m));
+    }
+
+    function mergeSlice(id, n, warmup) {
+      var [k,l] = ComputeSliceBounds(length, id, numSlices);
+      // Merge buffers 1..N into buffer 0 for indices [k,l).
+      var buffer = localbuffers[0];
+      var conflicts = localconflicts[0];
+      for (var i = 1; i < numSlices; i++) {
+        var otherbuffer = localbuffers[i];
+        var otherconflicts = localconflicts[i];
+        for (var j = k; j < l; j++) {
+          if (otherconflicts[j]) {
+            if (conflicts[j]) {
+              UnsafeSetElement(buffer, j, collide(otherbuffer[j], buffer[j]));
+            } else {
+              UnsafeSetElement(buffer, j, otherbuffer[j]);
+              UnsafeSetElement(conflicts, j,  true);
+            }
+          }
+        }
+      }
+    }
+
   }
 
   function seq() {
