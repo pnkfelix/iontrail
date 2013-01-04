@@ -18,11 +18,11 @@ function ComputeNumChunks(length) {
 function ComputeSliceBounds(len, id, n) {
   // Computes the bounds for slice |id| of |len| items, assuming |n|
   // total slices.  If len is not evenly divisible by n, then the
-  // final thread may have a bit of extra work.  It might be better to
-  // do the division more equitably.
-  var slice = (len / n) | 0;
-  var start = slice * id;
-  var end = id === n - 1 ? len : slice * (id + 1);
+  // initial threads may have a bit more work.
+  var slice = ((len + n - 1) / n) | 0; // i.e. ceil(len / n).
+  var prevDone = slice * id; // work distributed to threads before this one.
+  var start = (prevDone >= len) ? len : prevDone; // clamp start by len.
+  var end = (start + slice) > len ? len : (start + slice); // clamp end by len.
   return [start, end];
 }
 
@@ -135,7 +135,7 @@ function ParallelArrayConstruct1(buffer) {
   var buffer = ToObject(buffer);
   var length = buffer.length >>> 0;
   if (length !== buffer.length)
-    ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "");
+    ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "", "", "");
 
   var buffer1 = [];
   for (var i = 0; i < length; i++)
@@ -151,7 +151,7 @@ function ParallelArrayConstruct2(shape, f) {
   if (typeof shape === "number") {
     var length = shape >>> 0;
     if (length !== shape)
-      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "");
+      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "", "", "");
     ParallelArrayBuild(this, [length], f);
   } else {
     var shape1 = [];
@@ -159,7 +159,7 @@ function ParallelArrayConstruct2(shape, f) {
       var s0 = shape[i];
       var s1 = s0 >>> 0;
       if (s1 !== s0)
-        ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "");
+        ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "", "", "");
       shape1[i] = s1;
     }
     ParallelArrayBuild(this, shape1, f);
@@ -171,7 +171,7 @@ function ParallelArrayConstruct3(shape, f, m) {
   if (typeof shape === "number") {
     var length = shape >>> 0;
     if (length !== shape)
-      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "");
+      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "", "", "");
     ParallelArrayBuild(this, [length], f, m);
   } else {
     var shape1 = [];
@@ -179,7 +179,7 @@ function ParallelArrayConstruct3(shape, f, m) {
       var s0 = shape[i];
       var s1 = s0 >>> 0;
       if (s1 !== s0)
-        ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "");
+        ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "", "", "");
       shape1[i] = s1;
     }
     ParallelArrayBuild(this, shape1, f, m);
@@ -250,6 +250,7 @@ function ParallelArrayBuild(self, shape, f, m) {
     var chunks = ComputeNumChunks(length);
     var numSlices = ParallelSlices();
     var info = ComputeAllSliceBounds(chunks, numSlices);
+    m && m.print && m.print(["ParallelArrayBuild", "info", info]);
     ParallelDo(constructSlice, CheckParallel(m));
     return;
   }
@@ -725,11 +726,14 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
       // Range in the output for which we are responsible:
       var [outputStart, outputEnd] = ComputeSliceBounds(length, id, numSlices);
-
+      m && m.print && m.print(["[id, numSlices]", id, numSlices,
+                                "[outputStart, outputEnd]", outputStart, outputEnd]);
       for (; indexPos < indexEnd; indexPos++) {
         var x = self.get(indexPos);
         var t = targets[indexPos];
-        checkTarget(t);
+        // Dump(t);
+        // m && m.print && m.print("DivOutput fill check t:"+t);
+        checkTarget(t, indexPos);
         if (t < outputStart || t >= outputEnd)
           continue;
         if (conflicts[t])
@@ -749,6 +753,9 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     // individual indices,
     var numSlices = ParallelSlices();
     var info = ComputeAllSliceBounds(targetsLength, numSlices);
+    m && m.print && m.print(["targetsLength", targetsLength,
+                             "numSlices", numSlices,
+                             "info", info]);
 
     var localbuffers = DenseArray(numSlices);
     for (var i = 0; i < numSlices; i++)
@@ -765,6 +772,8 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     for (var i = 0; i < length; i++)
       outputbuffer[i] = zero;
 
+    m && m.print && m.print("prefill");
+    m && m.print && m.print(info);
     ParallelDo(fill, CheckParallel(m));
     m && m.print && m.print("premerge");
     m && m.print && m.print(localbuffers);
@@ -786,7 +795,9 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
       while (indexPos < indexEnd) {
         var x = self.get(indexPos);
         var t = targets[indexPos];
-        checkTarget(t);
+        // Dump(t);
+        // m && m.print && m.print("DivVector fill check t:"+t);
+        checkTarget(t, indexPos);
         if (conflicts[t])
           x = collide(x, localbuffer[t]);
         UnsafeSetElement(localbuffer, t, x,
@@ -796,13 +807,22 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     }
 
     function mergeBuffers() {
-      if (m && m.merge == "par") {
+      parallel: for (;;) {
+
+        // m && m.print && m.print("mergeBuffers A");
+        if (ForceSequential())
+          break parallel;
+        // m && m.print && m.print("mergeBuffers B");
+        if (!m || m.merge != "par")
+          break parallel;
+        // m && m.print && m.print("mergeBuffers C");
         mergeBuffers_parallel();
-      } else if (m && m.merge == "seq") {
-        mergeBuffers_sequential();
-      } else {
-        mergeBuffers_parallel();
+        return;
       }
+
+      // m && m.print && m.print("mergeBuffers D");
+      // sequential fallback
+      mergeBuffers_sequential();
     }
 
     function mergeBuffers_sequential_1() {
@@ -867,13 +887,31 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
         var [start, end] = ComputeSliceBounds(length, id, numSlices);
         return [{buf:1, idx:start}, {buf:numSlices, idx:end}];
       }
-      var info = ComputeAllSliceBoundsGeneric(length, numSlices, mergeSliceBounds);
-      m && m.print && m.print(["length: ", length,
+
+
+      //Manually inlining call below to see if that resoves TypeBarrier
+      //bailout issues.  (It did not seem to do so, we will see.)
+      // var info = ComputeAllSliceBoundsGeneric(length, numSlices, mergeSliceBounds);
+      var info = [];
+      for (var i = 0; i < numSlices; i++) {
+        var [start, end] = mergeSliceBounds(length, i, numSlices);
+        info.push(SLICE_INFO(start, end));
+      }
+
+      if (false) m && m.print && m.print(["pre ParallelDo", "length: ", length,
                                "numSlices: ", numSlices,
                                "info: ",info]);
       ParallelDo(mergeSlice, CheckParallel(m));
+      if (false) m && m.print && m.print(["post ParallelDo", "length: ", length,
+                               "numSlices: ", numSlices,
+                               "info: ",info]);
 
       function mergeSlice(id, n, warmup) {
+        // Dump("mergeSliceEntry");
+        // Dump("id"); Dump(id);
+        // Dump("n"); Dump(n);
+        // Dump("warmup"); Dump(warmup);
+
         var chunkPos = info[SLICE_POS(id)];
         var chunkEnd = info[SLICE_END(id)];
 
@@ -881,18 +919,30 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
         var chunkEnd_idx = chunkEnd.idx;
 
         if (warmup) {
-          if (chunkEnd_buf > chunkPos.buf)
-            chunkEnd_buf = chunkPos.buf + 1;
-          if (chunkEnd_idx > chunkPos.idx)
+          if (chunkEnd_buf > chunkPos.buf + 1)
+            chunkEnd_buf = chunkPos.buf + 2;
+          if (chunkEnd_idx > chunkPos.idx + 1)
             chunkEnd_idx = chunkPos.idx + 2;
         }
+
+        if (!(chunkPos.idx < chunkEnd.idx && chunkPos.buf < chunkEnd_buf))
+          return;
+
+        // Dump("chunkPos.idx"); Dump(chunkPos.idx);
+        // Dump("chunkPos.buf"); Dump(chunkPos.buf);
+        // Dump("chunkEnd.idx"); Dump(chunkEnd.idx);
+        // Dump("chunkEnd.buf"); Dump(chunkEnd.buf);
+        // Dump("chunkEnd_buf"); Dump(chunkEnd_buf);
 
         var buffer = localbuffers[0];
         var conflicts = localconflicts[0];
 
-        while (chunkPos.idx < chunkEnd_idx && chunkPos.buf < chunkEnd_buf) {
+        while (chunkPos.idx < chunkEnd.idx && chunkPos.buf < chunkEnd_buf) {
           var b = chunkPos.buf;
           var i = chunkPos.idx;
+
+          // Dump("b"); Dump(b);
+          // Dump("i"); Dump(i);
 
           var nextChunk;
           if (i + 1 < chunkEnd.idx) {
@@ -911,10 +961,12 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
             }
 
             chunkPos = nextChunk;
+            // Dump("set three");
             UnsafeSetElement(buffer, i, store,
                              conflicts, i, true,
                              info, SLICE_POS(id), chunkPos);
           } else {
+            // Dump("set one");
             chunkPos = nextChunk;
             UnsafeSetElement(info, SLICE_POS(id), chunkPos);
           }
@@ -933,7 +985,9 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     for (var i = 0; i < targetsLength; i++) {
       var x = self.get(i);
       var t = targets[i];
-      checkTarget(t);
+      // Dump(t);
+      // m && m.print && m.print("seq check t:"+t);
+      checkTarget(t, i);
       if (conflicts[t])
         x = collide(x, buffer[t]);
 
@@ -944,9 +998,9 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     return NewParallelArray(ParallelArrayView, [length], buffer, 0);
   }
 
-  function checkTarget(t) {
+  function checkTarget(t, i) {
       if ((t | 0) !== t)
-        ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, ".prototype.scatter");
+        ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, ".prototype.scatter", t, i);
 
       if (t >= length)
         ThrowError(JSMSG_PAR_ARRAY_SCATTER_BOUNDS);
@@ -969,6 +1023,7 @@ function ParallelArrayFilter(func, m) {
       break parallel;
 
     var info = ComputeAllSliceBounds(chunks, numSlices);
+    m && m.print && m.print(["info", info]);
 
     // Step 1.  Compute which items from each slice of the result
     // buffer should be preserved.  When we're done, we have an array

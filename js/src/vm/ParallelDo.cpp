@@ -433,7 +433,7 @@ class ParallelDo : public ForkJoinOp
 
         // Try to execute in parallel.  If a bailout occurs, re-warmup
         // and then try again.  Repeat this a few times.
-        while (bailouts < 3) {
+        while (bailouts < 30) {
             MethodStatus status = compileForParallelExecution();
             if (status == Method_Error)
                 return SpewEndOp(ExecutionFatal);

@@ -17,14 +17,17 @@ function testDivideScatterVector() {
     var p2 = [3].concat(build(len-4, add3)).concat([2*len-1]);
     var expect = new ParallelArray(p2.reverse());
     var modes = [["seq", ""],
-                 ["par", "divide-scatter-vector"],
+                 ["par", "divide-scatter-vector", "merge:seq"],
+                 ["par", "divide-scatter-vector", "merge:unset"],
+                 ["par", "divide-scatter-vector", "merge:par"],
                  ["par", "divide-output-range"]];
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < modes.length; i++) {
         print("i:"+i+" p :"+p);
         print("i:"+i+" revidx :"+revidx);
-        var r = p.scatter(revidx, 0, function (x,y) { return x+y; }, len-2,
-                          {mode: modes[i][0], strategy: modes[i][1],
-                           expect: "success", print:print});
+        var m = {mode: modes[i][0], strategy: modes[i][1], expect: "success"};
+        if (modes[i][2] == "merge:par") m.merge = "par";
+        else if (modes[i][2] == "merge:seq") m.merge = "seq";
+        var r = p.scatter(revidx, 0, function (x,y) { return x+y; }, len-2, m);
         print("i:"+i+" r     :"+r);
         print("i:"+i+" expect:"+expect);
         assertEqParallelArray(r, expect);
