@@ -20,9 +20,10 @@
 // (maxBailouts, numSlices, CHUNK_SIZE).  Therefore, the value of
 // minItemsTestingThreshold should be kept in sync with some value
 // greater than maxSeqItems as calculated above.
-
-// (This is still imperfect since it assumes numSlices <= 8, but
-// numSlices is machine-dependent.)
+//
+// This is still imperfect since it assumes numSlices <= 8, but
+// numSlices is machine-dependent.
+// (TODO: consider exposing numSlices via builtin/TestingFunctions.cpp)
 
 var minItemsTestingThreshold = 1024;
 
