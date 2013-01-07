@@ -13,18 +13,18 @@ function testDivideScatterVector() {
     var p = new ParallelArray(len, add1);
     var revidx = build(len, id).reverse();
     var p2 = new ParallelArray(revidx.map(add1).concat([0]));
-    var modes = [["seq", "", ""],
-                 ["par", "divide-scatter-vector", "merge:seq"],
-                 ["par", "divide-scatter-vector", "merge:unset"],
-                 ["par", "divide-scatter-vector", "merge:par"],
-                 ["par", "divide-output-range", ""]];
+    var modes = [["success", "seq", "", ""],
+                 ["success", "par", "divide-scatter-vector", "merge:seq"],
+                 ["mixed",   "par", "divide-scatter-vector", "merge:unset"],
+                 ["mixed",   "par", "divide-scatter-vector", "merge:par"],
+                 ["success", "par", "divide-output-range", ""]];
     for (var i = 0; i < modes.length; i++) {
-        var m = {mode: modes[i][0], strategy: modes[i][1], expect: "success"};
-        // if (modes[i][2] == "merge:par") m.merge = "par";
-        // if (modes[i][2] == "merge:seq") m.merge = "seq";
-        m.print = function(x) { print(JSON.stringify(x)); };
+        print(modes[i].slice(2));
+        var m = {mode: modes[i][1], strategy: modes[i][2], expect: modes[i][0]};
+        if (modes[i][3] == "merge:par") m.merge = "par";
+        if (modes[i][3] == "merge:seq") m.merge = "seq";
+        // m.print = function(x) { print(JSON.stringify(x)); };
         var r = p.scatter(revidx, 0, undefined, len+1, m);
-      print(modes[i].slice(1), r.buffer);
         assertEqParallelArray(r, p2);
     }
 }
