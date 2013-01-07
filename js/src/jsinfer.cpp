@@ -1260,12 +1260,11 @@ static inline RawFunction
 CloneCallee(JSContext *cx, RawFunction fun_, HandleScript script, jsbytecode *pc)
 {
     /*
-     * To avoid computing the callee PC at the callsite when we clone to
-     * propagate the cloned function type to this point, we do not monitor in
-     * the interpreter and simply clone again when doing analysis.
+     * Clone called functions at appropriate callsites to match interpreter
+     * behavior.
      */
     RootedFunction fun(cx, fun_);
-    JSFunction *callee = CloneFunctionAtCallsite(cx, fun, script, pc);
+    RawFunction callee = CloneFunctionAtCallsite(cx, fun, script, pc);
     if (!callee)
         return NULL;
 
@@ -3810,7 +3809,6 @@ ScriptAnalysis::analyzeTypesBytecode(JSContext *cx, unsigned offset, TypeInferen
       case JSOP_DEBUGGER:
       case JSOP_SETCALL:
       case JSOP_TABLESWITCH:
-      case JSOP_LOOKUPSWITCH:
       case JSOP_TRY:
       case JSOP_LABEL:
         break;
@@ -5887,10 +5885,10 @@ JSObject::hasNewType(TypeObject *type)
 }
 #endif /* DEBUG */
 
-bool
-JSObject::setNewTypeUnknown(JSContext *cx)
+/* static */ bool
+JSObject::setNewTypeUnknown(JSContext *cx, HandleObject obj)
 {
-    if (!setFlag(cx, js::BaseShape::NEW_TYPE_UNKNOWN))
+    if (!obj->setFlag(cx, js::BaseShape::NEW_TYPE_UNKNOWN))
         return false;
 
     /*
@@ -5900,7 +5898,7 @@ JSObject::setNewTypeUnknown(JSContext *cx)
      */
     TypeObjectSet &table = cx->compartment->newTypeObjects;
     if (table.initialized()) {
-        if (TypeObjectSet::Ptr p = table.lookup(this))
+        if (TypeObjectSet::Ptr p = table.lookup(obj.get()))
             MarkTypeObjectUnknownProperties(cx, *p);
     }
 

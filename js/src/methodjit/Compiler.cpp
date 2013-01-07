@@ -783,31 +783,6 @@ MakeJITScript(JSContext *cx, HandleScript script)
                 }
             }
 
-            if (op == JSOP_LOOKUPSWITCH) {
-                unsigned defaultOffset = offset + GET_JUMP_OFFSET(pc);
-                jsbytecode *pc2 = pc + JUMP_OFFSET_LEN;
-                unsigned npairs = GET_UINT16(pc2);
-                pc2 += UINT16_LEN;
-
-                CrossChunkEdge edge;
-                edge.source = offset;
-                edge.target = defaultOffset;
-                if (!currentEdges.append(edge))
-                    return NULL;
-
-                while (npairs) {
-                    pc2 += UINT32_INDEX_LEN;
-                    unsigned targetOffset = offset + GET_JUMP_OFFSET(pc2);
-                    CrossChunkEdge edge;
-                    edge.source = offset;
-                    edge.target = targetOffset;
-                    if (!currentEdges.append(edge))
-                        return NULL;
-                    pc2 += JUMP_OFFSET_LEN;
-                    npairs--;
-                }
-            }
-
             if (unsigned(offset - chunkStart) > CHUNK_LIMIT)
                 finishChunk = true;
 
@@ -2874,21 +2849,6 @@ mjit::Compiler::generateMethod()
             break;
           END_CASE(JSOP_TABLESWITCH)
 
-          BEGIN_CASE(JSOP_LOOKUPSWITCH)
-            if (script_->hasScriptCounts)
-                updatePCCounts(PC, &countsUpdated);
-            frame.syncAndForgetEverything();
-            masm.move(ImmPtr(PC), Registers::ArgReg1);
-
-            /* prepareStubCall() is not needed due to syncAndForgetEverything() */
-            INLINE_STUBCALL(stubs::LookupSwitch, REJOIN_NONE);
-            frame.pop();
-
-            masm.jump(Registers::ReturnReg);
-            PC += js_GetVariableBytecodeLength(PC);
-            break;
-          END_CASE(JSOP_LOOKUPSWITCH)
-
           BEGIN_CASE(JSOP_CASE)
             // X Y
 
@@ -4663,6 +4623,11 @@ mjit::Compiler::inlineScriptedFunction(uint32_t argc, bool callingNew)
     for (unsigned i = 0; i < ssa.numFrames(); i++) {
         if (ssa.iterFrame(i).parent == a->inlineIndex && ssa.iterFrame(i).parentpc == PC) {
             JSScript *script_ = ssa.iterFrame(i).script;
+
+            /* Don't inline if any of the callees should be cloned at callsite. */
+            if (script_->function()->isCloneAtCallsite())
+                return Compile_InlineAbort;
+
             inlineCallees.append(script_);
             if (script_->analysis()->numReturnSites() > 1)
                 calleeMultipleReturns = true;
