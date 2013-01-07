@@ -702,6 +702,8 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
 
   function parDivideOutputRange() {
+    var dateStart = new Date();
+
     var chunks = ComputeNumChunks(targetsLength);
     var numSlices = ParallelSlices();
     var checkpoints = DenseArray(numSlices);
@@ -714,7 +716,16 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     for (var i = 0; i < length; i++)
       buffer[i] = zero;
 
+    var dateDoneAlloc = new Date();
+
     ParallelDo(fill, CheckParallel(m));
+
+    var dateDoneFill = new Date();
+
+    m && m.print && m.print("times: "+
+                            " alloc:"+(dateDoneAlloc - dateStart)+
+                            " fill:"+(dateDoneFill - dateDoneAlloc) );
+
     return NewParallelArray(ParallelArrayView, [length], buffer, 0);
 
     function fill(id, n, warmup) {
@@ -741,6 +752,9 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
   }
 
   function parDivideScatterVector() {
+
+    var dateStart = new Date();
+
     // Subtle: because we will be mutating the localbuffers and
     // conflict arrays in place, we can never replay an entry in the
     // target array for fear of inducing a conflict where none existed
@@ -764,8 +778,21 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     for (var i = 0; i < length; i++)
       outputbuffer[i] = zero;
 
+    var dateDoneAlloc = new Date();
+
     ParallelDo(fill, CheckParallel(m));
+
+    var dateDoneFill = new Date();
+
     mergeBuffers();
+
+    var dateDoneMerge = new Date();
+
+    m && m.print && m.print("times: "+
+                            " alloc:"+(dateDoneAlloc - dateStart)+
+                            " fill:"+(dateDoneFill - dateDoneAlloc)+
+                            " merge:"+(dateDoneMerge - dateDoneFill) );
+
     return NewParallelArray(ParallelArrayView, [length], outputbuffer, 0);
 
     function fill(id, n, warmup) {
