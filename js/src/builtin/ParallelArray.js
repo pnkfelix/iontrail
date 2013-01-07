@@ -250,7 +250,6 @@ function ParallelArrayBuild(self, shape, f, m) {
     var chunks = ComputeNumChunks(length);
     var numSlices = ParallelSlices();
     var info = ComputeAllSliceBounds(chunks, numSlices);
-    m && m.print && m.print(["ParallelArrayBuild", "info", info]);
     ParallelDo(constructSlice, CheckParallel(m));
     return;
   }
@@ -726,13 +725,9 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
 
       // Range in the output for which we are responsible:
       var [outputStart, outputEnd] = ComputeSliceBounds(length, id, numSlices);
-      m && m.print && m.print(["[id, numSlices]", id, numSlices,
-                                "[outputStart, outputEnd]", outputStart, outputEnd]);
       for (; indexPos < indexEnd; indexPos++) {
         var x = self.get(indexPos);
         var t = targets[indexPos];
-        // Dump(t);
-        // m && m.print && m.print("DivOutput fill check t:"+t);
         checkTarget(t, indexPos);
         if (t < outputStart || t >= outputEnd)
           continue;
@@ -753,9 +748,6 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     // individual indices,
     var numSlices = ParallelSlices();
     var info = ComputeAllSliceBounds(targetsLength, numSlices);
-    m && m.print && m.print(["targetsLength", targetsLength,
-                             "numSlices", numSlices,
-                             "info", info]);
 
     var localbuffers = DenseArray(numSlices);
     for (var i = 0; i < numSlices; i++)
@@ -772,16 +764,8 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     for (var i = 0; i < length; i++)
       outputbuffer[i] = zero;
 
-    m && m.print && m.print("prefill");
-    m && m.print && m.print(info);
     ParallelDo(fill, CheckParallel(m));
-    m && m.print && m.print("premerge");
-    m && m.print && m.print(localbuffers);
-    m && m.print && m.print(localconflicts);
     mergeBuffers();
-    m && m.print && m.print("postmerge");
-    m && m.print && m.print(localbuffers);
-    m && m.print && m.print(localconflicts);
     return NewParallelArray(ParallelArrayView, [length], outputbuffer, 0);
 
     function fill(id, n, warmup) {
@@ -795,8 +779,6 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
       while (indexPos < indexEnd) {
         var x = self.get(indexPos);
         var t = targets[indexPos];
-        // Dump(t);
-        // m && m.print && m.print("DivVector fill check t:"+t);
         checkTarget(t, indexPos);
         if (conflicts[t])
           x = collide(x, localbuffer[t]);
@@ -809,18 +791,14 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     function mergeBuffers() {
       parallel: for (;;) {
 
-        // m && m.print && m.print("mergeBuffers A");
         if (ForceSequential())
           break parallel;
-        // m && m.print && m.print("mergeBuffers B");
         if (!m || m.merge != "par")
           break parallel;
-        // m && m.print && m.print("mergeBuffers C");
         mergeBuffers_parallel();
         return;
       }
 
-      // m && m.print && m.print("mergeBuffers D");
       // sequential fallback
       mergeBuffers_sequential();
     }
@@ -898,20 +876,9 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
         info.push(SLICE_INFO(start, end));
       }
 
-      if (false) m && m.print && m.print(["pre ParallelDo", "length: ", length,
-                               "numSlices: ", numSlices,
-                               "info: ",info]);
       ParallelDo(mergeSlice, CheckParallel(m));
-      if (false) m && m.print && m.print(["post ParallelDo", "length: ", length,
-                               "numSlices: ", numSlices,
-                               "info: ",info]);
 
       function mergeSlice(id, n, warmup) {
-        // Dump("mergeSliceEntry");
-        // Dump("id"); Dump(id);
-        // Dump("n"); Dump(n);
-        // Dump("warmup"); Dump(warmup);
-
         var chunkPos = info[SLICE_POS(id)];
         var chunkEnd = info[SLICE_END(id)];
 
@@ -928,21 +895,12 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
         if (!(chunkPos.idx < chunkEnd.idx && chunkPos.buf < chunkEnd_buf))
           return;
 
-        // Dump("chunkPos.idx"); Dump(chunkPos.idx);
-        // Dump("chunkPos.buf"); Dump(chunkPos.buf);
-        // Dump("chunkEnd.idx"); Dump(chunkEnd.idx);
-        // Dump("chunkEnd.buf"); Dump(chunkEnd.buf);
-        // Dump("chunkEnd_buf"); Dump(chunkEnd_buf);
-
         var buffer = localbuffers[0];
         var conflicts = localconflicts[0];
 
         while (chunkPos.idx < chunkEnd.idx && chunkPos.buf < chunkEnd_buf) {
           var b = chunkPos.buf;
           var i = chunkPos.idx;
-
-          // Dump("b"); Dump(b);
-          // Dump("i"); Dump(i);
 
           var nextChunk;
           if (i + 1 < chunkEnd.idx) {
@@ -961,12 +919,10 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
             }
 
             chunkPos = nextChunk;
-            // Dump("set three");
             UnsafeSetElement(buffer, i, store,
                              conflicts, i, true,
                              info, SLICE_POS(id), chunkPos);
           } else {
-            // Dump("set one");
             chunkPos = nextChunk;
             UnsafeSetElement(info, SLICE_POS(id), chunkPos);
           }
@@ -985,8 +941,6 @@ function ParallelArrayScatter(targets, zero, f, length, m) {
     for (var i = 0; i < targetsLength; i++) {
       var x = self.get(i);
       var t = targets[i];
-      // Dump(t);
-      // m && m.print && m.print("seq check t:"+t);
       checkTarget(t, i);
       if (conflicts[t])
         x = collide(x, buffer[t]);
@@ -1023,7 +977,6 @@ function ParallelArrayFilter(func, m) {
       break parallel;
 
     var info = ComputeAllSliceBounds(chunks, numSlices);
-    m && m.print && m.print(["info", info]);
 
     // Step 1.  Compute which items from each slice of the result
     // buffer should be preserved.  When we're done, we have an array
