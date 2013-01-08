@@ -49,6 +49,17 @@ function test()
   var inputs =
     [
      {iters:lil_iters, source:"1e4",               index:makeIdentityIdx},
+     {iters:lil_iters, source:"1e6",               index:makeIdentityIdx},
+     {iters:lil_iters, source:"1e4", output:"1e4", index:makeRotateIdx},
+     {iters:lil_iters, source:"1e4", output: "10", index:makeRotateIdx},
+     {iters:lil_iters, source:"1e6", output:"1e6", index:makeRotateIdx},
+     {iters:lil_iters, source:"1e6", output:"1e4", index:makeRotateIdx},
+     {iters:lil_iters, source:"1e6", output: "10", index:makeRotateIdx}
+    ];
+
+  var inputs_large =
+    [
+     {iters:lil_iters, source:"1e4",               index:makeIdentityIdx},
      {iters:lil_iters, source:"100", output:"20",  index:makeRotateIdx},
 
      {iters:mid_iters, source:"1e5",               index:makeIdentityIdx},
@@ -164,7 +175,7 @@ function test()
         print("  Compare outputs "+j+": "+ outputs[j]);
       }
 
-      print("k:"+fillstr(3, " ", k, "")+
+      print("k:"+fillstr(1, " ", k, "")+
             " s:("+fillstr(3, " ", source, "")+"->"+fillstr(3, "", len, " ")+")*"+fillstr(4, "", inputs[k].iters, " ")+
             " mode:"+mode+fillstr(23, "", strategy==""?"":"/"+strategy, " ")+
             " time:"+fillstr(6, " ", myTime, "")+
