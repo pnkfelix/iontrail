@@ -101,12 +101,12 @@ function ParallelArrayConstruct1(buffer) {
   this.get = ParallelArrayGet1;
 }
 
-function ParallelArrayConstruct2(shape, f) {
+function ParallelArrayConstruct2(shape, f, bufferSpec) {
   if (typeof shape === "number") {
     var length = shape >>> 0;
     if (length !== shape)
       %ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "");
-    ParallelArrayBuild(this, [length], f);
+    ParallelArrayBuild(this, [length], f, undefined, bufferSpec);
   } else {
     var shape1 = [];
     for (var i = 0, l = shape.length; i < l; i++) {
@@ -116,7 +116,7 @@ function ParallelArrayConstruct2(shape, f) {
         %ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "");
       shape1[i] = s1;
     }
-    ParallelArrayBuild(this, shape1, f);
+    ParallelArrayBuild(this, shape1, f, bufferSpec);
   }
 }
 
@@ -153,9 +153,11 @@ function ParallelArrayView(shape, buffer, offset) {
   }
 }
 
-function ParallelArrayBuild(self, shape, f, m) {
+function ParallelArrayBuild(self, shape, f, m, bufferSpec) {
+  self.shape = (typeof(bufferSpec) === 'object') ? shape.concat(bufferSpec.shape) : shape;
   self.offset = 0;
 
+  var writeOp = (typeof(bufferSpec) === 'object') ? bufferSpec.write : function (b, i, v, f) { f(b, i, v); };
   var length;
   var xw, yw, zw;
   var fill;
@@ -191,17 +193,17 @@ function ParallelArrayBuild(self, shape, f, m) {
   }
 
   var done = false;
-  var buffer = %DenseArray(length);
+  var buffer = (typeof(bufferSpec) === 'object') ? bufferSpec.construct(length) : %DenseArray(length);
 
   if (TRY_PARALLEL(m) && %EnterParallelSection()) {
     // FIXME: Just throw away some work for now to warmup every time.
-    fill(0, 1, true, yw, zw);
-    done = %ParallelDo(fill, CheckParallel(m), false, yw, zw);
+    fill(0, 1, true, yw, zw, writeOp);
+    done = %ParallelDo(fill, CheckParallel(m), false, yw, zw, writeOp);
     %LeaveParallelSection();
   }
 
   if (!done && TRY_SEQUENTIAL(m)) {
-    fill(0, 1, false, yw, zw);
+    fill(0, 1, false, yw, zw, writeOp);
     done = true;
   }
 
@@ -217,22 +219,22 @@ function ParallelArrayBuild(self, shape, f, m) {
   self.shape = emptyShape;
   self.buffer = [];
 
-  function fill1(id, n, warmup) {
+  function fill1(id, n, warmup, yw, zw, writeOp) {
     var [start, end] = ComputeTileBounds(length, id, n);
     if (warmup)
       end = TruncateEnd(start, end);
     for (var i = start; i < end; i++)
-      %UnsafeSetElement(buffer, i, f(i));
+      writeOp(buffer, i, f(i), function (b,i,v) { %UnsafeSetElement(b, i, v); });
   }
 
-  function fill2(id, n, warmup, yw) {
+  function fill2(id, n, warmup, yw, zw, writeOp) {
     var [start, end] = ComputeTileBounds(length, id, n);
     if (warmup)
       end = TruncateEnd(start, end);
     var x = (start / yw) | 0;
     var y = start - x*yw;
     for (var i = start; i < end; i++) {
-      %UnsafeSetElement(buffer, i, f(x, y));
+      writeOp(buffer, i, f(x, y), function (b,i,v) { %UnsafeSetElement(b, i, v); });
       if (++y == yw) {
         y = 0;
         ++x;
@@ -240,7 +242,7 @@ function ParallelArrayBuild(self, shape, f, m) {
     }
   }
 
-  function fill3(id, n, warmup, yw, zw) {
+  function fill3(id, n, warmup, yw, zw, writeOp) {
     var [start, end] = ComputeTileBounds(length, id, n);
     if (warmup)
       end = TruncateEnd(start, end);
@@ -249,7 +251,7 @@ function ParallelArrayBuild(self, shape, f, m) {
     var y = (r / zw) | 0;
     var z = r - y*zw;
     for (var i = start; i < end; i++) {
-      %UnsafeSetElement(buffer, i, f(x, y, z));
+      writeOp(buffer, i, f(x, y, z), function (b,i,v) { %UnsafeSetElement(b, i, v); });
       if (++z == zw) {
         z = 0;
         if (++y == yw) {
@@ -260,7 +262,7 @@ function ParallelArrayBuild(self, shape, f, m) {
     }
   }
 
-  function fillN(id, n, warmup) {
+  function fillN(id, n, warmup, yw, zw, writeOp) {
     // NB: In fact this will not currently be parallelized due to the
     // use of `f.apply()`.  But it's written as if it could be.  A guy
     // can dream, can't he?
@@ -269,7 +271,7 @@ function ParallelArrayBuild(self, shape, f, m) {
       end = TruncateEnd(start, end);
     var indices = ComputeIndices(shape, start);
     for (var i = start; i < end; i++) {
-      %UnsafeSetElement(buffer, i, f.apply(null, indices));
+      writeOp(buffer, i, f.apply(null, indices), function (b,i,v) { %UnsafeSetElement(b, i, v); });
       StepIndices(shape, indices);
     }
   }
