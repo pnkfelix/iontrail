@@ -42,6 +42,8 @@ ExecutionStatusToString(ExecutionStatus status)
         return "disqualified";
       case ExecutionBailout:
         return "bailout";
+      case ExecutionBailoutForGC:
+        return "gcbailout";
       case ExecutionFatal:
         return "fatal";
       case ExecutionSucceeded:
@@ -184,6 +186,7 @@ class ParallelSpewer
             statusColor = red();
             break;
           case ExecutionBailout:
+          case ExecutionBailoutForGC:
             statusColor = yellow();
             break;
           case ExecutionSucceeded:
@@ -309,6 +312,10 @@ ToExecutionStatus(ParallelResult pr)
 
       case TP_RETRY_SEQUENTIALLY:
         status = ExecutionBailout;
+        break;
+
+      case TP_RETRY_AFTER_GC:
+        status = ExecutionBailoutForGC;
         break;
 
       case TP_FATAL:
@@ -502,7 +509,7 @@ Do1(JSContext *cx, CallArgs &args)
     if (status == ExecutionSucceeded) {
         args.rval().setBoolean(true);
     } else {
-        if (status == ExecutionBailout) {
+        if (status == ExecutionBailout || status == ExecutionBailoutForGC) {
             Vector<types::RecompileInfo> invalid(cx);
             for (uint32_t i = 0; i < op.pendingInvalidations.length(); i++) {
                 JSScript *script = op.pendingInvalidations[i];

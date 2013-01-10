@@ -24,6 +24,7 @@ enum ExecutionStatus {
 
     // Parallel execution went off the safe path, use seq fallback
     ExecutionBailout,
+    ExecutionBailoutForGC,
 
     // Parallel or seq execution terminated in a fatal way, operation failed
     ExecutionFatal,
