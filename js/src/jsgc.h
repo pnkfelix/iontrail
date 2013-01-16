@@ -218,7 +218,7 @@ struct ArenaList {
 
 struct ArenaLists {
 
-  private:
+  public:
     /*
      * For each arena kind its free list is represented as the first span with
      * free things. Initially all the spans are initialized as empty. After we

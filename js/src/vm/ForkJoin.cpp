@@ -48,9 +48,12 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     uint32_t uncompleted_;         // Number of uncompleted worker threads
     uint32_t blocked_;             // Number of threads that have joined rendezvous
     uint32_t rendezvousIndex_;     // Number of rendezvous attempts
-    bool gcRequested_;             // True if a worker requested a GC
+
+    // Fields related to asynchronously-read gcRequested_ flag
     gcreason::Reason gcReason_;    // Reason given to request GC
     JSCompartment *gcCompartment_; // Compartment for GC, or NULL for full
+
+    ForkJoinSlice *slices;
 
     /////////////////////////////////////////////////////////////////////////
     // Asynchronous Flags
@@ -66,10 +69,16 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     // Set to true when a worker bails for a fatal reason.
     volatile bool fatal_;
 
-    // A thread has request a rendezvous.  Only *written* with the lock (in
-    // |initiateRendezvous()| and |endRendezvous()|) but may be *read* without
+    // The main thread has requested a rendezvous.  Only *written* with the lock
+    // (in |initiateRendezvous()| and |endRendezvous()|) but may be *read* without
     // the lock.
     volatile bool rendezvous_;
+
+    // True if a worker requested a GC
+    volatile bool gcRequested_;
+
+    // True if all non-main threads have stopped for the main thread to GC
+    volatile bool worldStoppedForGC_;
 
     // Invoked only from the main thread:
     void executeFromMainThread();
@@ -84,6 +93,7 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     // endRendezvous() directly.
 
     friend class AutoRendezvous;
+    friend class AutoMarkWorldStoppedForGC;
 
     // Requests that the other threads stop.  Must be invoked from the main
     // thread.
@@ -132,6 +142,10 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     void setAbortFlag();
 
     JSRuntime *runtime() { return cx_->runtime; }
+
+    bool isWorldStoppedForGC() { return worldStoppedForGC_; }
+
+    void addSlice(ForkJoinSlice *slice, ForkJoinSlice **recv_next);
 };
 
 class js::AutoRendezvous
@@ -165,6 +179,25 @@ class js::AutoSetForkJoinSlice
     }
 };
 
+class js::AutoMarkWorldStoppedForGC
+{
+  private:
+    ForkJoinSlice &threadCx;
+
+  public:
+    AutoMarkWorldStoppedForGC(ForkJoinSlice &threadCx)
+        : threadCx(threadCx)
+    {
+        threadCx.shared->worldStoppedForGC_ = true;
+    }
+
+    ~AutoMarkWorldStoppedForGC()
+    {
+        threadCx.shared->worldStoppedForGC_ = false;
+    }
+
+};
+
 /////////////////////////////////////////////////////////////////////////////
 // ForkJoinShared
 //
@@ -182,12 +215,14 @@ ForkJoinShared::ForkJoinShared(JSContext *cx,
     uncompleted_(uncompleted),
     blocked_(0),
     rendezvousIndex_(0),
-    gcRequested_(false),
     gcReason_(gcreason::NUM_REASONS),
     gcCompartment_(NULL),
+    slices(NULL),
     abort_(false),
     fatal_(false),
-    rendezvous_(false)
+    rendezvous_(false),
+    gcRequested_(false),
+    worldStoppedForGC_(false)
 { }
 
 bool
@@ -347,13 +382,16 @@ ForkJoinShared::check(ForkJoinSlice &slice)
         return false;
 
     if (slice.isMainThread()) {
-        JS_ASSERT(!cx_->runtime->gcIsNeeded);
-
         if (cx_->runtime->interrupt) {
             // The GC Needed flag should not be set during parallel
             // execution.  Instead, one of the requestGC() or
             // requestCompartmentGC() methods should be invoked.
-            JS_ASSERT(!cx_->runtime->gcIsNeeded);
+            //
+            // FSK: the gcIsNeeded flag may still be set, during the
+            // StopTheWorld sections.  So commenting out below
+            // assertion temporarily.
+            //
+            // JS_ASSERT(!cx_->runtime->gcIsNeeded);
 
             // If interrupt is requested, bring worker threads to a halt,
             // service the interrupt, then let them start back up again.
@@ -362,6 +400,58 @@ ForkJoinShared::check(ForkJoinSlice &slice)
             //     return setFatal();
             setAbortFlag();
             return false;
+        }
+
+        if (gcRequested_) {
+            fprintf(stderr, "rendezvousAndProcessGCRequestOnMain %u start\n", slice.sliceId);
+            {
+                AutoRendezvous autoRendezvous(slice);
+                AutoMarkWorldStoppedForGC autoMarkSTWFlag(slice);
+                fprintf(stderr, "rendezvousAndProcessGCRequestOnMain %u all threads met at rendezvous\n", slice.sliceId);
+
+                if (true) {
+                    for (unsigned i = 0; i < numSlices_; i++)
+                    {
+                        Allocator *allocator = allocators_[i];
+                        // gc::ArenaLists arenas = allocator->arenas;
+                        char pad[sizeof(gc::ArenaLists)];
+                        (void)pad;
+                        for (size_t thingKind = 0; thingKind < gc::FINALIZE_LIMIT; thingKind++)
+                        {
+                            JS_ASSERT(!(*allocator->arenas.arenaLists[thingKind].cursor) || (*allocator->arenas.arenaLists[thingKind].cursor)->hasFreeThings());
+                        }
+                    }
+                }
+
+                transferArenasToCompartmentAndProcessGCRequests();
+                if (!js_HandleExecutionInterrupt(cx_))
+                    return setFatal();
+
+                {
+                    ForkJoinSlice *l = this->slices;
+                    while (l != NULL) {
+                        uint32_t id = l->sliceId;
+                        (void)id;
+
+                        l = l->nextSlice();
+                    }
+                }
+
+                if (true) {
+                    for (unsigned i = 0; i < numSlices_; i++)
+                    {
+                        Allocator *allocator = allocators_[i];
+                        // gc::ArenaLists arenas = allocator->arenas;
+                        for (size_t thingKind = 0; thingKind < gc::FINALIZE_LIMIT; thingKind++)
+                        {
+                            JS_ASSERT(!(*allocator->arenas.arenaLists[thingKind].cursor)
+                                      || (*allocator->arenas.arenaLists[thingKind].cursor)->hasFreeThings());
+                        }
+                    }
+                }
+            }
+
+            fprintf(stderr, "rendezvousAndProcessGCRequestOnMain %u finis\n", slice.sliceId);
         }
     } else if (rendezvous_) {
         joinRendezvous(slice);
@@ -422,6 +512,9 @@ ForkJoinShared::joinRendezvous(ForkJoinSlice &slice)
     JS_ASSERT(rendezvous_);
 
     AutoLockMonitor lock(*this);
+
+    fprintf(stderr, "joinRendezvous %u %u %u\n", slice.sliceId, blocked_, uncompleted_);
+
     const uint32_t index = rendezvousIndex_;
     blocked_ += 1;
 
@@ -502,7 +595,19 @@ ForkJoinSlice::ForkJoinSlice(PerThreadData *perThreadData,
       allocator(allocator),
       abortedScript(NULL),
       shared(shared)
-{ }
+{
+    shared->addSlice(this, &this->next);
+}
+
+void
+ForkJoinShared::addSlice(ForkJoinSlice *slice, ForkJoinSlice **recv_next)
+{
+    // TODO: Consider using compare-and-swap here for list
+    // maintenance rather than locking.
+    AutoLockMonitor lock(*this);
+    *recv_next = slices;
+    slices = slice;
+}
 
 bool
 ForkJoinSlice::isMainThread()
@@ -555,12 +660,18 @@ ForkJoinSlice::Initialize()
 #endif
 }
 
+bool
+ForkJoinSlice::InWorldStoppedForGCSection()
+{
+    return shared->isWorldStoppedForGC();
+}
+
 void
 ForkJoinSlice::requestGC(gcreason::Reason reason)
 {
+    fprintf(stderr, "requestGC %u\n", sliceId);
 #ifdef JS_THREADSAFE
     shared->requestGC(reason);
-    triggerAbort();
 #endif
 }
 
@@ -568,9 +679,9 @@ void
 ForkJoinSlice::requestCompartmentGC(JSCompartment *compartment,
                                     gcreason::Reason reason)
 {
+    fprintf(stderr, "requestCompartmentGC %u\n", sliceId);
 #ifdef JS_THREADSAFE
     shared->requestCompartmentGC(compartment, reason);
-    triggerAbort();
 #endif
 }
 
