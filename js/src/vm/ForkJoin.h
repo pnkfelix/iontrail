@@ -125,6 +125,7 @@ class PerThreadData;
 class ForkJoinShared;
 class AutoRendezvous;
 class AutoSetForkJoinSlice;
+class AutoMarkWorldStoppedForGC;
 
 #ifdef DEBUG
 struct IonTraceData {
@@ -205,12 +206,15 @@ struct ForkJoinSlice
     // Check the current state of parallel execution.
     static inline ForkJoinSlice *Current();
     static inline bool InParallelSection();
+    static inline bool InGarbageCollectionDisallowedSection();
+    bool InWorldStoppedForGCSection();
 
     static bool Initialize();
 
   private:
     friend class AutoRendezvous;
     friend class AutoSetForkJoinSlice;
+    friend class AutoMarkWorldStoppedForGC;
 
 #ifdef JS_THREADSAFE
     // Initialized by Initialize()
@@ -225,6 +229,11 @@ struct ForkJoinSlice
 #endif
 
     ForkJoinShared *const shared;
+
+    // link for list of slices for some ParallelDo; root is in ForkJoinShared.
+    ForkJoinSlice *next;
+public:
+    ForkJoinSlice *nextSlice() { return next; }
 };
 
 // Generic interface for specifying divisible operations that can be
@@ -283,6 +292,12 @@ js::ForkJoinSlice::Current()
 js::ForkJoinSlice::InParallelSection()
 {
     return Current() != NULL;
+}
+
+/* static */ inline bool
+js::ForkJoinSlice::InGarbageCollectionDisallowedSection()
+{
+    return (Current() != NULL) && !Current()->InWorldStoppedForGCSection();
 }
 
 #endif // ForkJoin_h__

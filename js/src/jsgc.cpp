@@ -1113,6 +1113,9 @@ PushArenaAllocatedDuringSweep(JSRuntime *runtime, ArenaHeader *arena)
 void *
 ArenaLists::parallelAllocate(JSCompartment *comp, AllocKind thingKind, size_t thingSize)
 {
+    JS_ASSERT(!(*arenaLists[thingKind].cursor)
+              || (*arenaLists[thingKind].cursor)->hasFreeThings());
+
     void *t = allocateFromFreeList(thingKind, thingSize);
     if (t)
         return t;
@@ -1135,6 +1138,7 @@ ArenaLists::allocateFromArena(JSCompartment *comp, AllocKind thingKind)
 
     ArenaList *al = &arenaLists[thingKind];
     AutoLockGC maybeLock;
+    JS_ASSERT(!(*al->cursor) || (*al->cursor)->hasFreeThings());
 
     JS_ASSERT(!comp->scheduledForDestruction);
 
@@ -1168,7 +1172,11 @@ ArenaLists::allocateFromArena(JSCompartment *comp, AllocKind thingKind)
 
     if (!chunk) {
         if (ArenaHeader *aheader = *al->cursor) {
-            JS_ASSERT(aheader->hasFreeThings());
+            bool val = aheader->hasFreeThings();
+            if (!val) {
+                val = aheader->hasFreeThings();
+                JS_ASSERT(val);
+            }
 
             /*
              * The empty arenas are returned to the chunk and should not present on
@@ -1406,7 +1414,7 @@ RunLastDitchGC(JSContext *cx, JSCompartment *comp, AllocKind thingKind)
     // section.  Of course we could modify the `runGC` flag below but
     // since that path is quite hot is was deemed better to offload
     // the access to thread-local data into this function.
-    if (ForkJoinSlice::InParallelSection())
+    if (ForkJoinSlice::InGarbageCollectionDisallowedSection())
         return NULL;
 
     PrepareCompartmentForGC(comp);
@@ -1871,7 +1879,7 @@ js::TriggerGC(JSRuntime *rt, gcreason::Reason reason)
 {
     // Wait till end of parallel section to trigger GC.
     ForkJoinSlice *slice = ForkJoinSlice::Current();
-    if (slice != NULL) {
+    if (slice != NULL && !slice->InWorldStoppedForGCSection()) {
         slice->requestGC(reason);
         return;
     }
@@ -1890,7 +1898,7 @@ js::TriggerCompartmentGC(JSCompartment *comp, gcreason::Reason reason)
 {
     // Wait till end of parallel section to trigger GC.
     ForkJoinSlice *slice = ForkJoinSlice::Current();
-    if (slice != NULL) {
+    if (slice != NULL && !slice->InWorldStoppedForGCSection()) {
         slice->requestCompartmentGC(comp, reason);
         return;
     }
@@ -4255,7 +4263,7 @@ Collect(JSRuntime *rt, bool incremental, int64_t budget,
         JSGCInvocationKind gckind, gcreason::Reason reason)
 {
     // GC shouldn't be running in par. exec. mode
-    JS_ASSERT(!ForkJoinSlice::InParallelSection());
+    JS_ASSERT(!ForkJoinSlice::InGarbageCollectionDisallowedSection());
 
     JS_AbortIfWrongThread(rt);
 
