@@ -150,6 +150,7 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     bool isWorldStoppedForGC() { return worldStoppedForGC_; }
 
     void addSlice(ForkJoinSlice *slice, ForkJoinSlice **recv_next);
+    void removeSlice(ForkJoinSlice *slice);
 };
 
 class js::AutoRendezvous
@@ -332,6 +333,9 @@ ForkJoinShared::transferArenasToCompartmentAndProcessGCRequests()
         gcRequested_ = false;
         gcCompartment_ = NULL;
     }
+
+    for (unsigned i = 0; i < numSlices_; i++)
+        comp->adoptWorkerAllocator(allocators_[i]);
 }
 
 void
@@ -411,19 +415,16 @@ ForkJoinShared::check(ForkJoinSlice &slice)
         }
 
         if (gcRequested_) {
-            fprintf(stderr, "rendezvousAndProcessGCRequestOnMain %u start\n", slice.sliceId);
             {
                 AutoRendezvous autoRendezvous(slice);
                 AutoMarkWorldStoppedForGC autoMarkSTWFlag(slice);
-                fprintf(stderr, "rendezvousAndProcessGCRequestOnMain %u all threads met at rendezvous\n", slice.sliceId);
 
                 if (true) {
                     for (unsigned i = 0; i < numSlices_; i++)
                     {
                         Allocator *allocator = allocators_[i];
+                        // (below is bad, causes transfer to diverge.)
                         // gc::ArenaLists arenas = allocator->arenas;
-                        char pad[sizeof(gc::ArenaLists)];
-                        (void)pad;
                         for (size_t thingKind = 0; thingKind < gc::FINALIZE_LIMIT; thingKind++)
                         {
                             JS_ASSERT(!(*allocator->arenas.arenaLists[thingKind].cursor) || (*allocator->arenas.arenaLists[thingKind].cursor)->hasFreeThings());
@@ -444,22 +445,8 @@ ForkJoinShared::check(ForkJoinSlice &slice)
                         l = l->nextSlice();
                     }
                 }
-
-                if (true) {
-                    for (unsigned i = 0; i < numSlices_; i++)
-                    {
-                        Allocator *allocator = allocators_[i];
-                        // gc::ArenaLists arenas = allocator->arenas;
-                        for (size_t thingKind = 0; thingKind < gc::FINALIZE_LIMIT; thingKind++)
-                        {
-                            JS_ASSERT(!(*allocator->arenas.arenaLists[thingKind].cursor)
-                                      || (*allocator->arenas.arenaLists[thingKind].cursor)->hasFreeThings());
-                        }
-                    }
-                }
             }
 
-            fprintf(stderr, "rendezvousAndProcessGCRequestOnMain %u finis\n", slice.sliceId);
         }
     } else if (rendezvous_) {
         joinRendezvous(slice);
@@ -520,8 +507,6 @@ ForkJoinShared::joinRendezvous(ForkJoinSlice &slice)
     JS_ASSERT(rendezvous_);
 
     AutoLockMonitor lock(*this);
-
-    fprintf(stderr, "joinRendezvous %u %u %u\n", slice.sliceId, blocked_, uncompleted_);
 
     const uint32_t index = rendezvousIndex_;
     blocked_ += 1;
@@ -607,6 +592,15 @@ ForkJoinSlice::ForkJoinSlice(PerThreadData *perThreadData,
     shared->addSlice(this, &this->next);
 }
 
+ForkJoinSlice::~ForkJoinSlice()
+{
+    // This is expensive and probably unnecessary, since when we
+    // tear-down any one ForkJoinSlice, we are almost certainly also
+    // tearing down the whole ForkJoin apparatus including the
+    // ForkJoinShared.
+    shared->removeSlice(this);
+}
+
 void
 ForkJoinShared::addSlice(ForkJoinSlice *slice, ForkJoinSlice **recv_next)
 {
@@ -615,6 +609,29 @@ ForkJoinShared::addSlice(ForkJoinSlice *slice, ForkJoinSlice **recv_next)
     AutoLockMonitor lock(*this);
     *recv_next = slices;
     slices = slice;
+}
+
+void
+ForkJoinShared::removeSlice(ForkJoinSlice *slice)
+{
+    // Expensive!
+
+    // TODO: Consider using compare-and-swap here for list
+    // maintenance rather than locking.
+    AutoLockMonitor lock(*this);
+
+    ForkJoinSlice **p = &slices;
+    ForkJoinSlice *q = slices;
+    do {
+        if (q == slice) {
+            *p = q->next;
+            return;
+        }
+        p = &q->next;
+        q = q->next;
+    } while (q);
+
+    JS_ASSERT(false);
 }
 
 bool
@@ -695,7 +712,6 @@ ForkJoinSlice::InWorldStoppedForGCSection()
 void
 ForkJoinSlice::requestGC(gcreason::Reason reason)
 {
-    fprintf(stderr, "requestGC %u\n", sliceId);
 #ifdef JS_THREADSAFE
     shared->requestGC(reason);
 #endif
@@ -705,7 +721,6 @@ void
 ForkJoinSlice::requestCompartmentGC(JSCompartment *compartment,
                                     gcreason::Reason reason)
 {
-    fprintf(stderr, "requestCompartmentGC %u\n", sliceId);
 #ifdef JS_THREADSAFE
     shared->requestCompartmentGC(compartment, reason);
 #endif
