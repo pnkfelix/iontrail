@@ -479,6 +479,7 @@ ForkJoinShared::check(ForkJoinSlice &slice)
                 }
                 gcRequested_ = false;
             }
+
         }
     } else if (rendezvous_) {
         slice.recordStackExtent();

@@ -4713,6 +4713,10 @@ ArenaLists::adoptArenas(JSRuntime *rt, ArenaLists *fromArenaLists)
     AutoLockGC lock(rt);
 
     fromArenaLists->purge();
+    // Should this be part of purge?
+    for (size_t thingKind = 0; thingKind != FINALIZE_LIMIT; thingKind++) {
+        fromArenaLists->arenaLists[thingKind].clear();
+    }
 
     for (size_t thingKind = 0; thingKind != FINALIZE_LIMIT; thingKind++) {
 #ifdef JS_THREADSAFE
