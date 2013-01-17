@@ -165,7 +165,7 @@ struct ForkJoinSlice
 
     ForkJoinSlice(PerThreadData *perThreadData, uint32_t sliceId, uint32_t numSlices,
                   Allocator *arenaLists, ForkJoinShared *shared);
-
+    ~ForkJoinSlice();
     // True if this is the main thread, false if it is one of the parallel workers.
     bool isMainThread();
 
@@ -224,6 +224,8 @@ struct ForkJoinSlice
 #endif
 
     ForkJoinShared *const shared;
+
+public: // *TEMPORARILY EXPOSED FOR DEVELOPMENT*
 
     // link for list of slices for some ParallelDo; root is in ForkJoinShared.
     ForkJoinSlice *next;
