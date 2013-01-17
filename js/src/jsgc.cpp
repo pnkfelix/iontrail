@@ -4711,7 +4711,9 @@ ArenaLists::adoptArenas(JSRuntime *rt, ArenaLists *fromArenaLists)
     AutoLockGC lock(rt);
 
     fromArenaLists->purge();
-    // Should this be part of purge?
+
+    // Should this be part of purge?  For some discussion, see
+    //   http://logbot.glob.com.au/?c=mozilla%23jsapi&s=16+Jan+2013&e=17+Jan+2013#c103052
     for (size_t thingKind = 0; thingKind != FINALIZE_LIMIT; thingKind++) {
         fromArenaLists->arenaLists[thingKind].clear();
     }
