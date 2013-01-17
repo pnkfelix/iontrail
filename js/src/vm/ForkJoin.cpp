@@ -411,32 +411,10 @@ ForkJoinShared::check(ForkJoinSlice &slice)
                 AutoRendezvous autoRendezvous(slice);
                 AutoMarkWorldStoppedForGC autoMarkSTWFlag(slice);
 
-                if (true) {
-                    for (unsigned i = 0; i < numSlices_; i++)
-                    {
-                        Allocator *allocator = allocators_[i];
-                        // (below is bad, causes transfer to diverge.)
-                        // gc::ArenaLists arenas = allocator->arenas;
-                        for (size_t thingKind = 0; thingKind < gc::FINALIZE_LIMIT; thingKind++)
-                        {
-                            JS_ASSERT(!(*allocator->arenas.arenaLists[thingKind].cursor) || (*allocator->arenas.arenaLists[thingKind].cursor)->hasFreeThings());
-                        }
-                    }
-                }
-
                 transferArenasToCompartmentAndProcessGCRequests();
                 if (!js_HandleExecutionInterrupt(cx_))
                     return setFatal();
 
-                {
-                    ForkJoinSlice *l = this->slices;
-                    while (l != NULL) {
-                        uint32_t id = l->sliceId;
-                        (void)id;
-
-                        l = l->nextSlice();
-                    }
-                }
             }
 
         }
