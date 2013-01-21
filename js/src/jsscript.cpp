@@ -783,6 +783,11 @@ template bool
 js::XDRScript(XDRState<XDR_DECODE> *, HandleObject, HandleScript, HandleFunction,
               MutableHandleScript);
 
+JSScript::JSScript()
+{
+
+}
+
 bool
 JSScript::initScriptCounts(JSContext *cx)
 {

@@ -2514,6 +2514,8 @@ ShouldPreserveJITCode(JSCompartment *c, int64_t currentTime)
 
     if (c->rt->alwaysPreserveCode)
         return true;
+    if (c->rt->preserveCodeDueToParallelDo)
+        return true;
     if (c->lastAnimationTime + PRMJ_USEC_PER_SEC >= currentTime &&
         c->lastCodeRelease + (PRMJ_USEC_PER_SEC * 300) >= currentTime) {
         return true;
@@ -3570,7 +3572,7 @@ BeginSweepPhase(JSRuntime *rt)
     gcstats::AutoPhase ap(rt->gcStats, gcstats::PHASE_SWEEP);
 
 #ifdef JS_THREADSAFE
-    rt->gcSweepOnBackgroundThread = rt->hasContexts() && rt->useHelperThreads();
+    rt->gcSweepOnBackgroundThread = false && rt->hasContexts() && rt->useHelperThreads();
 #endif
 
 #ifdef DEBUG
@@ -4712,12 +4714,6 @@ ArenaLists::adoptArenas(JSRuntime *rt, ArenaLists *fromArenaLists)
 
     fromArenaLists->purge();
 
-    // Should this be part of purge?  For some discussion, see
-    //   http://logbot.glob.com.au/?c=mozilla%23jsapi&s=16+Jan+2013&e=17+Jan+2013#c103052
-    for (size_t thingKind = 0; thingKind != FINALIZE_LIMIT; thingKind++) {
-        fromArenaLists->arenaLists[thingKind].clear();
-    }
-
     for (size_t thingKind = 0; thingKind != FINALIZE_LIMIT; thingKind++) {
 #ifdef JS_THREADSAFE
         // When we enter a parallel section, we join the background
@@ -4733,7 +4729,11 @@ ArenaLists::adoptArenas(JSRuntime *rt, ArenaLists *fromArenaLists)
             *bfs = BFS_DONE;
             break;
           default:
-            JS_ASSERT(!"Background finalization in progress, but it should not be.");
+            // (Disabling below assertion since it is not clear
+            //  whether background finalization is fundamentally
+            //  incompatible or if this assertion was just
+            //  belt-and-suspenders code.)
+            JS_ASSERT(true || !"Background finalization in progress, but it should not be.");
             break;
         }
 #endif /* JS_THREADSAFE */
@@ -4747,6 +4747,12 @@ ArenaLists::adoptArenas(JSRuntime *rt, ArenaLists *fromArenaLists)
 
             toList->insert(fromHeader);
         }
+    }
+
+    // Should this be part of purge?  For some discussion, see
+    //   http://logbot.glob.com.au/?c=mozilla%23jsapi&s=16+Jan+2013&e=17+Jan+2013#c103052
+    for (size_t thingKind = 0; thingKind != FINALIZE_LIMIT; thingKind++) {
+        fromArenaLists->arenaLists[thingKind].clear();
     }
 }
 

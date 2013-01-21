@@ -25,19 +25,10 @@ static inline IonScript *GetIonScript(UnrootedScript script, ExecutionMode cmode
 {
     switch (cmode) {
       case SequentialExecution: return script->ion;
-      case ParallelExecution: return script->parallelIon;
+      case ParallelExecution: return script->parallelIon_;
     }
     JS_NOT_REACHED("No such execution mode");
     return NULL;
-}
-
-static inline void SetIonScript(UnrootedScript script, ExecutionMode cmode, IonScript *ionScript)
-{
-    switch (cmode) {
-      case SequentialExecution: script->ion = ionScript; return;
-      case ParallelExecution: script->parallelIon = ionScript; return;
-    }
-    JS_NOT_REACHED("No such execution mode");
 }
 
 static inline bool CanIonCompile(HandleScript script, ExecutionMode cmode)

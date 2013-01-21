@@ -9,6 +9,7 @@
 #define ForkJoin_h__
 
 #include "vm/ThreadPool.h"
+#include "vm/StackExtents.h"
 
 // ForkJoin
 //
@@ -231,6 +232,16 @@ public: // *TEMPORARILY EXPOSED FOR DEVELOPMENT*
     ForkJoinSlice *next;
 public:
     ForkJoinSlice *nextSlice() { return next; }
+
+    // stack extent of this slice's thread, for Stop-The-World GC.
+    // Analogous to stackMin/stackEnd in MarkConservativeStackRoots()
+    // in RootMarking.cpp.  We delay setting their values until a
+    // GC is actually requested.
+public: // *TEMPORARILY EXPOSED FOR DEVELOPMENT*
+    js::StackExtents::StackExtent extent;
+
+    // Call this to set the values of stackMin and stackEnd.
+    void recordStackExtent();
 };
 
 // Generic interface for specifying divisible operations that can be

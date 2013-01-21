@@ -279,6 +279,8 @@ struct ScriptSource;
 
 class JSScript : public js::gc::Cell
 {
+    JSScript();
+
     static const uint32_t stepFlagMask = 0x80000000U;
     static const uint32_t stepCountMask = 0x7fffffffU;
 
@@ -587,23 +589,23 @@ class JSScript : public js::gc::Cell
     }
 
     /* Information attached by Ion: script for parallel mode execution */
-    js::ion::IonScript *parallelIon;
+    js::ion::IonScript *parallelIon_;
 
     bool hasParallelIonScript() const {
-        return parallelIon && parallelIon != ION_DISABLED_SCRIPT && parallelIon != ION_COMPILING_SCRIPT;
+        return parallelIon_ && parallelIon_ != ION_DISABLED_SCRIPT && parallelIon_ != ION_COMPILING_SCRIPT;
     }
 
     bool canParallelIonCompile() const {
-        return parallelIon != ION_DISABLED_SCRIPT;
+        return parallelIon_ != ION_DISABLED_SCRIPT;
     }
 
     bool isParallelIonCompilingOffThread() const {
-        return parallelIon == ION_COMPILING_SCRIPT;
+        return parallelIon_ == ION_COMPILING_SCRIPT;
     }
 
     js::ion::IonScript *parallelIonScript() const {
         JS_ASSERT(hasParallelIonScript());
-        return parallelIon;
+        return parallelIon_;
     }
 
     /*

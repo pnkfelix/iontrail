@@ -519,7 +519,8 @@ class ParallelDo : public ForkJoinOp
     }
 
     bool invalidateBailedOutScripts() {
-        IonScript *ion = fun_->toFunction()->nonLazyScript()->parallelIonScript();
+        js::UnrootedScript script = fun_->toFunction()->nonLazyScript();
+        IonScript *ion = script->parallelIonScript();
         JS_ASSERT(pendingInvalidations.length() == ion->parallelInvalidatedScriptEntries());
         Vector<types::RecompileInfo> invalid(cx_);
         for (uint32_t i = 0; i < pendingInvalidations.length(); i++) {
@@ -560,6 +561,17 @@ class ParallelDo : public ForkJoinOp
     }
 
     virtual bool parallel(ForkJoinSlice &slice) {
+        uintptr_t dummy;
+        uintptr_t *myStackTop = &dummy;
+
+    // ForkJoinSlice::recordStackExtent establishes the upper-bound (and below the
+    // lower-bound) on the address-range to be scanned for the stack.
+#if JS_STACK_GROWTH_DIRECTION > 0
+        slice.extent.stackMin = myStackTop;
+#else
+        slice.extent.stackEnd = myStackTop;
+#endif
+
         js::PerThreadData *pt = slice.perThreadData;
         RootedObject fun(pt, fun_);
         FastestIonInvoke<3> fii(cx_, fun, 3);
