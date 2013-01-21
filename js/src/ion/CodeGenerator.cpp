@@ -1088,7 +1088,7 @@ static inline int32_t ionOffset(ExecutionMode executionMode)
 {
     switch (executionMode) {
       case SequentialExecution: return offsetof(JSScript, ion);
-      case ParallelExecution: return offsetof(JSScript, parallelIon);
+      case ParallelExecution: return offsetof(JSScript, parallelIon_);
     }
 
     JS_ASSERT(false);

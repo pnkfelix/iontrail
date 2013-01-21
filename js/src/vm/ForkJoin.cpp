@@ -18,6 +18,9 @@
 #  include "prthread.h"
 #endif
 
+// For extracting stack extent for each thread.
+#include "jsnativestack.h"
+
 using namespace js;
 
 #ifdef JS_THREADSAFE
@@ -53,6 +56,7 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     // Fields related to asynchronously-read gcRequested_ flag
     gcreason::Reason gcReason_;    // Reason given to request GC
     JSCompartment *gcCompartment_; // Compartment for GC, or NULL for full
+    uint32_t gcRequestCount_;      // Number of requests since last Stop-The-World
 
     ForkJoinSlice *slices;
 
@@ -80,6 +84,9 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
 
     // True if all non-main threads have stopped for the main thread to GC
     volatile bool worldStoppedForGC_;
+
+    // True if running with stop-the-world (vs abort-the-world) GC enabled
+    bool useStopTheWorldGC_;
 
     // Invoked only from the main thread:
     void executeFromMainThread();
@@ -136,8 +143,8 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     bool setFatal();
 
     // Requests a GC, either full or specific to a compartment.
-    void requestGC(gcreason::Reason reason);
-    void requestCompartmentGC(JSCompartment *compartment, gcreason::Reason reason);
+    void requestGC(gcreason::Reason reason, uint32_t originSliceId);
+    void requestCompartmentGC(JSCompartment *compartment, gcreason::Reason reason, uint32_t originSliceId);
 
     // Requests that computation abort.
     void setAbortFlag();
@@ -148,8 +155,9 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     void releaseContext() { PR_Unlock(cxLock_); }
 
     bool isWorldStoppedForGC() { return worldStoppedForGC_; }
+    bool useStopTheWorldGC() { return useStopTheWorldGC_; }
 
-    void addSlice(ForkJoinSlice *slice, ForkJoinSlice **recv_next);
+    void addSlice(ForkJoinSlice *slice);
     void removeSlice(ForkJoinSlice *slice);
 };
 
@@ -194,11 +202,16 @@ class js::AutoMarkWorldStoppedForGC
         : threadCx(threadCx)
     {
         threadCx.shared->worldStoppedForGC_ = true;
+        threadCx.shared->cx_->runtime->mainThread.suppressGC--;
+        JS_ASSERT(!threadCx.shared->cx_->runtime->preserveCodeDueToParallelDo);
+        threadCx.shared->cx_->runtime->preserveCodeDueToParallelDo = true;
     }
 
     ~AutoMarkWorldStoppedForGC()
     {
         threadCx.shared->worldStoppedForGC_ = false;
+        threadCx.shared->cx_->runtime->mainThread.suppressGC++;
+        threadCx.shared->cx_->runtime->preserveCodeDueToParallelDo = false;
     }
 
 };
@@ -222,12 +235,14 @@ ForkJoinShared::ForkJoinShared(JSContext *cx,
     rendezvousIndex_(0),
     gcReason_(gcreason::NUM_REASONS),
     gcCompartment_(NULL),
+    gcRequestCount_(0),
     slices(NULL),
     abort_(false),
     fatal_(false),
     rendezvous_(false),
     gcRequested_(false),
-    worldStoppedForGC_(false)
+    worldStoppedForGC_(false),
+    useStopTheWorldGC_(true)
 { }
 
 bool
@@ -387,6 +402,22 @@ ForkJoinShared::setFatal()
     return false;
 }
 
+struct AutoInstallForkJoinStackExtents : public StackExtents
+{
+    AutoInstallForkJoinStackExtents(JSRuntime *rt,
+                                    ForkJoinSlice *slices)
+        : StackExtents(&slices->extent), rt(rt)
+    {
+        rt->extraExtents = this;
+    }
+
+    ~AutoInstallForkJoinStackExtents() {
+        rt->extraExtents = NULL;
+    }
+
+    JSRuntime *rt;
+};
+
 bool
 ForkJoinShared::check(ForkJoinSlice &slice)
 {
@@ -414,19 +445,43 @@ ForkJoinShared::check(ForkJoinSlice &slice)
             return false;
         }
 
-        if (gcRequested_) {
+        if (gcRequested_ && cx_->runtime->isHeapBusy()) {
+            fprintf(stderr, "gc requested but heap is busy so abort.");
+            setAbortFlag();
+            return false;
+        }
+
+        if (useStopTheWorldGC() && gcRequested_) {
             {
                 AutoRendezvous autoRendezvous(slice);
                 AutoMarkWorldStoppedForGC autoMarkSTWFlag(slice);
 
-                transferArenasToCompartmentAndProcessGCRequests();
-                if (!js_HandleExecutionInterrupt(cx_))
-                    return setFatal();
+                // transferArenasToCompartmentAndProcessGCRequests();
 
+                slice.recordStackExtent();
+                AutoInstallForkJoinStackExtents extents(cx_->runtime, slices);
+
+                {
+                    StackExtents::StackExtent *extentList =
+                        cx_->runtime->extraExtents->head;
+                    while (extentList) {
+                        JS_ASSERT(extentList->stackMin <= extentList->stackEnd);
+                        extentList = extentList->next;
+                    }
+                }
+
+                if (true || gcCompartment_ == NULL || gcCompartment_ == cx_->runtime->atomsCompartment) {
+                    PrepareForFullGC(cx_->runtime);
+                    GCSlice(cx_->runtime, GC_NORMAL, gcreason::PAUSE_PARALLEL_BLOCK);
+                } else {
+                    PrepareCompartmentForGC(gcCompartment_);
+                    GCSlice(cx_->runtime, GC_NORMAL, gcreason::PAUSE_PARALLEL_BLOCK);
+                }
+                gcRequested_ = false;
             }
-
         }
     } else if (rendezvous_) {
+        slice.recordStackExtent();
         joinRendezvous(slice);
     }
 
@@ -522,9 +577,11 @@ ForkJoinShared::setAbortFlag()
 }
 
 void
-ForkJoinShared::requestGC(gcreason::Reason reason)
+ForkJoinShared::requestGC(gcreason::Reason reason, uint32_t originSliceId)
 {
     AutoLockMonitor lock(*this);
+
+    fprintf(stderr, "requestGC id:%u.\n", originSliceId);
 
     gcCompartment_ = NULL;
     gcReason_ = reason;
@@ -533,7 +590,8 @@ ForkJoinShared::requestGC(gcreason::Reason reason)
 
 void
 ForkJoinShared::requestCompartmentGC(JSCompartment *compartment,
-                                     gcreason::Reason reason)
+                                     gcreason::Reason reason,
+                                     uint32_t originSliceId)
 {
     AutoLockMonitor lock(*this);
 
@@ -543,11 +601,17 @@ ForkJoinShared::requestCompartmentGC(JSCompartment *compartment,
         gcCompartment_ = NULL;
         gcReason_ = reason;
         gcRequested_ = true;
+
+        gcRequestCount_++;
+        // fprintf(stderr, "requestCompartmentGC id:%u now full.\n", originSliceId);
     } else {
+        // fprintf(stderr, "requestCompartmentGC id:%u just one.\n", originSliceId);
+
         // Otherwise, just GC this compartment.
         gcCompartment_ = compartment;
         gcReason_ = reason;
         gcRequested_ = true;
+        gcRequestCount_++;
     }
 }
 
@@ -565,9 +629,10 @@ ForkJoinSlice::ForkJoinSlice(PerThreadData *perThreadData,
       numSlices(numSlices),
       allocator(allocator),
       abortedScript(NULL),
-      shared(shared)
+      shared(shared),
+      extent()
 {
-    shared->addSlice(this, &this->next);
+    shared->addSlice(this);
 }
 
 ForkJoinSlice::~ForkJoinSlice()
@@ -580,12 +645,16 @@ ForkJoinSlice::~ForkJoinSlice()
 }
 
 void
-ForkJoinShared::addSlice(ForkJoinSlice *slice, ForkJoinSlice **recv_next)
+ForkJoinShared::addSlice(ForkJoinSlice *slice)
 {
     // TODO: Consider using compare-and-swap here for list
     // maintenance rather than locking.
     AutoLockMonitor lock(*this);
-    *recv_next = slices;
+
+    slice->next = slices;
+    if (slices)
+        slice->extent.next = &slices->extent;
+
     slices = slice;
 }
 
@@ -688,10 +757,48 @@ ForkJoinSlice::InWorldStoppedForGCSection()
 }
 
 void
+ForkJoinSlice::recordStackExtent()
+{
+    uintptr_t dummy;
+    uintptr_t *myStackTop = &dummy;
+
+
+#if 0
+    uintptr_t *nativeStackBase = reinterpret_cast<uintptr_t *>(js::GetNativeStackBase());
+    fprintf(stderr, "id:%u "
+            "oldMin:0x%012lx oldEnd:0x%012lx "
+            "adrMin:0x%012lx ntvEnd:0x%012lx\n",
+            sliceId,
+            uintptr_t(extent.stackMin), uintptr_t(extent.stackEnd),
+            uintptr_t(myStackTop), uintptr_t(nativeStackBase));
+#endif
+
+    // ParallelDo::parallel establishes the lower-bound (and below the
+    // upper-bound) on the address-range to be scanned for the stack.
+#if JS_STACK_GROWTH_DIRECTION > 0
+    // extent.stackMin = nativeStackBase;
+    extent.stackEnd = reinterpret_cast<uintptr_t *>(myStackTop);
+#else
+    extent.stackMin = reinterpret_cast<uintptr_t *>(myStackTop + 1);
+    // extent.stackEnd = nativeStackBase;
+#endif
+
+    JS_ASSERT(extent.stackMin <= extent.stackEnd);
+
+    PerThreadData *ptd = perThreadData;
+    // PerThreadData *ptd = TlsPerThreadData.get();
+    extent.ionTop        = ptd->ionTop;
+    extent.ionActivation = ptd->ionActivation;
+}
+
+void
 ForkJoinSlice::requestGC(gcreason::Reason reason)
 {
+    recordStackExtent();
 #ifdef JS_THREADSAFE
-    shared->requestGC(reason);
+    shared->requestGC(reason, sliceId);
+    if (!shared->useStopTheWorldGC())
+        triggerAbort();
 #endif
 }
 
@@ -699,8 +806,11 @@ void
 ForkJoinSlice::requestCompartmentGC(JSCompartment *compartment,
                                     gcreason::Reason reason)
 {
+    recordStackExtent();
 #ifdef JS_THREADSAFE
-    shared->requestCompartmentGC(compartment, reason);
+    shared->requestCompartmentGC(compartment, reason, sliceId);
+    if (!shared->useStopTheWorldGC())
+        triggerAbort();
 #endif
 }
 

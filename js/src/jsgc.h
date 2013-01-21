@@ -564,6 +564,8 @@ typedef enum JSGCInvocationKind {
 extern void
 GC(JSRuntime *rt, JSGCInvocationKind gckind, js::gcreason::Reason reason);
 
+struct StackExtents;
+
 extern void
 GCSlice(JSRuntime *rt, JSGCInvocationKind gckind, js::gcreason::Reason reason, int64_t millis = 0);
 

@@ -63,7 +63,7 @@ IonFrameIterator::checkInvalidation(IonScript **ionScriptOut) const
     IonScript *currentIonScript;
     bool hasIonScript;
     if (isParFunctionFrame()) {
-        currentIonScript = script->parallelIon;
+        currentIonScript = script->parallelIon_;
         hasIonScript = script->hasParallelIonScript();
     } else {
         currentIonScript = script->ion;
@@ -386,6 +386,13 @@ IonActivationIterator::IonActivationIterator(JSContext *cx)
 IonActivationIterator::IonActivationIterator(JSRuntime *rt)
   : top_(rt->mainThread.ionTop),
     activation_(rt->mainThread.ionActivation)
+{
+    settle();
+}
+
+IonActivationIterator::IonActivationIterator(uint8_t *top, IonActivation *activation)
+  : top_(top),
+    activation_(activation)
 {
     settle();
 }
