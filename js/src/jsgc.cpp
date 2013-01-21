@@ -4714,12 +4714,6 @@ ArenaLists::adoptArenas(JSRuntime *rt, ArenaLists *fromArenaLists)
 
     fromArenaLists->purge();
 
-    // Should this be part of purge?  For some discussion, see
-    //   http://logbot.glob.com.au/?c=mozilla%23jsapi&s=16+Jan+2013&e=17+Jan+2013#c103052
-    for (size_t thingKind = 0; thingKind != FINALIZE_LIMIT; thingKind++) {
-        fromArenaLists->arenaLists[thingKind].clear();
-    }
-
     for (size_t thingKind = 0; thingKind != FINALIZE_LIMIT; thingKind++) {
 #ifdef JS_THREADSAFE
         // When we enter a parallel section, we join the background
