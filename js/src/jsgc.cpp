@@ -1113,9 +1113,6 @@ PushArenaAllocatedDuringSweep(JSRuntime *runtime, ArenaHeader *arena)
 void *
 ArenaLists::parallelAllocate(JSCompartment *comp, AllocKind thingKind, size_t thingSize)
 {
-    JS_ASSERT(!(*arenaLists[thingKind].cursor)
-              || (*arenaLists[thingKind].cursor)->hasFreeThings());
-
     void *t = allocateFromFreeList(thingKind, thingSize);
     if (t)
         return t;
@@ -1138,7 +1135,6 @@ ArenaLists::allocateFromArena(JSCompartment *comp, AllocKind thingKind)
 
     ArenaList *al = &arenaLists[thingKind];
     AutoLockGC maybeLock;
-    JS_ASSERT(!(*al->cursor) || (*al->cursor)->hasFreeThings());
 
     JS_ASSERT(!comp->scheduledForDestruction);
 
@@ -1172,11 +1168,7 @@ ArenaLists::allocateFromArena(JSCompartment *comp, AllocKind thingKind)
 
     if (!chunk) {
         if (ArenaHeader *aheader = *al->cursor) {
-            bool val = aheader->hasFreeThings();
-            if (!val) {
-                val = aheader->hasFreeThings();
-                JS_ASSERT(val);
-            }
+            JS_ASSERT(aheader->hasFreeThings());
 
             /*
              * The empty arenas are returned to the chunk and should not present on

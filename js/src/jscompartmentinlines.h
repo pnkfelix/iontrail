@@ -73,9 +73,6 @@ js::Allocator::pod_calloc(size_t numElems) {
 
 inline void *
 js::Allocator::parallelNewGCThing(gc::AllocKind thingKind, size_t thingSize) {
-    JS_ASSERT(!(*arenas.arenaLists[thingKind].cursor)
-              || (*arenas.arenaLists[thingKind].cursor)->hasFreeThings());
-
     return arenas.parallelAllocate(compartment, thingKind, thingSize);
 }
 
