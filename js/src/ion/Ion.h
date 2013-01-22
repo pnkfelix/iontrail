@@ -256,7 +256,6 @@ bool InitializeIon();
 // Get and set the current Ion context.
 IonContext *GetIonContext();
 
-void SetIonScript(UnrootedScript script, ExecutionMode cmode, IonScript *ionScript);
 bool SetIonContext(IonContext *ctx);
 
 MethodStatus CanEnterAtBranch(JSContext *cx, HandleScript script,

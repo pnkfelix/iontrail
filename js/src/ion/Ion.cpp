@@ -93,16 +93,6 @@ ion::SetIonContext(IonContext *ctx)
 }
 #endif
 
-void
-ion::SetIonScript(UnrootedScript script, ExecutionMode cmode, IonScript *ionScript)
-{
-    switch (cmode) {
-      case SequentialExecution: script->ion = ionScript; return;
-      case ParallelExecution: script->parallelIon = ionScript; return;
-    }
-    JS_NOT_REACHED("No such execution mode");
-}
-
 IonContext *
 ion::GetIonContext()
 {
