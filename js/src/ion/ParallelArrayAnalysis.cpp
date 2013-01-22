@@ -696,17 +696,11 @@ ParallelArrayVisitor::insertWriteGuard(MInstruction *writeInstruction,
         break;
     }
 
-#if 0
     MBasicBlock *block = writeInstruction->block();
     MParWriteGuard *writeGuard = MParWriteGuard::New(parSlice(), object);
     block->insertBefore(writeInstruction, writeGuard);
     writeGuard->adjustInputs(writeGuard);
     return true;
-#else
-    SpewMIR(writeInstruction, "aborting insert write guard for MIR Type %d as babystep for StopTheWorld GC",
-            valueBeingWritten->type());
-    return markUnsafe();
-#endif
 }
 
 /////////////////////////////////////////////////////////////////////////////
