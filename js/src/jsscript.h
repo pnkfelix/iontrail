@@ -279,8 +279,6 @@ struct ScriptSource;
 
 class JSScript : public js::gc::Cell
 {
-    JSScript();
-
     static const uint32_t stepFlagMask = 0x80000000U;
     static const uint32_t stepCountMask = 0x7fffffffU;
 

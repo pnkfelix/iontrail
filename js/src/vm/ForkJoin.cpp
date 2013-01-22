@@ -540,7 +540,6 @@ ForkJoinShared::joinRendezvous(ForkJoinSlice &slice)
     JS_ASSERT(rendezvous_);
 
     AutoLockMonitor lock(*this);
-
     const uint32_t index = rendezvousIndex_;
     blocked_ += 1;
 
@@ -773,8 +772,8 @@ ForkJoinSlice::recordStackExtent()
             uintptr_t(myStackTop), uintptr_t(nativeStackBase));
 #endif
 
-    // ParallelDo::parallel establishes the lower-bound (and below the
-    // upper-bound) on the address-range to be scanned for the stack.
+    // This establishes the tip, and ParallelDo::parallel the base,
+    // of the stack address-range of this thread for the GC to scan.
 #if JS_STACK_GROWTH_DIRECTION > 0
     // extent.stackMin = nativeStackBase;
     extent.stackEnd = reinterpret_cast<uintptr_t *>(myStackTop);

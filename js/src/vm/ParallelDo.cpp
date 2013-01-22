@@ -564,8 +564,8 @@ class ParallelDo : public ForkJoinOp
         IonContext icx(cx_, cx_->compartment, NULL);
         uintptr_t *myStackTop = (uintptr_t*)&icx;
 
-    // ForkJoinSlice::recordStackExtent establishes the upper-bound (and below the
-    // lower-bound) on the address-range to be scanned for the stack.
+    // This establishes the base, and ForkJoinSlice::recordStackExtent the tip,
+    // of the stack address-range of this thread for the GC to scan.
 #if JS_STACK_GROWTH_DIRECTION > 0
         slice.extent.stackMin = myStackTop;
 #else
