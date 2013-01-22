@@ -757,17 +757,6 @@ ForkJoinSlice::recordStackExtent()
     uintptr_t dummy;
     uintptr_t *myStackTop = &dummy;
 
-
-#if 0
-    uintptr_t *nativeStackBase = reinterpret_cast<uintptr_t *>(js::GetNativeStackBase());
-    fprintf(stderr, "id:%u "
-            "oldMin:0x%012lx oldEnd:0x%012lx "
-            "adrMin:0x%012lx ntvEnd:0x%012lx\n",
-            sliceId,
-            uintptr_t(extent.stackMin), uintptr_t(extent.stackEnd),
-            uintptr_t(myStackTop), uintptr_t(nativeStackBase));
-#endif
-
     // This establishes the tip, and ParallelDo::parallel the base,
     // of the stack address-range of this thread for the GC to scan.
 #if JS_STACK_GROWTH_DIRECTION > 0
