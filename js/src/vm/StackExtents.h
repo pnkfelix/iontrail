@@ -21,11 +21,12 @@ struct StackExtents {
         uintptr_t *stackEnd;
 
 #if defined(JS_ION)
-        // If Ion code is on the stack, and has called into C++, this will be
-        // aligned to an Ion exit frame.
+        // Either NULL (unset) or, if Ion code is on the stack, and
+        // has called into C++, this is aligned to an Ion exit frame.
         uint8_t   *ionTop;
 
-        // This points to the most recent Ion activation running on the thread.
+        // Either NULL (unset) or this points to the most recent Ion
+        // activation running on the thread.
         js::ion::IonActivation *ionActivation;
 #endif
 
