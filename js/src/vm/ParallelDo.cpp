@@ -518,8 +518,7 @@ class ParallelDo : public ForkJoinOp
     }
 
     bool invalidateBailedOutScripts() {
-        js::UnrootedScript script = fun_->toFunction()->nonLazyScript();
-        IonScript *ion = script->parallelIonScript();
+        IonScript *ion = fun_->toFunction()->nonLazyScript()->parallelIonScript();
         JS_ASSERT(pendingInvalidations.length() == ion->parallelInvalidatedScriptEntries());
         Vector<types::RecompileInfo> invalid(cx_);
         for (uint32_t i = 0; i < pendingInvalidations.length(); i++) {
