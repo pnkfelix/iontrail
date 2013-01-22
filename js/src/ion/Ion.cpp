@@ -98,7 +98,7 @@ ion::SetIonScript(UnrootedScript script, ExecutionMode cmode, IonScript *ionScri
 {
     switch (cmode) {
       case SequentialExecution: script->ion = ionScript; return;
-      case ParallelExecution: script->parallelIon_ = ionScript; return;
+      case ParallelExecution: script->parallelIon = ionScript; return;
     }
     JS_NOT_REACHED("No such execution mode");
 }
@@ -1658,7 +1658,7 @@ ParallelCompileContext::compile(IonBuilder *builder,
                                 MIRGraph *graph,
                                 AutoDestroyAllocator &autoDestroy)
 {
-    JS_ASSERT(!builder->script()->parallelIon_);
+    JS_ASSERT(!builder->script()->parallelIon);
 
     RootedScript builderScript(cx_, builder->script());
     IonSpewNewFunction(graph, builderScript);
@@ -2211,7 +2211,7 @@ ion::FinishInvalidation(FreeOp *fop, UnrootedScript script)
     }
 
     if (script->hasParallelIonScript()) {
-        FinishInvalidationOf(fop, script, &script->parallelIon_);
+        FinishInvalidationOf(fop, script, &script->parallelIon);
     }
 }
 
@@ -2271,7 +2271,7 @@ ion::ForbidCompilation(JSContext *cx, UnrootedScript script, ExecutionMode mode)
                 return;
         }
 
-        script->parallelIon_ = ION_DISABLED_SCRIPT;
+        script->parallelIon = ION_DISABLED_SCRIPT;
         return;
     }
 
@@ -2359,7 +2359,7 @@ ion::PurgeCaches(UnrootedScript script, JSCompartment *c) {
         script->ion->purgeCaches(c);
 
     if (script->hasParallelIonScript())
-        script->parallelIon_->purgeCaches(c);
+        script->parallelIon->purgeCaches(c);
 }
 
 size_t
@@ -2370,7 +2370,7 @@ ion::MemoryUsed(UnrootedScript script, JSMallocSizeOfFun mallocSizeOf) {
         result += script->ion->sizeOfIncludingThis(mallocSizeOf);
 
     if (script->hasParallelIonScript())
-        result += script->parallelIon_->sizeOfIncludingThis(mallocSizeOf);
+        result += script->parallelIon->sizeOfIncludingThis(mallocSizeOf);
 
     return result;
 }
@@ -2381,7 +2381,7 @@ ion::DestroyIonScripts(FreeOp *fop, UnrootedScript script) {
         ion::IonScript::Destroy(fop, script->ion);
 
     if (script->hasParallelIonScript())
-        ion::IonScript::Destroy(fop, script->parallelIon_);
+        ion::IonScript::Destroy(fop, script->parallelIon);
 }
 
 void
@@ -2390,5 +2390,5 @@ ion::TraceIonScripts(JSTracer* trc, UnrootedScript script) {
         ion::IonScript::Trace(trc, script->ion);
 
     if (script->hasParallelIonScript())
-        ion::IonScript::Trace(trc, script->parallelIon_);
+        ion::IonScript::Trace(trc, script->parallelIon);
 }

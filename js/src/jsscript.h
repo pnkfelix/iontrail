@@ -589,23 +589,23 @@ class JSScript : public js::gc::Cell
     }
 
     /* Information attached by Ion: script for parallel mode execution */
-    js::ion::IonScript *parallelIon_;
+    js::ion::IonScript *parallelIon;
 
     bool hasParallelIonScript() const {
-        return parallelIon_ && parallelIon_ != ION_DISABLED_SCRIPT && parallelIon_ != ION_COMPILING_SCRIPT;
+        return parallelIon && parallelIon != ION_DISABLED_SCRIPT && parallelIon != ION_COMPILING_SCRIPT;
     }
 
     bool canParallelIonCompile() const {
-        return parallelIon_ != ION_DISABLED_SCRIPT;
+        return parallelIon != ION_DISABLED_SCRIPT;
     }
 
     bool isParallelIonCompilingOffThread() const {
-        return parallelIon_ == ION_COMPILING_SCRIPT;
+        return parallelIon == ION_COMPILING_SCRIPT;
     }
 
     js::ion::IonScript *parallelIonScript() const {
         JS_ASSERT(hasParallelIonScript());
-        return parallelIon_;
+        return parallelIon;
     }
 
     /*

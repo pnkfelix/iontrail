@@ -25,7 +25,7 @@ static inline IonScript *GetIonScript(UnrootedScript script, ExecutionMode cmode
 {
     switch (cmode) {
       case SequentialExecution: return script->ion;
-      case ParallelExecution: return script->parallelIon_;
+      case ParallelExecution: return script->parallelIon;
     }
     JS_NOT_REACHED("No such execution mode");
     return NULL;

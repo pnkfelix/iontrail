@@ -63,7 +63,7 @@ IonFrameIterator::checkInvalidation(IonScript **ionScriptOut) const
     IonScript *currentIonScript;
     bool hasIonScript;
     if (isParFunctionFrame()) {
-        currentIonScript = script->parallelIon_;
+        currentIonScript = script->parallelIon;
         hasIonScript = script->hasParallelIonScript();
     } else {
         currentIonScript = script->ion;
