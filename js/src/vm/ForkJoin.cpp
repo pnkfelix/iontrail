@@ -143,8 +143,8 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     bool setFatal();
 
     // Requests a GC, either full or specific to a compartment.
-    void requestGC(gcreason::Reason reason, uint32_t originSliceId);
-    void requestCompartmentGC(JSCompartment *compartment, gcreason::Reason reason, uint32_t originSliceId);
+    void requestGC(gcreason::Reason reason);
+    void requestCompartmentGC(JSCompartment *compartment, gcreason::Reason reason);
 
     // Requests that computation abort.
     void setAbortFlag();
@@ -576,11 +576,9 @@ ForkJoinShared::setAbortFlag()
 }
 
 void
-ForkJoinShared::requestGC(gcreason::Reason reason, uint32_t originSliceId)
+ForkJoinShared::requestGC(gcreason::Reason reason)
 {
     AutoLockMonitor lock(*this);
-
-    fprintf(stderr, "requestGC id:%u.\n", originSliceId);
 
     gcCompartment_ = NULL;
     gcReason_ = reason;
@@ -589,8 +587,7 @@ ForkJoinShared::requestGC(gcreason::Reason reason, uint32_t originSliceId)
 
 void
 ForkJoinShared::requestCompartmentGC(JSCompartment *compartment,
-                                     gcreason::Reason reason,
-                                     uint32_t originSliceId)
+                                     gcreason::Reason reason)
 {
     AutoLockMonitor lock(*this);
 
@@ -602,10 +599,7 @@ ForkJoinShared::requestCompartmentGC(JSCompartment *compartment,
         gcRequested_ = true;
 
         gcRequestCount_++;
-        // fprintf(stderr, "requestCompartmentGC id:%u now full.\n", originSliceId);
     } else {
-        // fprintf(stderr, "requestCompartmentGC id:%u just one.\n", originSliceId);
-
         // Otherwise, just GC this compartment.
         gcCompartment_ = compartment;
         gcReason_ = reason;
@@ -795,7 +789,7 @@ ForkJoinSlice::requestGC(gcreason::Reason reason)
 {
     recordStackExtent();
 #ifdef JS_THREADSAFE
-    shared->requestGC(reason, sliceId);
+    shared->requestGC(reason);
     if (!shared->useStopTheWorldGC())
         triggerAbort();
 #endif
@@ -807,7 +801,7 @@ ForkJoinSlice::requestCompartmentGC(JSCompartment *compartment,
 {
     recordStackExtent();
 #ifdef JS_THREADSAFE
-    shared->requestCompartmentGC(compartment, reason, sliceId);
+    shared->requestCompartmentGC(compartment, reason);
     if (!shared->useStopTheWorldGC())
         triggerAbort();
 #endif
