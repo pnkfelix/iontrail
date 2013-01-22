@@ -659,13 +659,18 @@ ForkJoinShared::removeSlice(ForkJoinSlice *slice)
     // maintenance rather than locking.
     AutoLockMonitor lock(*this);
 
+    ForkJoinSlice *prev = NULL;
     ForkJoinSlice **p = &slices;
     ForkJoinSlice *q = slices;
     do {
         if (q == slice) {
+            if (prev != NULL) {
+                prev->extent.next = q->extent.next;
+            }
             *p = q->next;
             return;
         }
+        prev = q;
         p = &q->next;
         q = q->next;
     } while (q);
