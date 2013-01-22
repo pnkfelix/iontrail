@@ -348,9 +348,6 @@ ForkJoinShared::transferArenasToCompartmentAndProcessGCRequests()
         gcRequested_ = false;
         gcCompartment_ = NULL;
     }
-
-    for (unsigned i = 0; i < numSlices_; i++)
-        comp->adoptWorkerAllocator(allocators_[i]);
 }
 
 void
