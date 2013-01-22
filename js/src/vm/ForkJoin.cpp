@@ -470,7 +470,7 @@ ForkJoinShared::check(ForkJoinSlice &slice)
                     }
                 }
 
-                if (true || gcCompartment_ == NULL || gcCompartment_ == cx_->runtime->atomsCompartment) {
+                if (gcCompartment_ == NULL || gcCompartment_ == cx_->runtime->atomsCompartment) {
                     PrepareForFullGC(cx_->runtime);
                     GCSlice(cx_->runtime, GC_NORMAL, gcreason::PAUSE_PARALLEL_BLOCK);
                 } else {
