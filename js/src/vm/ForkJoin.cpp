@@ -446,7 +446,9 @@ ForkJoinShared::check(ForkJoinSlice &slice)
         }
 
         if (gcRequested_ && cx_->runtime->isHeapBusy()) {
-            fprintf(stderr, "gc requested but heap is busy so abort.");
+            // Cannot call GCSlice when heap busy, so abort.  Easier
+            // right now to abort rather than prove it cannot arise,
+            // and safer for short-term than asserting !isHeapBusy.
             setAbortFlag();
             return false;
         }
