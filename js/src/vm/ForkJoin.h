@@ -230,17 +230,16 @@ struct ForkJoinSlice
 
     ForkJoinShared *const shared;
 
-public:
+private:
+    // Stack base and tip of this slice's thread, for Stop-The-World GC.
     gc::StackExtent *extent;
 
-public: // *TEMPORARILY EXPOSED FOR DEVELOPMENT*
-
-    // link for list of slices for some ParallelDo; root is in ForkJoinShared.
-    ForkJoinSlice *next;
-
-    // stack extent of this slice's thread, for Stop-The-World GC.
-    // Call this to set values of stackMin/stackEnd before yielding to GC.
+public:
+    // Establishes tip for stack scan; call before yielding to GC.
     void recordStackExtent();
+
+    // Establishes base for stack scan; call before entering parallel code.
+    void recordStackBase(uintptr_t *baseAddr);
 };
 
 // Generic interface for specifying divisible operations that can be

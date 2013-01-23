@@ -747,11 +747,9 @@ ForkJoinSlice::recordStackExtent()
     // This establishes the tip, and ParallelDo::parallel the base,
     // of the stack address-range of this thread for the GC to scan.
 #if JS_STACK_GROWTH_DIRECTION > 0
-    // extent.stackMin = nativeStackBase;
     extent.stackEnd = reinterpret_cast<uintptr_t *>(myStackTop);
 #else
     extent.stackMin = reinterpret_cast<uintptr_t *>(myStackTop + 1);
-    // extent.stackEnd = nativeStackBase;
 #endif
 
     JS_ASSERT(extent.stackMin <= extent.stackEnd);
@@ -760,6 +758,18 @@ ForkJoinSlice::recordStackExtent()
     // PerThreadData *ptd = TlsPerThreadData.get();
     extent.ionTop        = ptd->ionTop;
     extent.ionActivation = ptd->ionActivation;
+}
+
+
+void ForkJoinSlice::recordStackBase(uintptr_t *baseAddr)
+{
+    // This establishes the base, and ForkJoinSlice::recordStackExtent the tip,
+    // of the stack address-range of this thread for the GC to scan.
+#if JS_STACK_GROWTH_DIRECTION > 0
+        this->extent->stackMin = baseAddr;
+#else
+        this->extent->stackEnd = baseAddr;
+#endif
 }
 
 void
