@@ -10,39 +10,43 @@
 
 namespace js {
 
-struct StackExtents {
+namespace gc {
 
-    // One link in this chain of linked stack extents.  Each StackExtent
-    // is intended to be embedded in some (per-thread allocated)
-    // meta-data object.
-    //
-    // This is not managed in a thread-safe manner; thus one must
-    // construct/destruct from main thread alone.
-    struct StackExtent {
-        StackExtent *next;
+// One link in this chain of linked stack extents.  Each StackExtent
+// is intended to be embedded in some (per-thread allocated)
+// meta-data object.
+//
+// This is not managed in a thread-safe manner; thus one must
+// construct/destruct from main thread alone.
+struct StackExtent {
+    StackExtent *next;
 
-        uintptr_t *stackMin;
-        uintptr_t *stackEnd;
+    uintptr_t *stackMin;
+    uintptr_t *stackEnd;
 
 #if defined(JS_ION)
-        // Either NULL (unset) or, if Ion code is on the stack, and
-        // has called into C++, this is aligned to an Ion exit frame.
-        uint8_t   *ionTop;
+    // Either NULL (unset) or, if Ion code is on the stack, and
+    // has called into C++, this is aligned to an Ion exit frame.
+    uint8_t   *ionTop;
 
-        // Either NULL (unset) or this points to the most recent Ion
-        // activation running on the thread.
-        js::ion::IonActivation *ionActivation;
+    // Either NULL (unset) or this points to the most recent Ion
+    // activation running on the thread.
+    js::ion::IonActivation *ionActivation;
 #endif
 
-        StackExtent()
-            : next(NULL), stackMin(0), stackEnd(0), ionTop(0), ionActivation(0) {}
+    StackExtent()
+        : next(NULL), stackMin(0), stackEnd(0), ionTop(0), ionActivation(0) {}
 
-        void setNext(StackExtent *n) { JS_ASSERT(next == NULL); next = n; }
-    };
+    void setNext(StackExtent *n) { JS_ASSERT(next == NULL); next = n; }
+};
 
+struct StackExtents
+{
     StackExtent *head;
     StackExtents(StackExtent *head) : head(head) {}
 };
+
+} // namespace gc
 
 } // namespace js
 

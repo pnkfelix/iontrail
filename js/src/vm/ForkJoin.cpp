@@ -48,7 +48,7 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     Vector<Allocator *, 16> allocators_;
 
     // Each worker thread has an associated StackExtent instance.
-    Vector<StackExtents::StackExtent, 16> stackExtents_;
+    Vector<gc::StackExtent, 16> stackExtents_;
 
     // Each worker thread is responsible for storing a pointer to itself here.
     Vector<ForkJoinSlice *, 16> slices_;
@@ -161,7 +161,7 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     JSContext *acquireContext() { PR_Lock(cxLock_); return cx_; }
     void releaseContext() { PR_Unlock(cxLock_); }
 
-    StackExtents::StackExtent &stackExtent(uint32_t i) { return stackExtents_[i]; }
+    gc::StackExtent &stackExtent(uint32_t i) { return stackExtents_[i]; }
 
     bool isWorldStoppedForGC() { return worldStoppedForGC_; }
     bool useStopTheWorldGC() { return useStopTheWorldGC_; }
@@ -295,7 +295,7 @@ ForkJoinShared::init()
             return false;
 
         if (i > 0) {
-            StackExtents::StackExtent *prev = &stackExtents_[i-1];
+            gc::StackExtent *prev = &stackExtents_[i-1];
             prev->setNext(&stackExtents_[i]);
         }
     }
@@ -425,10 +425,10 @@ ForkJoinShared::setFatal()
     return false;
 }
 
-struct AutoInstallForkJoinStackExtents : public StackExtents
+struct AutoInstallForkJoinStackExtents : public gc::StackExtents
 {
     AutoInstallForkJoinStackExtents(JSRuntime *rt,
-                                    StackExtents::StackExtent *head)
+                                    gc::StackExtent *head)
         : StackExtents(head), rt(rt)
     {
         rt->extraExtents = this;
@@ -487,7 +487,7 @@ ForkJoinShared::check(ForkJoinSlice &slice)
                 AutoInstallForkJoinStackExtents extents(cx_->runtime, &stackExtents_[0]);
 
                 {
-                    StackExtents::StackExtent *extentList =
+                    gc::StackExtent *extentList =
                         cx_->runtime->extraExtents->head;
                     while (extentList) {
                         JS_ASSERT(extentList->stackMin <= extentList->stackEnd);
@@ -751,7 +751,7 @@ ForkJoinSlice::recordStackExtent()
     uintptr_t dummy;
     uintptr_t *myStackTop = &dummy;
 
-    StackExtents::StackExtent &extent = shared->stackExtent(sliceId);
+    gc::StackExtent &extent = shared->stackExtent(sliceId);
 
     // This establishes the tip, and ParallelDo::parallel the base,
     // of the stack address-range of this thread for the GC to scan.

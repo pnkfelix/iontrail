@@ -10,7 +10,6 @@
 
 #include "jscntxt.h"
 #include "vm/ThreadPool.h"
-#include "vm/StackExtents.h"
 
 // ForkJoin
 //
@@ -232,7 +231,7 @@ struct ForkJoinSlice
     ForkJoinShared *const shared;
 
 public:
-    StackExtents::StackExtent *extent;
+    gc::StackExtent *extent;
 
 public: // *TEMPORARILY EXPOSED FOR DEVELOPMENT*
 

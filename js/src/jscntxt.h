@@ -515,7 +515,7 @@ struct JSRuntime : js::RuntimeFriendFields
      * to be used, for example, as additional ranges to scan when the GC
      * is conservatively scanning for roots.
      */
-    js::StackExtents *extraExtents;
+    js::gc::StackExtents *extraExtents;
 
     /* Default compartment. */
     JSCompartment       *atomsCompartment;

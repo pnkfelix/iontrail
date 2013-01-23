@@ -301,7 +301,7 @@ MarkRangeConservativelyAndSkipIon(JSTracer *trc, JSRuntime *rt, const uintptr_t 
 }
 
 static void
-MarkRangeConservativelyAndSkipIon(JSTracer *trc, StackExtents::StackExtent *extent)
+MarkRangeConservativelyAndSkipIon(JSTracer *trc, gc::StackExtent *extent)
 {
     JS_ASSERT(extent->stackMin <= extent->stackEnd);
 
@@ -356,7 +356,7 @@ MarkConservativeStackRoots(JSTracer *trc, bool useSavedRoots)
     MarkRangeConservativelyAndSkipIon(trc, rt, stackMin, stackEnd);
 
     if (rt->extraExtents) {
-        StackExtents::StackExtent *extraExtents = rt->extraExtents->head;
+        gc::StackExtent *extraExtents = rt->extraExtents->head;
         while (extraExtents) {
             MarkRangeConservativelyAndSkipIon(trc, extraExtents);
             extraExtents = extraExtents->next;

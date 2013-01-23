@@ -15,6 +15,7 @@
 #include "vm/GlobalObject.h"
 #include "vm/ThreadPool.h"
 #include "vm/ForkJoin.h"
+#include "vm/StackExtents.h"
 
 #include "jsinterpinlines.h"
 #include "jsobjinlines.h"
