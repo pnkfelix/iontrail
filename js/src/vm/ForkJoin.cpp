@@ -452,12 +452,7 @@ ForkJoinShared::check(ForkJoinSlice &slice)
             // The GC Needed flag should not be set during parallel
             // execution.  Instead, one of the requestGC() or
             // requestCompartmentGC() methods should be invoked.
-            //
-            // FSK: the gcIsNeeded flag may still be set, during the
-            // StopTheWorld sections.  So commenting out below
-            // assertion temporarily.
-            //
-            // JS_ASSERT(!cx_->runtime->gcIsNeeded);
+            JS_ASSERT(!cx_->runtime->gcIsNeeded);
 
             // If interrupt is requested, bring worker threads to a halt,
             // service the interrupt, then let them start back up again.
