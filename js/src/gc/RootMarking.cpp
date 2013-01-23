@@ -355,6 +355,7 @@ MarkConservativeStackRoots(JSTracer *trc, bool useSavedRoots)
     JS_ASSERT(stackMin <= stackEnd);
     MarkRangeConservativelyAndSkipIon(trc, rt, stackMin, stackEnd);
 
+    // Mark additional stack extents from (paused) non-main threads.
     if (rt->extraExtents) {
         gc::StackExtent *extraExtents = rt->extraExtents->head;
         while (extraExtents) {
