@@ -38,6 +38,14 @@ struct StackExtent {
         : next(NULL), stackMin(0), stackEnd(0), ionTop(0), ionActivation(0) {}
 
     void setNext(StackExtent *n) { JS_ASSERT(next == NULL); next = n; }
+
+    // Clears the stack-extent, but leaves self on the linked list.
+    void clearStackExtent() {
+        stackMin = 0;
+        stackEnd = 0;
+        ionTop = 0;
+        ionActivation = 0;
+    }
 };
 
 struct StackExtents

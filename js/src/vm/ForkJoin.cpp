@@ -656,6 +656,7 @@ ForkJoinSlice::ForkJoinSlice(PerThreadData *perThreadData,
 ForkJoinSlice::~ForkJoinSlice()
 {
     shared->removeSlice(this);
+    extent->clearStackExtent();
 }
 
 void
