@@ -567,9 +567,9 @@ class ParallelDo : public ForkJoinOp
     // This establishes the base, and ForkJoinSlice::recordStackExtent the tip,
     // of the stack address-range of this thread for the GC to scan.
 #if JS_STACK_GROWTH_DIRECTION > 0
-        slice.extent.stackMin = myStackTop;
+        slice.extent->stackMin = myStackTop;
 #else
-        slice.extent.stackEnd = myStackTop;
+        slice.extent->stackEnd = myStackTop;
 #endif
 
         js::PerThreadData *pt = slice.perThreadData;

@@ -21,6 +21,9 @@
 // For extracting stack extent for each thread.
 #include "jsnativestack.h"
 
+// For representing stack event for each thread.
+#include "StacKExtents.h"
+
 using namespace js;
 
 #ifdef JS_THREADSAFE
@@ -44,6 +47,12 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
 
     Vector<Allocator *, 16> allocators_;
 
+    // Each worker thread has an associated StackExtent instance.
+    Vector<StackExtents::StackExtent, 16> stackExtents_;
+
+    // Each worker thread is responsible for storing a pointer to itself here.
+    Vector<ForkJoinSlice *, 16> slices_;
+
     /////////////////////////////////////////////////////////////////////////
     // Locked Fields
     //
@@ -57,8 +66,6 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     gcreason::Reason gcReason_;    // Reason given to request GC
     JSCompartment *gcCompartment_; // Compartment for GC, or NULL for full
     uint32_t gcRequestCount_;      // Number of requests since last Stop-The-World
-
-    ForkJoinSlice *slices;
 
     /////////////////////////////////////////////////////////////////////////
     // Asynchronous Flags
@@ -154,6 +161,8 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     JSContext *acquireContext() { PR_Lock(cxLock_); return cx_; }
     void releaseContext() { PR_Unlock(cxLock_); }
 
+    StackExtents::StackExtent &stackExtent(uint32_t i) { return stackExtents_[i]; }
+
     bool isWorldStoppedForGC() { return worldStoppedForGC_; }
     bool useStopTheWorldGC() { return useStopTheWorldGC_; }
 
@@ -230,13 +239,14 @@ ForkJoinShared::ForkJoinShared(JSContext *cx,
     op_(op),
     numSlices_(numSlices),
     allocators_(cx),
+    stackExtents_(cx),
+    slices_(cx),
     uncompleted_(uncompleted),
     blocked_(0),
     rendezvousIndex_(0),
     gcReason_(gcreason::NUM_REASONS),
     gcCompartment_(NULL),
     gcRequestCount_(0),
-    slices(NULL),
     abort_(false),
     fatal_(false),
     rendezvous_(false),
@@ -269,6 +279,8 @@ ForkJoinShared::init()
     if (!cxLock_)
         return false;
 
+    if (!stackExtents_.resize(numSlices_))
+        return false;
     for (unsigned i = 0; i < numSlices_; i++) {
         Allocator *allocator = cx_->runtime->new_<Allocator>(cx_->compartment);
         if (!allocator)
@@ -278,7 +290,21 @@ ForkJoinShared::init()
             js_delete(allocator);
             return false;
         }
+
+        if (!slices_.append((ForkJoinSlice*)NULL))
+            return false;
+
+        if (i > 0) {
+            StackExtents::StackExtent *prev = &stackExtents_[i-1];
+            prev->setNext(&stackExtents_[i]);
+        }
     }
+
+    // If we ever have other clients of StackExtents, then we will
+    // need to link them all together (and likewise unlink them
+    // properly).  For now ForkJoin is sole StackExtents client, and
+    // currently it constructs only one instance of them at a time.
+    JS_ASSERT(cx_->runtime->extraExtents == NULL);
 
     return true;
 }
@@ -402,8 +428,8 @@ ForkJoinShared::setFatal()
 struct AutoInstallForkJoinStackExtents : public StackExtents
 {
     AutoInstallForkJoinStackExtents(JSRuntime *rt,
-                                    ForkJoinSlice *slices)
-        : StackExtents(&slices->extent), rt(rt)
+                                    StackExtents::StackExtent *head)
+        : StackExtents(head), rt(rt)
     {
         rt->extraExtents = this;
     }
@@ -458,7 +484,7 @@ ForkJoinShared::check(ForkJoinSlice &slice)
                 // transferArenasToCompartmentAndProcessGCRequests();
 
                 slice.recordStackExtent();
-                AutoInstallForkJoinStackExtents extents(cx_->runtime, slices);
+                AutoInstallForkJoinStackExtents extents(cx_->runtime, &stackExtents_[0]);
 
                 {
                     StackExtents::StackExtent *extentList =
@@ -622,60 +648,26 @@ ForkJoinSlice::ForkJoinSlice(PerThreadData *perThreadData,
       allocator(allocator),
       abortedScript(NULL),
       shared(shared),
-      extent()
+      extent(&shared->stackExtent(sliceId))
 {
     shared->addSlice(this);
 }
 
 ForkJoinSlice::~ForkJoinSlice()
 {
-    // This is expensive and probably unnecessary, since when we
-    // tear-down any one ForkJoinSlice, we are almost certainly also
-    // tearing down the whole ForkJoin apparatus including the
-    // ForkJoinShared.
     shared->removeSlice(this);
 }
 
 void
 ForkJoinShared::addSlice(ForkJoinSlice *slice)
 {
-    // TODO: Consider using compare-and-swap here for list
-    // maintenance rather than locking.
-    AutoLockMonitor lock(*this);
-
-    slice->next = slices;
-    if (slices)
-        slice->extent.next = &slices->extent;
-
-    slices = slice;
+    slices_[slice->sliceId] = slice;
 }
 
 void
 ForkJoinShared::removeSlice(ForkJoinSlice *slice)
 {
-    // Expensive!
-
-    // TODO: Consider using compare-and-swap here for list
-    // maintenance rather than locking.
-    AutoLockMonitor lock(*this);
-
-    ForkJoinSlice *prev = NULL;
-    ForkJoinSlice **p = &slices;
-    ForkJoinSlice *q = slices;
-    do {
-        if (q == slice) {
-            if (prev != NULL) {
-                prev->extent.next = q->extent.next;
-            }
-            *p = q->next;
-            return;
-        }
-        prev = q;
-        p = &q->next;
-        q = q->next;
-    } while (q);
-
-    JS_ASSERT(false);
+    slices_[slice->sliceId] = NULL;
 }
 
 bool
@@ -758,6 +750,8 @@ ForkJoinSlice::recordStackExtent()
 {
     uintptr_t dummy;
     uintptr_t *myStackTop = &dummy;
+
+    StackExtents::StackExtent &extent = shared->stackExtent(sliceId);
 
     // This establishes the tip, and ParallelDo::parallel the base,
     // of the stack address-range of this thread for the GC to scan.

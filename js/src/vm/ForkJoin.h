@@ -231,21 +231,16 @@ struct ForkJoinSlice
 
     ForkJoinShared *const shared;
 
+public:
+    StackExtents::StackExtent *extent;
+
 public: // *TEMPORARILY EXPOSED FOR DEVELOPMENT*
 
     // link for list of slices for some ParallelDo; root is in ForkJoinShared.
     ForkJoinSlice *next;
-public:
-    ForkJoinSlice *nextSlice() { return next; }
 
     // stack extent of this slice's thread, for Stop-The-World GC.
-    // Analogous to stackMin/stackEnd in MarkConservativeStackRoots()
-    // in RootMarking.cpp.  We delay setting their values until a
-    // GC is actually requested.
-public: // *TEMPORARILY EXPOSED FOR DEVELOPMENT*
-    js::StackExtents::StackExtent extent;
-
-    // Call this to set the values of stackMin and stackEnd.
+    // Call this to set values of stackMin/stackEnd before yielding to GC.
     void recordStackExtent();
 };
 

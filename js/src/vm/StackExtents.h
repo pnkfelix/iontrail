@@ -11,9 +11,13 @@
 namespace js {
 
 struct StackExtents {
+
     // One link in this chain of linked stack extents.  Each StackExtent
     // is intended to be embedded in some (per-thread allocated)
     // meta-data object.
+    //
+    // This is not managed in a thread-safe manner; thus one must
+    // construct/destruct from main thread alone.
     struct StackExtent {
         StackExtent *next;
 
@@ -31,7 +35,9 @@ struct StackExtents {
 #endif
 
         StackExtent()
-            : next(0), stackMin(0), stackEnd(0), ionTop(0), ionActivation(0) {}
+            : next(NULL), stackMin(0), stackEnd(0), ionTop(0), ionActivation(0) {}
+
+        void setNext(StackExtent *n) { JS_ASSERT(next == NULL); next = n; }
     };
 
     StackExtent *head;
