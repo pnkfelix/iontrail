@@ -65,7 +65,6 @@ class js::ForkJoinShared : public TaskExecutor, public Monitor
     // Fields related to asynchronously-read gcRequested_ flag
     gcreason::Reason gcReason_;    // Reason given to request GC
     JSCompartment *gcCompartment_; // Compartment for GC, or NULL for full
-    uint32_t gcRequestCount_;      // Number of requests since last Stop-The-World
 
     /////////////////////////////////////////////////////////////////////////
     // Asynchronous Flags
@@ -246,7 +245,6 @@ ForkJoinShared::ForkJoinShared(JSContext *cx,
     rendezvousIndex_(0),
     gcReason_(gcreason::NUM_REASONS),
     gcCompartment_(NULL),
-    gcRequestCount_(0),
     abort_(false),
     fatal_(false),
     rendezvous_(false),
@@ -617,14 +615,11 @@ ForkJoinShared::requestCompartmentGC(JSCompartment *compartment,
         gcCompartment_ = NULL;
         gcReason_ = reason;
         gcRequested_ = true;
-
-        gcRequestCount_++;
     } else {
         // Otherwise, just GC this compartment.
         gcCompartment_ = compartment;
         gcReason_ = reason;
         gcRequested_ = true;
-        gcRequestCount_++;
     }
 }
 
