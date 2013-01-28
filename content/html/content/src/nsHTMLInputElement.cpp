@@ -916,10 +916,10 @@ NS_IMPL_BOOL_ATTR(nsHTMLInputElement, Disabled, disabled)
 NS_IMPL_STRING_ATTR(nsHTMLInputElement, Max, max)
 NS_IMPL_STRING_ATTR(nsHTMLInputElement, Min, min)
 NS_IMPL_ACTION_ATTR(nsHTMLInputElement, FormAction, formaction)
-NS_IMPL_ENUM_ATTR_DEFAULT_VALUE(nsHTMLInputElement, FormEnctype, formenctype,
-                                kFormDefaultEnctype->tag)
-NS_IMPL_ENUM_ATTR_DEFAULT_VALUE(nsHTMLInputElement, FormMethod, formmethod,
-                                kFormDefaultMethod->tag)
+NS_IMPL_ENUM_ATTR_DEFAULT_MISSING_INVALID_VALUES(nsHTMLInputElement, FormEnctype, formenctype,
+                                                 "", kFormDefaultEnctype->tag)
+NS_IMPL_ENUM_ATTR_DEFAULT_MISSING_INVALID_VALUES(nsHTMLInputElement, FormMethod, formmethod,
+                                                 "", kFormDefaultMethod->tag)
 NS_IMPL_BOOL_ATTR(nsHTMLInputElement, FormNoValidate, formnovalidate)
 NS_IMPL_STRING_ATTR(nsHTMLInputElement, FormTarget, formtarget)
 NS_IMPL_ENUM_ATTR_DEFAULT_VALUE(nsHTMLInputElement, Inputmode, inputmode,
@@ -3251,7 +3251,9 @@ nsHTMLInputElement::ParseTime(const nsAString& aValue, uint32_t* aResult)
 
   if (aResult) {
     *aResult = (((hours * 60) + minutes) * 60 + seconds) * 1000 +
-               fractionsSeconds * pow(10, 3 - (aValue.Length() - 9));
+               // NOTE: there is 10.0 instead of 10 and static_cast<int> because
+               // some old [and stupid] compilers can't just do the right thing.
+               fractionsSeconds * pow(10.0, static_cast<int>(3 - (aValue.Length() - 9)));
   }
 
   return true;

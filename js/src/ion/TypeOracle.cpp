@@ -273,10 +273,6 @@ TypeInferenceOracle::inObjectIsDenseArray(HandleScript script, jsbytecode *pc)
     if (idType != JSVAL_TYPE_INT32 && idType != JSVAL_TYPE_DOUBLE)
         return false;
 
-    JSValueType objType = obj->getKnownTypeTag();
-    if (objType != JSVAL_TYPE_OBJECT)
-        return false;
-
     return !obj->hasObjectFlags(cx, types::OBJECT_FLAG_NON_DENSE_ARRAY);
 }
 
