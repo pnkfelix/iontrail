@@ -1188,7 +1188,12 @@ if test "$GNU_CC"; then
             DSO_LDOPTS="$DSO_LDOPTS -Wl,-z,defs"
         fi
     fi
-    WARNINGS_AS_ERRORS='-Werror -Wno-error=uninitialized'
+    WARNINGS_AS_ERRORS='-Werror'
+    # Don't treat -Wuninitialized as error b/c it has lots of false positives.
+    WARNINGS_AS_ERRORS="$WARNINGS_AS_ERRORS -Wno-error=uninitialized"
+    # Don't treat -Wdeprecated-declarations as error b/c we don't want our
+    # builds held hostage when a platform-specific API is suddenly deprecated.
+    WARNINGS_AS_ERRORS="$WARNINGS_AS_ERRORS -Wno-error=deprecated-declarations"
     DSO_CFLAGS=''
     DSO_PIC_CFLAGS='-fPIC'
     ASFLAGS="$ASFLAGS -fPIC"
@@ -4057,27 +4062,24 @@ else
 fi
 
 dnl ========================================================
-dnl = Disable -fstrict-aliasing on Linux/Android with GCC 4.4 and earlier.
-dnl = See bug 821502.
+dnl = Disable -fstrict-aliasing with GCC 4.4 and earlier.
+dnl = See bugs 821502 and 832623.
 dnl ========================================================
-case "$target" in
-*-android*|*-linuxandroid*|*-*linux*)
-    if test "$GNU_CC"; then
-        changequote(,)
-        GCC_VERSION_FULL=`echo "$CXX_VERSION" | $PERL -pe 's/^.*gcc version ([^ ]*).*/$1/'`
-        GCC_VERSION=`echo "$GCC_VERSION_FULL" | $PERL -pe '(split(/\./))[0]>=4&&s/(^\d*\.\d*).*/$1/;'`
-        changequote([,])
+if test -n "$GNU_CC" -a -z "$CLANG_CC"; then
+    changequote(,)
+    GCC_VERSION_FULL=`echo "$CXX_VERSION" | $PERL -pe 's/^.*gcc version ([^ ]*).*/$1/'`
+    GCC_VERSION=`echo "$GCC_VERSION_FULL" | $PERL -pe '(split(/\./))[0]>=4&&s/(^\d*\.\d*).*/$1/;'`
+    changequote([,])
 
-        GCC_MAJOR_VERSION=`echo ${GCC_VERSION} | $AWK -F\. '{ print $1 }'`
-        GCC_MINOR_VERSION=`echo ${GCC_VERSION} | $AWK -F\. '{ print $2 }'`
+    GCC_MAJOR_VERSION=`echo ${GCC_VERSION} | $AWK -F\. '{ print $1 }'`
+    GCC_MINOR_VERSION=`echo ${GCC_VERSION} | $AWK -F\. '{ print $2 }'`
 
-        dnl GCC 3.x isn't supported, so we don't need to check for that.
-        if test "$GCC_MAJOR_VERSION" -eq "4" -a "$GCC_MINOR_VERSION" -lt "5" ; then
-            CFLAGS="$CFLAGS -fno-strict-aliasing"
-            CXXFLAGS="$CXXFLAGS -fno-strict-aliasing"
-        fi
+    dnl GCC 3.x isn't supported, so we don't need to check for that.
+    if test "$GCC_MAJOR_VERSION" -eq "4" -a "$GCC_MINOR_VERSION" -lt "5" ; then
+        CFLAGS="$CFLAGS -fno-strict-aliasing"
+        CXXFLAGS="$CXXFLAGS -fno-strict-aliasing"
     fi
-esac
+fi
 
 dnl ========================================================
 dnl = Link js shell to system readline

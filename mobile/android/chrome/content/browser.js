@@ -162,6 +162,12 @@ var BrowserApp = {
   _tabs: [],
   _selectedTab: null,
 
+  get isTablet() {
+    let sysInfo = Cc["@mozilla.org/system-info;1"].getService(Ci.nsIPropertyBag2);
+    delete this.isTablet;
+    return this.isTablet = sysInfo.get("tablet");
+  },
+
   deck: null,
 
   startup: function startup() {
@@ -276,7 +282,15 @@ var BrowserApp = {
 
     let updated = this.isAppUpdated();
     if (pinned) {
-      WebAppRT.init(updated, url);
+      WebAppRT.init(updated, url).then(function(aUrl) {
+        BrowserApp.addTab(aUrl);
+      }, function() {
+        let uri = Services.io.newURI(url, null, null);
+        if (!uri)
+          return;
+        Cc["@mozilla.org/uriloader/external-protocol-service;1"].getService(Ci.nsIExternalProtocolService).getProtocolHandlerInfo(uri.scheme).launchWithURI(uri);
+        BrowserApp.quit();
+      });
     } else {
       SearchEngines.init();
       this.initContextMenu();
@@ -1060,7 +1074,8 @@ var BrowserApp = {
 
   scrollToFocusedInput: function(aBrowser, aAllowZoom = true) {
     let focused = this.getFocusedInput(aBrowser);
-    if (focused) {
+
+    if (focused && !this.isTablet && !ViewportHandler.getViewportMetadata(aBrowser.contentWindow).hasMetaViewport) {
       // _zoomToElement will handle not sending any message if this input is already mostly filling the screen
       BrowserEventHandler._zoomToElement(focused, -1, false, aAllowZoom);
     }
@@ -2746,6 +2761,15 @@ Tab.prototype = {
     let selectedPanel = BrowserApp.deck.selectedPanel;
     BrowserApp.deck.insertBefore(this.browser, aParams.sibling || null);
     BrowserApp.deck.selectedPanel = selectedPanel;
+
+    if (BrowserApp.manifestUrl) {
+      let appsService = Cc["@mozilla.org/AppsService;1"].getService(Ci.nsIAppsService);
+      let manifest = appsService.getAppByManifestURL(BrowserApp.manifestUrl);
+      if (manifest) {
+        let app = manifest.QueryInterface(Ci.mozIApplication);
+        this.browser.docShell.setIsApp(app.localId);
+      }
+    }
 
     // Must be called after appendChild so the docshell has been created.
     this.setActive(false);
@@ -5408,6 +5432,7 @@ var ViewportHandler = {
 
     // Note: These values will be NaN if parseFloat or parseInt doesn't find a number.
     // Remember that NaN is contagious: Math.max(1, NaN) == Math.min(1, NaN) == NaN.
+    let hasMetaViewport = true;
     let scale = parseFloat(windowUtils.getDocumentMetadata("viewport-initial-scale"));
     let minScale = parseFloat(windowUtils.getDocumentMetadata("viewport-minimum-scale"));
     let maxScale = parseFloat(windowUtils.getDocumentMetadata("viewport-maximum-scale"));
@@ -5435,6 +5460,7 @@ var ViewportHandler = {
       if (doctype && /(WAP|WML|Mobile)/.test(doctype.publicId))
         return { defaultZoom: 1, autoSize: true, allowZoom: true };
 
+      hasMetaViewport = false;
       let defaultZoom = Services.prefs.getIntPref("browser.viewport.defaultZoom");
       if (defaultZoom >= 0) {
         scale = defaultZoom / 1000;
@@ -5459,7 +5485,8 @@ var ViewportHandler = {
       width: width,
       height: height,
       autoSize: autoSize,
-      allowZoom: allowZoom
+      allowZoom: allowZoom,
+      hasMetaViewport: hasMetaViewport
     };
   },
 
@@ -7002,7 +7029,6 @@ var WebappsUI = {
     Services.obs.addObserver(this, "webapps-sync-install", false);
     Services.obs.addObserver(this, "webapps-sync-uninstall", false);
     Services.obs.addObserver(this, "webapps-install-error", false);
-    Services.obs.addObserver(this, "WebApps:InstallMarketplace", false);
   },
 
   uninit: function unint() {
@@ -7011,7 +7037,6 @@ var WebappsUI = {
     Services.obs.removeObserver(this, "webapps-sync-install");
     Services.obs.removeObserver(this, "webapps-sync-uninstall");
     Services.obs.removeObserver(this, "webapps-install-error", false);
-    Services.obs.removeObserver(this, "WebApps:InstallMarketplace", false);
   },
 
   DEFAULT_PREFS_FILENAME: "default-prefs.js",
@@ -7044,12 +7069,7 @@ var WebappsUI = {
         this.doInstall(data);
         break;
       case "webapps-launch":
-        DOMApplicationRegistry.getManifestFor(data.origin, (function(aManifest) {
-          if (!aManifest)
-            return;
-          let manifest = new ManifestHelper(aManifest, data.origin);
-          this.openURL(manifest.fullLaunchPath(), data.origin);
-        }).bind(this));
+        this.openURL(data.manifestURL, data.origin);
         break;
       case "webapps-sync-install":
         // Create a system notification allowing the user to launch the app
@@ -7061,7 +7081,7 @@ var WebappsUI = {
           let observer = {
             observe: function (aSubject, aTopic) {
               if (aTopic == "alertclickcallback") {
-                WebappsUI.openURL(manifest.fullLaunchPath(), data.origin);
+                WebappsUI.openURL(data.manifestURL, data.origin);
               }
             }
           };
@@ -7075,64 +7095,10 @@ var WebappsUI = {
         sendMessageToJava({
           gecko: {
             type: "WebApps:Uninstall",
-            uniqueURI: data.origin
+            origin: data.origin
           }
         });
         break;
-      case "WebApps:InstallMarketplace":
-        this.installAndLaunchMarketplace(data.url);
-        break;
-    }
-  },
-
-  MARKETPLACE: {
-      MANIFEST: "https://marketplace.mozilla.org/manifest.webapp",
-      get URI() {
-        delete this.URI;
-        return this.URI = Services.io.newURI(this.MANIFEST, null, null);
-      }
-  },
-
-  isMarketplace: function isMarketplace(aUri) {
-    try {
-      return !aUri.schemeIs("about") && aUri.host == this.MARKETPLACE.URI.host;
-    } catch(ex) {
-      console.log("could not find host for " + aUri.spec + ", " + ex);
-    }
-    return false;
-  },
-
-  // installs the marketplace, if a url is passed in, will launch it when the install
-  // is complete
-  installAndLaunchMarketplace: function installAndLaunchMarketplace(aLaunchUrl) {
-    // TODO: Add a flag to hide other install prompt dialogs. This should be silent if possible
-    let request = navigator.mozApps.getInstalled();
-    request.onsuccess = function() {
-      let foundMarket = false;
-      for (let i = 0; i < request.result.length; i++) {
-        if (request.result[i].origin == WebappsUI.MARKETPLACE.URI.prePath)
-          foundMarket = true;
-      }
-
-      let launchFun = (function() {
-        if (aLaunchUrl)
-          WebappsUI.openURL(aLaunchUrl || WebappsUI.MARKETPLACE.URI.prePath, WebappsUI.MARKETPLACE.URI.prePath);
-      }).bind(this);
-
-      if (foundMarket) {
-        launchFun();
-      } else {
-        let r = navigator.mozApps.install(WebappsUI.MARKETPLACE.MANIFEST);
-        r.onsuccess = function() {
-          launchFun();
-        };
-        r.onerror = function() {
-          console.log("error installing market " + this.error.name);
-        };
-      }
-    };
-    request.onerror = function() {
-      console.log("error getting installed " + this.error.name);
     }
   },
 
@@ -7183,9 +7149,9 @@ var WebappsUI = {
             gecko: {
               type: "WebApps:Install",
               name: manifest.name,
-              launchPath: manifest.fullLaunchPath(),
+              manifestURL: aData.app.manifestURL,
+              origin: aData.app.origin,
               iconURL: scaledIcon,
-              uniqueURI: aData.app.origin
             }
           });
 
@@ -7244,11 +7210,11 @@ var WebappsUI = {
     }
   },
 
-  openURL: function openURL(aURI, aOrigin) {
+  openURL: function openURL(aManifestURL, aOrigin) {
     sendMessageToJava({
       gecko: {
         type: "WebApps:Open",
-        uri: aURI,
+        manifestURL: aManifestURL,
         origin: aOrigin
       }
     });
