@@ -2024,7 +2024,7 @@ js::array_concat(JSContext *cx, unsigned argc, Value *vp)
 
     RootedObject nobj(cx);
     uint32_t length;
-    if (aobj->isArray()) {
+    if (aobj->isArray() && !aobj->isIndexed()) {
         length = aobj->getArrayLength();
         uint32_t initlen = aobj->getDenseInitializedLength();
         nobj = NewDenseCopiedArray(cx, initlen, aobj, 0);
@@ -2606,6 +2606,8 @@ JSObject *
 js::NewDenseCopiedArray(JSContext *cx, uint32_t length, HandleObject src, uint32_t elementOffset,
                         RawObject proto /* = NULL */)
 {
+    JS_ASSERT(!src->isIndexed());
+
     JSObject* obj = NewArray<true>(cx, length, proto);
     if (!obj)
         return NULL;

@@ -397,7 +397,7 @@ public class AllPagesTab extends AwesomeBarTab implements GeckoEventListener {
             if (type == ROW_SEARCH || type == ROW_SUGGEST) {
                 SearchEntryViewHolder viewHolder = null;
 
-                if (convertView == null) {
+                if (convertView == null || !(convertView.getTag() instanceof SearchEntryViewHolder)) {
                     convertView = getInflater().inflate(R.layout.awesomebar_suggestion_row, getListView(), false);
 
                     viewHolder = new SearchEntryViewHolder();
@@ -415,7 +415,7 @@ public class AllPagesTab extends AwesomeBarTab implements GeckoEventListener {
             } else {
                 AwesomeEntryViewHolder viewHolder = null;
 
-                if (convertView == null) {
+                if (convertView == null || !(convertView.getTag() instanceof AwesomeEntryViewHolder)) {
                     convertView = getInflater().inflate(R.layout.awesomebar_row, null);
 
                     viewHolder = new AwesomeEntryViewHolder();
@@ -575,7 +575,14 @@ public class AllPagesTab extends AwesomeBarTab implements GeckoEventListener {
                 if (name.equals(suggestEngine) && suggestTemplate != null) {
                     // suggest engine should be at the front of the list
                     mSearchEngines.add(0, new SearchEngine(name, icon));
-                    mSuggestClient = new SuggestClient(GeckoApp.mAppContext, suggestTemplate, SUGGESTION_TIMEOUT, SUGGESTION_MAX);
+
+                    // The only time Tabs.getInstance().getSelectedTab() should
+                    // be null is when we're restoring after a crash. We should
+                    // never restore private tabs when that happens, so it
+                    // should be safe to assume that null means non-private.
+                    Tab tab = Tabs.getInstance().getSelectedTab();
+                    if (tab == null || !tab.isPrivate())
+                        mSuggestClient = new SuggestClient(GeckoApp.mAppContext, suggestTemplate, SUGGESTION_TIMEOUT, SUGGESTION_MAX);
                 } else {
                     mSearchEngines.add(new SearchEngine(name, icon));
                 }
@@ -620,6 +627,14 @@ public class AllPagesTab extends AwesomeBarTab implements GeckoEventListener {
     }
 
     private void setSuggestionsEnabled(final boolean enabled) {
+        // Clicking the yes/no buttons quickly can cause the click events be
+        // queued before the listeners are removed above, so it's possible
+        // setSuggestionsEnabled() can be called twice. mSuggestionsOptInPrompt
+        // can be null if this happens (bug 828480).
+        if (mSuggestionsOptInPrompt == null) {
+            return;
+        }
+
         // Make suggestions appear immediately after the user opts in
         primeSuggestions();
 

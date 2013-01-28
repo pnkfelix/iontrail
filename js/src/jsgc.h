@@ -579,6 +579,11 @@ GCDebugSlice(JSRuntime *rt, bool limit, int64_t objCount);
 extern void
 PrepareForDebugGC(JSRuntime *rt);
 
+#ifdef JS_GC_ZEAL
+extern void
+SetGCZeal(JSRuntime *rt, uint8_t zeal, uint32_t frequency);
+#endif
+
 /* Functions for managing cross compartment gray pointers. */
 
 extern void
@@ -1188,6 +1193,7 @@ const int ZealIncrementalMultipleSlices = 10;
 const int ZealVerifierPostValue = 11;
 const int ZealFrameVerifierPostValue = 12;
 const int ZealPurgeAnalysisValue = 13;
+const int ZealLimit = 13;
 
 enum VerifierType {
     PreBarrierVerifier,
