@@ -416,6 +416,7 @@ struct ArenaLists {
         return freeLists[thingKind].allocate(thingSize);
     }
 
+    template <AllowGC allowGC>
     static void *refillFreeList(JSContext *cx, AllocKind thingKind);
 
     /* Moves all arenas from |fromArenaLists| into |this|.  In
