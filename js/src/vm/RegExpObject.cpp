@@ -296,20 +296,20 @@ RegExpObject::assignInitialShape(JSContext *cx)
     RootedObject self(cx, this);
 
     /* The lastIndex property alone is writable but non-configurable. */
-    if (!addDataProperty(cx, NameToId(cx->names().lastIndex), LAST_INDEX_SLOT, JSPROP_PERMANENT))
+    if (!addDataProperty(cx, cx->names().lastIndex, LAST_INDEX_SLOT, JSPROP_PERMANENT))
         return UnrootedShape(NULL);
 
     /* Remaining instance properties are non-writable and non-configurable. */
     unsigned attrs = JSPROP_PERMANENT | JSPROP_READONLY;
-    if (!self->addDataProperty(cx, NameToId(cx->names().source), SOURCE_SLOT, attrs))
+    if (!self->addDataProperty(cx, cx->names().source, SOURCE_SLOT, attrs))
         return UnrootedShape(NULL);
-    if (!self->addDataProperty(cx, NameToId(cx->names().global), GLOBAL_FLAG_SLOT, attrs))
+    if (!self->addDataProperty(cx, cx->names().global, GLOBAL_FLAG_SLOT, attrs))
         return UnrootedShape(NULL);
-    if (!self->addDataProperty(cx, NameToId(cx->names().ignoreCase), IGNORE_CASE_FLAG_SLOT, attrs))
+    if (!self->addDataProperty(cx, cx->names().ignoreCase, IGNORE_CASE_FLAG_SLOT, attrs))
         return UnrootedShape(NULL);
-    if (!self->addDataProperty(cx, NameToId(cx->names().multiline), MULTILINE_FLAG_SLOT, attrs))
+    if (!self->addDataProperty(cx, cx->names().multiline, MULTILINE_FLAG_SLOT, attrs))
         return UnrootedShape(NULL);
-    return self->addDataProperty(cx, NameToId(cx->names().sticky), STICKY_FLAG_SLOT, attrs);
+    return self->addDataProperty(cx, cx->names().sticky, STICKY_FLAG_SLOT, attrs);
 }
 
 inline bool
@@ -599,6 +599,7 @@ RegExpShared::executeMatchOnly(JSContext *cx, StableCharPtr chars, size_t length
         start = 0;
     }
 
+#ifndef _WIN64 /* Temporary stopgap: see Bug 831884 */
 #if ENABLE_YARR_JIT
     if (!codeBlock.isFallBack()) {
         MatchResult result = codeBlock.execute(chars.get(), start, length);
@@ -611,6 +612,7 @@ RegExpShared::executeMatchOnly(JSContext *cx, StableCharPtr chars, size_t length
         return RegExpRunStatus_Success;
     }
 #endif
+#endif /* _WIN64 */
 
     /*
      * The JIT could not be used, so fall back to the Yarr interpreter.
@@ -650,8 +652,7 @@ RegExpCompartment::~RegExpCompartment()
      * RegExpStatics may have prevented a single RegExpShared from
      * being collected during RegExpCompartment::sweep().
      */
-    if (!inUse_.empty()) {
-        PendingSet::Enum e(inUse_);
+    for (PendingSet::Enum e(inUse_); !e.empty(); e.popFront()) {
         RegExpShared *shared = e.front();
         JS_ASSERT(shared->activeUseCount == 0);
         js_delete(shared);

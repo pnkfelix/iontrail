@@ -17,6 +17,7 @@
 #include "jsnum.h"
 #include "jsprobes.h"
 #include "jsstr.h"
+
 #include "methodjit/MethodJIT.h"
 #include "vm/ForkJoin.h"
 
@@ -32,6 +33,7 @@
 #include "ion/IonCompartment.h"
 #endif
 
+#include "vm/GlobalObject-inl.h"
 #include "vm/Stack-inl.h"
 
 namespace js {

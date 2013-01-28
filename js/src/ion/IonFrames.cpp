@@ -334,7 +334,7 @@ ion::HandleException(ResumeFromException *rfe)
         if (iter.isScripted()) {
             // Search each inlined frame for live iterator objects, and close
             // them.
-            InlineFrameIterator frames(&iter);
+            InlineFrameIterator frames(cx, &iter);
             for (;;) {
                 CloseLiveIterators(cx, frames);
 
@@ -718,7 +718,7 @@ ion::GetPcScript(JSContext *cx, MutableHandleScript scriptRes, jsbytecode **pcRe
 
     // Lookup failed: undertake expensive process to recover the innermost inlined frame.
     ++it; // Skip exit frame.
-    InlineFrameIterator ifi(&it);
+    InlineFrameIterator ifi(cx, &it);
 
     // Set the result.
     scriptRes.set(ifi.script());
@@ -908,23 +908,30 @@ IonFrameIterator::osiIndex() const
     return ionScript()->getOsiIndex(reader.osiReturnPointOffset());
 }
 
-InlineFrameIterator::InlineFrameIterator(const IonFrameIterator *iter)
-  : frame_(iter),
-    framesRead_(0),
-    callee_(NULL),
-    script_(NULL)
+InlineFrameIterator::InlineFrameIterator(JSContext *cx, const IonFrameIterator *iter)
+  : callee_(cx),
+    script_(cx)
 {
+    resetOn(iter);
+}
+
+void
+InlineFrameIterator::resetOn(const IonFrameIterator *iter)
+{
+    frame_ = iter;
+    framesRead_ = 0;
+
     if (iter) {
         start_ = SnapshotIterator(*iter);
         findNextFrame();
     }
 }
 
-InlineFrameIterator::InlineFrameIterator(const InlineFrameIterator *iter)
+InlineFrameIterator::InlineFrameIterator(JSContext *cx, const InlineFrameIterator *iter)
   : frame_(iter->frame_),
     framesRead_(0),
-    callee_(NULL),
-    script_(NULL)
+    callee_(cx),
+    script_(cx)
 {
     if (frame_) {
         start_ = SnapshotIterator(*frame_);
@@ -1013,7 +1020,7 @@ InlineFrameIterator::isConstructing() const
 {
     // Skip the current frame and look at the caller's.
     if (more()) {
-        InlineFrameIterator parent(*this);
+        InlineFrameIterator parent(GetIonContext()->cx, this);
         ++parent;
 
         // Inlined Getters and Setters are never constructing.
@@ -1041,7 +1048,7 @@ IonFrameIterator::isConstructing() const
 
     if (parent.isScripted()) {
         // In the case of a JS frame, look up the pc from the snapshot.
-        InlineFrameIterator inlinedParent(&parent);
+        InlineFrameIterator inlinedParent(GetIonContext()->cx, &parent);
 
         //Inlined Getters and Setters are never constructing.
         if (IsGetterPC(inlinedParent.pc()) || IsSetterPC(inlinedParent.pc()))
@@ -1139,7 +1146,7 @@ IonFrameIterator::dump() const
         break;
       case IonFrame_OptimizedJS:
       {
-        InlineFrameIterator frames(this);
+        InlineFrameIterator frames(GetIonContext()->cx, this);
         for (;;) {
             frames.dump();
             if (!frames.more())
@@ -1225,7 +1232,7 @@ InlineFrameIterator::dump() const
             else {
                 if (i - 2 == callee()->nargs && numActualArgs() > callee()->nargs) {
                     DumpOp d(callee()->nargs);
-                    forEachCanonicalActualArg(d, d.i_, numActualArgs() - d.i_);
+                    forEachCanonicalActualArg(GetIonContext()->cx, d, d.i_, numActualArgs() - d.i_);
                 }
 
                 fprintf(stderr, "  slot %d: ", i - 2 - callee()->nargs);

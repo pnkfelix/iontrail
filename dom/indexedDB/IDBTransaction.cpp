@@ -256,9 +256,9 @@ IDBTransaction::CommitOrRollback()
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
 
   if (!IndexedDatabaseManager::IsMainProcess()) {
-    NS_ASSERTION(mActorChild, "Must have an actor!");
-
-    mActorChild->SendAllRequestsFinished();
+    if (mActorChild) {
+      mActorChild->SendAllRequestsFinished();
+    }
 
     return NS_OK;
   }
@@ -589,8 +589,6 @@ IDBTransaction::Abort(nsresult aErrorCode)
 
   return AbortInternal(aErrorCode, DOMError::CreateForNSResult(aErrorCode));
 }
-
-NS_IMPL_CYCLE_COLLECTION_CLASS(IDBTransaction)
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(IDBTransaction,
                                                   IDBWrapperCache)

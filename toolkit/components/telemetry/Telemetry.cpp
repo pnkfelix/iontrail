@@ -1997,6 +1997,12 @@ const Module kTelemetryModule = {
 namespace mozilla {
 void
 RecordShutdownStartTimeStamp() {
+#ifdef DEBUG
+  static bool recorded = false;
+  MOZ_ASSERT(!recorded);
+  recorded = true;
+#endif
+
   if (!Telemetry::CanRecord())
     return;
 
@@ -2245,8 +2251,19 @@ GetStackAndModules(const std::vector<uintptr_t>& aPCs)
 #ifdef MOZ_ENABLE_PROFILER_SPS
   for (unsigned i = 0, n = rawModules.GetSize(); i != n; ++i) {
     const SharedLibrary &info = rawModules.GetEntry(i);
+    const std::string &name = info.GetName();
+    std::string basename = name;
+#ifdef XP_MACOSX
+    // FIXME: We want to use just the basename as the libname, but the
+    // current profiler addon needs the full path name, so we compute the
+    // basename in here.
+    size_t pos = name.rfind('/');
+    if (pos != std::string::npos) {
+      basename = name.substr(pos + 1);
+    }
+#endif
     ProcessedStack::Module module = {
-      info.GetName(),
+      basename,
       info.GetBreakpadId()
     };
     Ret.AddModule(module);

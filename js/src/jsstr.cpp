@@ -3432,8 +3432,8 @@ StringObject::assignInitialShape(JSContext *cx)
 {
     JS_ASSERT(nativeEmpty());
 
-    RootedId lengthid(cx, NameToId(cx->names().length));
-    return addDataProperty(cx, lengthid, LENGTH_SLOT, JSPROP_PERMANENT | JSPROP_READONLY);
+    return addDataProperty(cx, cx->names().length, LENGTH_SLOT,
+                           JSPROP_PERMANENT | JSPROP_READONLY);
 }
 
 JSObject *
@@ -3485,25 +3485,6 @@ js_NewString(JSContext *cx, jschar *chars, size_t length)
     return s;
 }
 
-static JSInlineString *
-NewShortString(JSContext *cx, const char *chars, size_t length)
-{
-    JS_ASSERT(JSShortString::lengthFits(length));
-    JSInlineString *str = JSInlineString::lengthFits(length)
-                          ? JSInlineString::new_(cx)
-                          : JSShortString::new_(cx);
-    if (!str)
-        return NULL;
-
-    size_t n = length;
-    jschar *p = str->init(length);
-    while (n--)
-        *p++ = (unsigned char)*chars++;
-    *p = 0;
-    Probes::createString(cx, str, length);
-    return str;
-}
-
 JSLinearString *
 js_NewDependentString(JSContext *cx, JSString *baseArg, size_t start, size_t length)
 {
@@ -3531,7 +3512,7 @@ JSFlatString *
 js_NewStringCopyN(JSContext *cx, const jschar *s, size_t n)
 {
     if (JSShortString::lengthFits(n))
-        return NewShortString(cx, s, n);
+        return NewShortString(cx, TwoByteChars(s, n));
 
     jschar *news = cx->pod_malloc<jschar>(n + 1);
     if (!news)
@@ -3548,7 +3529,7 @@ JSFlatString *
 js_NewStringCopyN(JSContext *cx, const char *s, size_t n)
 {
     if (JSShortString::lengthFits(n))
-        return NewShortString(cx, s, n);
+        return NewShortString(cx, Latin1Chars(s, n));
 
     jschar *chars = InflateString(cx, s, &n);
     if (!chars)
@@ -3564,7 +3545,7 @@ js_NewStringCopyZ(JSContext *cx, const jschar *s)
 {
     size_t n = js_strlen(s);
     if (JSShortString::lengthFits(n))
-        return NewShortString(cx, s, n);
+        return NewShortString(cx, TwoByteChars(s, n));
 
     size_t m = (n + 1) * sizeof(jschar);
     jschar *news = (jschar *) cx->malloc_(m);

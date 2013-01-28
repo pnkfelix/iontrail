@@ -254,6 +254,7 @@ FENNEC_PP_XML_FILES = \
   res/layout-xlarge-land-v11/abouthome_content.xml \
   res/layout-xlarge-v11/awesomebar_search.xml \
   res/layout-xlarge-v11/gecko_app.xml \
+  res/layout-xlarge-v11/tabs_panel.xml \
   res/xml/preferences.xml \
   res/xml/searchable.xml \
   res/menu/browser_app_menu.xml \
@@ -406,7 +407,7 @@ RES_LAYOUT = \
   res/layout/remote_tabs_group.xml \
   res/layout/tabs_counter.xml \
   res/layout/tabs_panel_indicator.xml \
-  res/layout/tabs_panel_toolbar_menu.xml \
+  res/layout/tabs_panel_header.xml \
   res/layout/tabs_row.xml \
   res/layout/list_item_header.xml \
   res/layout/select_dialog_list.xml \
@@ -428,7 +429,8 @@ RES_LAYOUT_XLARGE_V11 = \
   res/layout-xlarge-v11/font_size_preference.xml \
   res/layout-xlarge-v11/remote_tabs_child.xml \
   res/layout-xlarge-v11/remote_tabs_group.xml \
-  res/layout-xlarge-v11/tabs_panel_toolbar_menu.xml \
+  res/layout-xlarge-v11/tabs_panel_header.xml \
+  res/layout-xlarge-v11/tabs_panel_footer.xml \
   res/layout-xlarge-v11/tabs_row.xml \
   $(NULL)
 
@@ -532,6 +534,9 @@ RES_DRAWABLE_BASE = \
   res/drawable/ic_status_logo.png \
   res/drawable/remote_tabs_off.png \
   res/drawable/remote_tabs_on.png \
+  res/drawable/spinner_default.9.png \
+  res/drawable/spinner_focused.9.png \
+  res/drawable/spinner_pressed.9.png \
   res/drawable/tab_indicator_divider.9.png \
   res/drawable/tab_indicator_selected.9.png \
   res/drawable/tab_indicator_selected_focused.9.png \
@@ -560,7 +565,8 @@ RES_DRAWABLE_BASE = \
   res/drawable/menu_pb.png \
   res/drawable/menu_panel_bg.9.png \
   res/drawable/menu_popup_bg.9.png \
-  res/drawable/menu_popup_arrow.png \
+  res/drawable/menu_popup_arrow_bottom.png \
+  res/drawable/menu_popup_arrow_top.png \
   res/drawable/menu_item_check.png \
   res/drawable/menu_item_more.png \
   res/drawable/menu_item_uncheck.png \
@@ -624,6 +630,9 @@ RES_DRAWABLE_HDPI = \
   res/drawable-hdpi/ic_status_logo.png \
   res/drawable-hdpi/remote_tabs_off.png \
   res/drawable-hdpi/remote_tabs_on.png \
+  res/drawable-hdpi/spinner_default.9.png \
+  res/drawable-hdpi/spinner_focused.9.png \
+  res/drawable-hdpi/spinner_pressed.9.png \
   res/drawable-hdpi/tab_indicator_divider.9.png \
   res/drawable-hdpi/tab_indicator_selected.9.png \
   res/drawable-hdpi/tab_indicator_selected_focused.9.png \
@@ -652,7 +661,8 @@ RES_DRAWABLE_HDPI = \
   res/drawable-hdpi/menu_pb.png \
   res/drawable-hdpi/menu_panel_bg.9.png \
   res/drawable-hdpi/menu_popup_bg.9.png \
-  res/drawable-hdpi/menu_popup_arrow.png \
+  res/drawable-hdpi/menu_popup_arrow_bottom.png \
+  res/drawable-hdpi/menu_popup_arrow_top.png \
   res/drawable-hdpi/menu_item_check.png \
   res/drawable-hdpi/menu_item_more.png \
   res/drawable-hdpi/menu_item_uncheck.png \
@@ -713,6 +723,9 @@ RES_DRAWABLE_XHDPI = \
   res/drawable-xhdpi/ic_menu_new_tab_small.png \
   res/drawable-xhdpi/ic_menu_reload.png \
   res/drawable-xhdpi/ic_status_logo.png \
+  res/drawable-xhdpi/spinner_default.9.png \
+  res/drawable-xhdpi/spinner_focused.9.png \
+  res/drawable-xhdpi/spinner_pressed.9.png \
   res/drawable-xhdpi/tab_indicator_divider.9.png \
   res/drawable-xhdpi/tab_indicator_selected.9.png \
   res/drawable-xhdpi/tab_indicator_selected_focused.9.png \
@@ -738,7 +751,8 @@ RES_DRAWABLE_XHDPI = \
   res/drawable-xhdpi/menu_pb.png \
   res/drawable-xhdpi/menu_panel_bg.9.png \
   res/drawable-xhdpi/menu_popup_bg.9.png \
-  res/drawable-xhdpi/menu_popup_arrow.png \
+  res/drawable-xhdpi/menu_popup_arrow_bottom.png \
+  res/drawable-xhdpi/menu_popup_arrow_top.png \
   res/drawable-xhdpi/menu_item_check.png \
   res/drawable-xhdpi/menu_item_more.png \
   res/drawable-xhdpi/menu_item_uncheck.png \
@@ -1029,7 +1043,6 @@ RES_MENU = \
   res/menu/awesomebar_contextmenu.xml \
   res/menu/gecko_app_menu.xml \
   res/menu/tabs_menu.xml \
-  res/menu/tabs_switcher_menu.xml \
   res/menu/titlebar_contextmenu.xml \
   res/menu/abouthome_topsites_contextmenu.xml \
   res/menu-v11/tabs_menu.xml \
@@ -1079,6 +1092,7 @@ MOZ_ANDROID_DRAWABLES += \
   mobile/android/base/resources/drawable/remote_tabs_level.xml                  \
   mobile/android/base/resources/drawable/start.png                              \
   mobile/android/base/resources/drawable/site_security_level.xml                \
+  mobile/android/base/resources/drawable/spinner.xml                            \
   mobile/android/base/resources/drawable/suggestion_selector.xml                \
   mobile/android/base/resources/drawable/tab_new_level.xml                      \
   mobile/android/base/resources/drawable/tabs_button.xml                        \
