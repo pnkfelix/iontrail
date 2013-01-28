@@ -694,8 +694,8 @@ js::ReportUsageError(JSContext *cx, HandleObject callee, const char *msg)
     JS_ASSERT(!shape->writable());
     JS_ASSERT(shape->hasDefaultGetter());
 
-    jsval usage;
-    if (!JS_LookupProperty(cx, callee, "usage", &usage))
+    RootedValue usage(cx);
+    if (!JS_LookupProperty(cx, callee, "usage", usage.address()))
         return;
 
     if (JSVAL_IS_VOID(usage)) {
@@ -1138,7 +1138,7 @@ js_ReportValueErrorFlags(JSContext *cx, unsigned flags, const unsigned errorNumb
     return ok;
 }
 
-JSErrorFormatString js_ErrorFormatString[JSErr_Limit] = {
+const JSErrorFormatString js_ErrorFormatString[JSErr_Limit] = {
 #define MSG_DEF(name, number, count, exception, format) \
     { format, count, exception } ,
 #include "js.msg"

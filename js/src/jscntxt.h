@@ -806,6 +806,11 @@ struct JSRuntime : js::RuntimeFriendFields
     bool                gcIncrementalEnabled;
 
     /*
+     * GGC can be enabled from the command line while testing.
+     */
+    bool                gcGenerationalEnabled;
+
+    /*
      * Whether exact stack scanning is enabled for this runtime. This is
      * currently only used for dynamic root analysis. Exact scanning starts out
      * enabled, and is disabled if e4x has been used.
@@ -2069,7 +2074,7 @@ js_ReportValueErrorFlags(JSContext *cx, unsigned flags, const unsigned errorNumb
     ((void)js_ReportValueErrorFlags(cx, JSREPORT_ERROR, errorNumber,          \
                                     spindex, v, fallback, arg1, arg2))
 
-extern JSErrorFormatString js_ErrorFormatString[JSErr_Limit];
+extern const JSErrorFormatString js_ErrorFormatString[JSErr_Limit];
 
 #ifdef JS_THREADSAFE
 # define JS_ASSERT_REQUEST_DEPTH(cx)  JS_ASSERT((cx)->runtime->requestDepth >= 1)

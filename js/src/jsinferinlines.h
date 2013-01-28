@@ -347,28 +347,30 @@ IsInlinableCall(jsbytecode *pc)
  * and JSScripts won't be collected during GC. Does additional sanity checking
  * that inference is not reentrant and that recompilations occur properly.
  */
-struct AutoEnterTypeInference
+struct AutoEnterAnalysis
 {
+    /* Prevent GC activity in the middle of analysis. */
+    gc::AutoSuppressGC suppressGC;
+
     FreeOp *freeOp;
     JSCompartment *compartment;
     bool oldActiveAnalysis;
-    bool oldActiveInference;
 
-    AutoEnterTypeInference(JSContext *cx, bool compiling = false)
+    AutoEnterAnalysis(JSContext *cx)
+      : suppressGC(cx)
     {
-        JS_ASSERT_IF(!compiling, cx->compartment->types.inferenceEnabled);
         init(cx->runtime->defaultFreeOp(), cx->compartment);
     }
 
-    AutoEnterTypeInference(FreeOp *fop, JSCompartment *comp)
+    AutoEnterAnalysis(FreeOp *fop, JSCompartment *comp)
+      : suppressGC(comp)
     {
         init(fop, comp);
     }
 
-    ~AutoEnterTypeInference()
+    ~AutoEnterAnalysis()
     {
         compartment->activeAnalysis = oldActiveAnalysis;
-        compartment->activeInference = oldActiveInference;
 
         /*
          * If there are no more type inference activations on the stack,
@@ -376,7 +378,7 @@ struct AutoEnterTypeInference
          * invoking any scripted code while type inference is running.
          * :TODO: assert this.
          */
-        if (!compartment->activeInference) {
+        if (!compartment->activeAnalysis) {
             TypeCompartment *types = &compartment->types;
             if (types->pendingNukeTypes)
                 types->nukeTypes(freeOp);
@@ -390,9 +392,7 @@ struct AutoEnterTypeInference
         freeOp = fop;
         compartment = comp;
         oldActiveAnalysis = compartment->activeAnalysis;
-        oldActiveInference = compartment->activeInference;
         compartment->activeAnalysis = true;
-        compartment->activeInference = true;
     }
 };
 
@@ -678,11 +678,10 @@ extern void TypeDynamicResult(JSContext *cx, HandleScript script, jsbytecode *pc
 inline bool
 UseNewTypeAtEntry(JSContext *cx, StackFrame *fp)
 {
-
     if (!fp->isConstructing() || !cx->typeInferenceEnabled() || !fp->prev())
         return false;
 
-    RootedScript prevScript(cx, fp->prev()->script());
+    JSScript *prevScript = fp->prev()->script();
     return UseNewType(cx, prevScript, fp->prevpc());
 }
 
@@ -920,7 +919,7 @@ TypeScript::MonitorUnknown(JSContext *cx, HandleScript script, jsbytecode *pc)
 }
 
 /* static */ inline void
-TypeScript::GetPcScript(JSContext *cx, MutableHandleScript script, jsbytecode **pc)
+TypeScript::GetPcScript(JSContext *cx, JSScript **script, jsbytecode **pc)
 {
     AutoAssertNoGC nogc;
 #ifdef JS_ION
@@ -929,7 +928,7 @@ TypeScript::GetPcScript(JSContext *cx, MutableHandleScript script, jsbytecode **
         return;
     }
 #endif
-    script.set(cx->fp()->script());
+    *script = cx->fp()->script();
     *pc = cx->regs().pc;
 }
 
@@ -938,7 +937,7 @@ TypeScript::MonitorOverflow(JSContext *cx)
 {
     RootedScript script(cx);
     jsbytecode *pc;
-    GetPcScript(cx, &script, &pc);
+    GetPcScript(cx, script.address(), &pc);
     MonitorOverflow(cx, script, pc);
 }
 
@@ -947,7 +946,7 @@ TypeScript::MonitorString(JSContext *cx)
 {
     RootedScript script(cx);
     jsbytecode *pc;
-    GetPcScript(cx, &script, &pc);
+    GetPcScript(cx, script.address(), &pc);
     MonitorString(cx, script, pc);
 }
 
@@ -956,7 +955,7 @@ TypeScript::MonitorUnknown(JSContext *cx)
 {
     RootedScript script(cx);
     jsbytecode *pc;
-    GetPcScript(cx, &script, &pc);
+    GetPcScript(cx, script.address(), &pc);
     MonitorUnknown(cx, script, pc);
 }
 
@@ -965,7 +964,7 @@ TypeScript::Monitor(JSContext *cx, const js::Value &rval)
 {
     RootedScript script(cx);
     jsbytecode *pc;
-    GetPcScript(cx, &script, &pc);
+    GetPcScript(cx, script.address(), &pc);
     Monitor(cx, script, pc, rval);
 }
 
@@ -999,7 +998,7 @@ TypeScript::SetThis(JSContext *cx, HandleScript script, Type type)
     bool analyze = cx->hasRunOption(JSOPTION_METHODJIT_ALWAYS);
 
     if (!ThisTypes(script)->hasType(type) || analyze) {
-        AutoEnterTypeInference enter(cx);
+        AutoEnterAnalysis enter(cx);
 
         InferSpew(ISpewOps, "externalType: setThis #%u: %s",
                   script->id(), TypeString(type));
@@ -1025,7 +1024,7 @@ TypeScript::SetLocal(JSContext *cx, HandleScript script, unsigned local, Type ty
     JS_ASSERT(script->types);
 
     if (!LocalTypes(script, local)->hasType(type)) {
-        AutoEnterTypeInference enter(cx);
+        AutoEnterAnalysis enter(cx);
 
         InferSpew(ISpewOps, "externalType: setLocal #%u %u: %s",
                   script->id(), local, TypeString(type));
@@ -1050,7 +1049,7 @@ TypeScript::SetArgument(JSContext *cx, HandleScript script, unsigned arg, Type t
     JS_ASSERT(script->types);
 
     if (!ArgTypes(script, arg)->hasType(type)) {
-        AutoEnterTypeInference enter(cx);
+        AutoEnterAnalysis enter(cx);
 
         InferSpew(ISpewOps, "externalType: setArg #%u %u: %s",
                   script->id(), arg, TypeString(type));
@@ -1354,7 +1353,7 @@ TypeSet::clearObjects()
 inline void
 TypeSet::addType(JSContext *cx, Type type)
 {
-    JS_ASSERT(cx->compartment->activeInference);
+    JS_ASSERT(cx->compartment->activeAnalysis);
 
     if (unknown())
         return;
@@ -1541,7 +1540,7 @@ TypeObject::setBasePropertyCount(uint32_t count)
 inline HeapTypeSet *
 TypeObject::getProperty(JSContext *cx, jsid id, bool own)
 {
-    JS_ASSERT(cx->compartment->activeInference);
+    JS_ASSERT(cx->compartment->activeAnalysis);
     JS_ASSERT(JSID_IS_VOID(id) || JSID_IS_EMPTY(id) || JSID_IS_STRING(id));
     JS_ASSERT_IF(!JSID_IS_EMPTY(id), id == MakeTypeId(cx, id));
     JS_ASSERT(!unknownProperties());
@@ -1741,8 +1740,7 @@ JSScript::ensureHasTypes(JSContext *cx)
 /* static */ inline bool
 JSScript::ensureRanAnalysis(JSContext *cx, JS::HandleScript script)
 {
-    AssertCanGC();
-    js::analyze::AutoEnterAnalysis aea(cx->compartment);
+    js::types::AutoEnterAnalysis aea(cx);
 
     if (!script->ensureHasTypes(cx))
         return false;
@@ -1755,11 +1753,10 @@ JSScript::ensureRanAnalysis(JSContext *cx, JS::HandleScript script)
 /* static */ inline bool
 JSScript::ensureRanInference(JSContext *cx, JS::HandleScript script)
 {
-    AssertCanGC();
     if (!script->ensureRanAnalysis(cx, script))
         return false;
     if (!script->analysis()->ranInference()) {
-        js::types::AutoEnterTypeInference enter(cx);
+        js::types::AutoEnterAnalysis enter(cx);
         script->analysis()->analyzeTypes(cx);
     }
     return !script->analysis()->OOM() &&

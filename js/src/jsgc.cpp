@@ -4209,13 +4209,10 @@ IncrementalCollectSlice(JSRuntime *rt,
 IncrementalSafety
 gc::IsIncrementalGCSafe(JSRuntime *rt)
 {
+    JS_ASSERT(!rt->mainThread.suppressGC);
+
     if (rt->gcKeepAtoms)
         return IncrementalSafety::Unsafe("gcKeepAtoms set");
-
-    for (CompartmentsIter c(rt); !c.done(); c.next()) {
-        if (c->activeAnalysis)
-            return IncrementalSafety::Unsafe("activeAnalysis set");
-    }
 
     if (!rt->gcIncrementalEnabled)
         return IncrementalSafety::Unsafe("incremental permanently disabled");
@@ -4581,6 +4578,10 @@ gc::RunDebugGC(JSContext *cx)
 {
 #ifdef JS_GC_ZEAL
     JSRuntime *rt = cx->runtime;
+
+    if (rt->mainThread.suppressGC)
+        return;
+
     PrepareForDebugGC(cx->runtime);
 
     int type = rt->gcZeal();
@@ -4618,8 +4619,7 @@ gc::RunDebugGC(JSContext *cx)
             rt->gcIncrementalLimit = rt->gcZealFrequency / 2;
         }
     } else if (type == ZealPurgeAnalysisValue) {
-        if (!cx->compartment->activeAnalysis)
-            cx->compartment->types.maybePurgeAnalysis(cx, /* force = */ true);
+        cx->compartment->types.maybePurgeAnalysis(cx, /* force = */ true);
     } else {
         Collect(rt, false, SliceBudget::Unlimited, GC_NORMAL, gcreason::DEBUG_GC);
     }
@@ -4652,17 +4652,6 @@ void PreventGCDuringInteractiveDebug()
 }
 
 #endif
-
-gc::AutoSuppressGC::AutoSuppressGC(JSContext *cx)
-  : suppressGC_(cx->runtime->mainThread.suppressGC)
-{
-    suppressGC_++;
-}
-
-gc::AutoSuppressGC::~AutoSuppressGC()
-{
-    suppressGC_--;
-}
 
 void
 js::ReleaseAllJITCode(FreeOp *fop)

@@ -20,6 +20,7 @@
 
 #include "assembler/wtf/Platform.h"
 #include "gc/Marking.h"
+#include "gc/Root.h"
 #include "js/MemoryMetrics.h"
 #include "methodjit/MethodJIT.h"
 #include "methodjit/PolyIC.h"
@@ -53,6 +54,7 @@ JSCompartment::JSCompartment(JSRuntime *rt)
     enterCompartmentDepth(0),
     allocator(this),
 #ifdef JSGC_GENERATIONAL
+    gcNursery(),
     gcStoreBuffer(&gcNursery),
 #endif
     ionUsingBarriers_(false),
@@ -121,7 +123,7 @@ JSCompartment::init(JSContext *cx)
     if (cx)
         cx->runtime->dateTimeInfo.updateTimeZoneAdjustment();
 
-    activeAnalysis = activeInference = false;
+    activeAnalysis = false;
     types.init(cx);
 
     if (!crossCompartmentWrappers.init())
@@ -244,6 +246,9 @@ bool
 JSCompartment::putWrapper(const CrossCompartmentKey &wrapped, const js::Value &wrapper)
 {
     JS_ASSERT(wrapped.wrapped);
+    JS_ASSERT(!IsPoisonedPtr(wrapped.wrapped));
+    JS_ASSERT(!IsPoisonedPtr(wrapped.debugger));
+    JS_ASSERT(!IsPoisonedPtr(wrapper.toGCThing()));
     JS_ASSERT_IF(wrapped.kind == CrossCompartmentKey::StringWrapper, wrapper.isString());
     JS_ASSERT_IF(wrapped.kind != CrossCompartmentKey::StringWrapper, wrapper.isObject());
     // todo: uncomment when bug 815999 is fixed:
@@ -252,8 +257,9 @@ JSCompartment::putWrapper(const CrossCompartmentKey &wrapped, const js::Value &w
 }
 
 bool
-JSCompartment::wrap(JSContext *cx, Value *vp, JSObject *existing)
+JSCompartment::wrap(JSContext *cx, Value *vp, JSObject *existingArg)
 {
+    RootedObject existing(cx, existingArg);
     JS_ASSERT(cx->compartment == this);
     JS_ASSERT_IF(existing, existing->compartment() == cx->compartment);
     JS_ASSERT_IF(existing, vp->isObject());
@@ -560,7 +566,8 @@ JSCompartment::markTypes(JSTracer *trc)
      * compartment. These can be referred to directly by type sets, which we
      * cannot modify while code which depends on these type sets is active.
      */
-    JS_ASSERT(activeAnalysis || isPreservingCode());
+    JS_ASSERT(!activeAnalysis);
+    JS_ASSERT(isPreservingCode());
 
     for (CellIterUnderGC i(this, FINALIZE_SCRIPT); !i.done(); i.next()) {
         JSScript *script = i.get<JSScript>();
@@ -636,9 +643,11 @@ JSCompartment::isDiscardingJitCode(JSTracer *trc)
 void
 JSCompartment::sweep(FreeOp *fop, bool releaseTypes)
 {
+    JS_ASSERT(!activeAnalysis);
+
     {
         gcstats::AutoPhase ap(rt->gcStats, gcstats::PHASE_SWEEP_DISCARD_CODE);
-        discardJitCode(fop, !activeAnalysis && !gcPreserveCode);
+        discardJitCode(fop, !gcPreserveCode);
     }
 
     /* This function includes itself in PHASE_SWEEP_TABLES. */
@@ -678,7 +687,7 @@ JSCompartment::sweep(FreeOp *fop, bool releaseTypes)
         WeakMapBase::sweepCompartment(this);
     }
 
-    if (!activeAnalysis && !gcPreserveCode) {
+    if (!gcPreserveCode) {
         JS_ASSERT(!types.constrainedOutputs);
         gcstats::AutoPhase ap(rt->gcStats, gcstats::PHASE_DISCARD_ANALYSIS);
 
