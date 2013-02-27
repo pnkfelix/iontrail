@@ -1173,6 +1173,21 @@ function ParallelArrayToString() {
   return result;
 }
 
+function ParallelMatrixConstructFromFunctionMode(shape, func, mode) {
+  this.buffer = undefined;
+  this.offset = 0;
+  this.shape = [0];
+
+  var getFunc;
+  switch(this.shape.length) {
+    case 1: getFunc = ParallelArrayGet1; break;
+    case 2: getFunc = ParallelArrayGet2; break;
+    case 3: getFunc = ParallelArrayGet3; break;
+    default: getFunc = ParallelArrayGetN; break;
+  }
+  this.get = getFunc;
+}
+
 /**
  * Internal debugging tool: checks that the given `mode` permits
  * sequential execution
