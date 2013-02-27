@@ -281,6 +281,12 @@ js::intrinsic_NewParallelArray(JSContext *cx, unsigned argc, Value *vp)
 }
 
 JSBool
+js::intrinsic_NewParallelMatrix(JSContext *cx, unsigned argc, Value *vp)
+{
+    return false;
+}
+
+JSBool
 js::intrinsic_NewDenseArray(JSContext *cx, unsigned argc, Value *vp)
 {
     // Usage: %NewDenseArray(length)
@@ -452,6 +458,7 @@ JSFunctionSpec intrinsic_functions[] = {
     JS_FN("ParallelDo",           intrinsic_ParallelDo,           2,0),
     JS_FN("ParallelSlices",       intrinsic_ParallelSlices,       0,0),
     JS_FN("NewParallelArray",     intrinsic_NewParallelArray,     3,0),
+    JS_FN("NewParallelMatrix",    intrinsic_NewParallelMatrix,     3,0),
     JS_FN("NewDenseArray",        intrinsic_NewDenseArray,        1,0),
     JS_FN("UnsafeSetElement",     intrinsic_UnsafeSetElement,     3,0),
     JS_FN("ForceSequential",      intrinsic_ForceSequential,      0,0),
