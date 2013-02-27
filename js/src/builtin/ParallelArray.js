@@ -1173,10 +1173,28 @@ function ParallelArrayToString() {
   return result;
 }
 
-function ParallelMatrixConstructFromFunctionMode(shape, func, mode) {
-  this.buffer = undefined;
+function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) {
+  if (shape === undefined) {
+    shape = [0];
+  }
+  if (grain === undefined) {
+    grain = [];
+  } else if (grain instanceof Function) {
+    grain = [];
+    mode = func;
+    func = grain;
+  }
+  if (func === undefined) {
+    func = function fill_with_undef () { return undefined; };
+  }
+
+  var len = 1;
+  for(var i = 0; i < shape.length; i++) {
+    len *= shape[i];
+  }
+  this.buffer = new Array(len);
   this.offset = 0;
-  this.shape = [0];
+  this.shape = shape;
 
   var getFunc;
   switch(this.shape.length) {
@@ -1186,6 +1204,21 @@ function ParallelMatrixConstructFromFunctionMode(shape, func, mode) {
     default: getFunc = ParallelArrayGetN; break;
   }
   this.get = getFunc;
+
+  // At some point, should specialize on particular shape.length
+  // values (e.g. 1, 2, ...).  But more important for now to get
+  // the general case right.
+  fillN(0, len);
+
+  function fillN(indexStart, indexEnd) {
+    var sdims = shape.length;
+    var frame = shape.slice(0, sdims - grain.length);
+    var frame_indices = ComputeIndices(frame, 0);
+    for (var i = indexStart; i < indexEnd; i++) {
+      UnsafeSetElement(buffer, i, func.apply(null, frame_indices));
+      StepIndices(frame, frame_indices);
+    }
+  }
 }
 
 /**

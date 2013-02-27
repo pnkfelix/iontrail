@@ -57,7 +57,7 @@ class ParallelMatrixObject : public JSObject
 {
     static Class protoClass;
     static JSFunctionSpec methods[];
-    static const uint32_t NumFixedSlots = 1;
+    static const uint32_t NumFixedSlots = 4;
     static const uint32_t NumCtors = 1;
     static FixedHeapPtr<PropertyName> ctorNames[NumCtors];
 
