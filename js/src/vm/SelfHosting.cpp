@@ -303,6 +303,12 @@ js::intrinsic_NewParallelArray(JSContext *cx, unsigned argc, Value *vp)
  * the given length where all values are initialized to holes.
  */
 JSBool
+js::intrinsic_NewParallelMatrix(JSContext *cx, unsigned argc, Value *vp)
+{
+    return false;
+}
+
+JSBool
 js::intrinsic_NewDenseArray(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
@@ -473,6 +479,7 @@ JSFunctionSpec intrinsic_functions[] = {
     JS_FN("ParallelDo",           intrinsic_ParallelDo,           2,0),
     JS_FN("ParallelSlices",       intrinsic_ParallelSlices,       0,0),
     JS_FN("NewParallelArray",     intrinsic_NewParallelArray,     3,0),
+    JS_FN("NewParallelMatrix",    intrinsic_NewParallelMatrix,     3,0),
     JS_FN("NewDenseArray",        intrinsic_NewDenseArray,        1,0),
     JS_FN("UnsafeSetElement",     intrinsic_UnsafeSetElement,     3,0),
     JS_FN("ShouldForceSequential", intrinsic_ShouldForceSequential, 0,0),
