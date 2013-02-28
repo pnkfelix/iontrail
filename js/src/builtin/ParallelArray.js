@@ -1174,16 +1174,21 @@ function ParallelArrayToString() {
 }
 
 function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) {
+
+  if (!mode) mode = func;
+  if (!mode) mode = grain;
+
   if (shape === undefined) {
     shape = [0];
   }
+
   if (grain === undefined) {
     grain = [];
-  } else if (grain instanceof Function) {
-    grain = [];
-    mode = func;
+  } else if (typeof(grain) === "function") {
     func = grain;
+    grain = [];
   }
+
   if (func === undefined) {
     func = function fill_with_undef () { return undefined; };
   }
@@ -1192,31 +1197,68 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
   for(var i = 0; i < shape.length; i++) {
     len *= shape[i];
   }
-  this.buffer = new Array(len);
-  this.offset = 0;
-  this.shape = shape;
+  var buffer = NewDenseArray(len);
 
   var getFunc;
-  switch(this.shape.length) {
+  switch(shape.length) {
     case 1: getFunc = ParallelArrayGet1; break;
     case 2: getFunc = ParallelArrayGet2; break;
     case 3: getFunc = ParallelArrayGet3; break;
     default: getFunc = ParallelArrayGetN; break;
   }
-  this.get = getFunc;
 
   // At some point, should specialize on particular shape.length
   // values (e.g. 1, 2, ...).  But more important for now to get
   // the general case right.
-  fillN(0, len);
 
-  function fillN(indexStart, indexEnd) {
+  var frame_len = 1;
+  var frame_dims = shape.length - grain.length;
+  for(var i = 0; i < frame_dims; i++) {
+    frame_len *= shape[i];
+  }
+  var grain_len = 1;
+  for(var i = frame_dims; i < shape.length; i++) {
+    var shape_amt = shape[i];
+    if (i == shape.length - 1 && typeof(shape_amt) !== "number")
+      shape_amt = 1;
+    grain_len *= shape_amt;
+  }
+
+  fillN(len, grain_len);
+
+  this.buffer = buffer;
+  this.offset = 0;
+  this.shape = shape;
+  this.get = getFunc;
+
+  function fillN(indexEnd, grainLen) {
     var sdims = shape.length;
     var frame = shape.slice(0, sdims - grain.length);
     var frame_indices = ComputeIndices(frame, 0);
-    for (var i = indexStart; i < indexEnd; i++) {
-      UnsafeSetElement(buffer, i, func.apply(null, frame_indices));
-      StepIndices(frame, frame_indices);
+    if (grainLen == 1) {
+      mode.print("alpha");
+      for (var i = 0; i < indexEnd; i++) {
+        mode.print("beta "+i);
+        UnsafeSetElement(buffer, i, func.apply(null, frame_indices));
+        StepIndices(frame, frame_indices);
+      }
+    } else {
+      for (var i = 0; i < indexEnd; i+=grainLen) {
+        mode.print("gamma "+i);
+        var subarray = func.apply(null, frame_indices);
+        if (IS_ARRAY(subarray)) {
+          for (var j = 0; j < grainLen; j++) {
+            mode.print("delta "+j);
+            UnsafeSetElement(buffer, i+j, subarray[j]);
+          }
+        } else {
+          for (var j = 0; j < grainLen; j++) {
+            mode.print("delta "+j);
+            UnsafeSetElement(buffer, i+j, subarray.buffer[j]);
+          }
+        }
+        StepIndices(frame, frame_indices);
+      }
     }
   }
 }
