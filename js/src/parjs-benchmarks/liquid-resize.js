@@ -45,7 +45,7 @@ load(libdir + "rectarray.js");
 // To see the images, try e.g. smallImage.print()
 
 var tinyImage =
-  RectArray.buildA(20, 5,
+  RectArray.build(20, 5,
     function(x, y, k) {
       var ret;
       if (6 <= x && x < 8 && 0 <= y && y < 4)
@@ -62,7 +62,7 @@ var tinyImage =
     });
 
 var smallImage =
-  RectArray.buildA(60, 15,
+  RectArray.build(60, 15,
     function(x, y, k) {
       var ret;
       if (6 <= x && x < 8 && 0 <= y && y < 7)
@@ -79,7 +79,7 @@ var smallImage =
     });
 
 var bigImage =
-  RectArray.buildA(200, 70,
+  RectArray.build(200, 70,
     function(x, y, k) {
       var ret;
       if (4 <= x && x < 7 && 10 <= y && y < 40)
@@ -97,7 +97,7 @@ var bigImage =
 
 // randomImage: Nat Nat Nat Nat -> RectArray
 function randomImage(w, h, sparsity, variety) {
-  return RectArray.buildA(w, h, function (x,y) {
+  return RectArray.build(w, h, function (x,y) {
       if (Math.random() > 1/sparsity)
         return 0;
       else
@@ -107,12 +107,12 @@ function randomImage(w, h, sparsity, variety) {
 
 // stripedImage: Nat Nat -> RectArray
 function stripedImage(w, h) {
-  return RectArray.buildA(w, h,
+  return RectArray.build(w, h,
                          function (x, y) (Math.abs(x%100-y%100) < 10) ? 32 : 0);
 }
 
 var massiveImage =
-  RectArray.buildA(70, 10000, function(x,y) (Math.abs(x%100-y%100) < 10) ? 32 : 0);
+  RectArray.build(70, 10000, function(x,y) (Math.abs(x%100-y%100) < 10) ? 32 : 0);
 
 // asciiart: Self -> RectArray
 RectArray.prototype.asciiart = function asciiart() {
@@ -142,18 +142,15 @@ RectArray.prototype.print =
 // toRectArray: Self Nat Nat -> RectArray
 Array.prototype.toRectArray = function toRectArray(w,h) {
   var p = this;
-  return RectArray.buildA(w, h, function (i, j) p[i+j*w]);
+  return RectArray.build(w, h, function (i, j) p[i+j*w]);
 };
 
 // toRectArray: Self -> RectArray
-ParallelArray.prototype.toRectArray = function toRectArray(w, h) {
+ParallelArray.prototype.toRectArray = function toRectArray() {
   var p = this;
-  if (h == undefined) h = p.shape[1];
-  if (w == undefined) w = p.shape[0];
-  if (p.shape.length == 2)
-    return RectArray.buildA(w, h, function (i,j) p.get(i,j));
-  if (p.shape.length == 1)
-    return RectArray.buildA(w, h, function (i,j) p.get(i + j*w));
+  var w = p.shape[0];
+  var h = p.shape[1];
+  return RectArray.build(w, h, function (i,j) p.get(i,j));
 };
 
 // toParallelArray: Self -> ParallelArray
@@ -190,7 +187,7 @@ function detectEdgesSeq_naive(ra) {
   var width = ra.width;
   var height = ra.height;
 
-  return RectArray.buildA(width, height,
+  return RectArray.build(width, height,
     // The fill functions here and below are begging for refactoring, but leaving as manual clones until performance issues are resolved.
     function (x,y)
     {
@@ -277,7 +274,7 @@ function detectEdgesPar_2d(pa, mode)
   var width = pa.shape[0];
   var height = pa.shape[1];
 
-  var ret=new ParallelArray([width, height],
+  return new ParallelArray([width, height],
     function (x,y)
     {
       // process pixel
@@ -298,9 +295,6 @@ function detectEdgesPar_2d(pa, mode)
       var total = (Math.abs(totalX) + Math.abs(totalY))/8.0 | 0;
       return total;
     }, mode);
-  ret.width = width;
-  ret.height = height;
-  return ret;
 }
 
 function detectEdgesPar_1d(pa, mode)
@@ -315,7 +309,7 @@ function detectEdgesPar_1d(pa, mode)
   var width = pa.shape[0];
   var height = pa.shape[1];
 
-  var ret=new ParallelArray(width*height,
+  return new ParallelArray(width*height,
     function (index)
     {
       var j = index | 0;
@@ -339,10 +333,6 @@ function detectEdgesPar_1d(pa, mode)
       var total = (Math.abs(totalX) + Math.abs(totalY))/8.0 | 0;
       return total;
     }, mode);
-
-  ret.width = width;
-  ret.height = height;
-  return ret;
 }
 
 // detectEdges: Self [ParMode] -> ParallelArray
@@ -460,7 +450,7 @@ RectArray.prototype.findPath =
 
 // cutPathHorizontallyBW : RectArray Array -> RectArray
 function cutPathHorizontallyBW(ra, path) {
-  return RectArray.buildA(ra.width-1, ra.height,
+  return RectArray.build(ra.width-1, ra.height,
                          function (x, y) {
                              if (x < path[y]-1)
                                return ra.get(x, y);
@@ -478,7 +468,7 @@ RectArray.prototype.cutPathHorizontallyBW =
 
 // cutPathVerticallyBW: RectArray Path -> RectArray
 function cutPathVerticallyBW(ra, path) {
-  return RectArray.buildA(ra.width, ra.height-1,
+  return RectArray.build(ra.width, ra.height-1,
                          function (x, y) {
                              if (y < path[x]-1)
                                return ra.get(x, y);
@@ -506,6 +496,14 @@ function cutHorizontalSeamBW_seq(r)
 function cutHorizontalSeamBW_par(r, mode)
 {
   var e = r.toParallelArray(mode).detectEdges1D(mode).computeEnergy(mode);
+
+  var p = e.findPath(mode); e = null;
+  return r.cutPathHorizontallyBW(p, mode);
+}
+
+function cutHorizontalSeamBW(r, mode)
+{
+  var e = r.toParallelArray(mode).detectEdges2D(mode).computeEnergy(mode);
   var p = e.findPath(mode); e = null;
   return r.cutPathHorizontallyBW(p, mode);
 }
@@ -534,9 +532,7 @@ RectArray.prototype.cutVerticalSeamBW =
 // cutVerticalSeamBW: Self Nat Nat ParMode -> Self
 RectArray.prototype.shrinkBW = function shrinkBW(w, h, mode) {
   var r = this;
-  var i=0;
   while (r.height > h || r.width > w) {
-    if (i > 0 && i%10 == 0) { print(i); } i++;
     if (r.width > w) 
       r = r.cutHorizontalSeamBW(mode);
     if (r.height > h)
