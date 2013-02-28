@@ -265,3 +265,73 @@ js_InitParallelArrayClass(JSContext *cx, js::HandleObject obj)
 {
     return ParallelArrayObject::initClass(cx, obj);
 }
+
+//
+// ParallelMatrixObject
+//
+
+FixedHeapPtr<PropertyName> ParallelMatrixObject::ctorNames[NumCtors];
+
+JSFunctionSpec ParallelMatrixObject::methods[] = {
+    { "map",       JSOP_NULLWRAPPER, 2, 0, "ParallelMatrixMap"       },
+    { "reduce",    JSOP_NULLWRAPPER, 2, 0, "ParallelMatrixReduce"    },
+    { "scan",      JSOP_NULLWRAPPER, 2, 0, "ParallelMatrixScan"      },
+    { "scatter",   JSOP_NULLWRAPPER, 5, 0, "ParallelMatrixScatter"   },
+    { "filter",    JSOP_NULLWRAPPER, 2, 0, "ParallelMatrixFilter"    },
+    { "partition", JSOP_NULLWRAPPER, 1, 0, "ParallelMatrixPartition" },
+    { "flatten",   JSOP_NULLWRAPPER, 0, 0, "ParallelMatrixFlatten" },
+
+    // FIXME #838906. Note that `get()` is not currently defined on this table but
+    // rather is assigned to each instance of ParallelArray (and likewise ParallelMatrix) as an own
+    // property.  This is a bit of a hack designed to supply a
+    // specialized version of get() based on the dimensionality of the
+    // receiver.  In the future we can improve this by (1) extending
+    // TI to track the dimensionality of the receiver and (2) using a
+    // hint to aggressively inline calls to get().
+    // { "get",      JSOP_NULLWRAPPER, 1, 0, "ParallelMatrixGet" },
+
+    { "toString", JSOP_NULLWRAPPER, 0, 0, "ParallelMatrixToString" },
+    JS_FS_END
+};
+
+Class ParallelMatrixObject::protoClass = {
+    "ParallelMatrix",
+    JSCLASS_HAS_CACHED_PROTO(JSProto_ParallelArray),
+    JS_PropertyStub,         // addProperty
+    JS_PropertyStub,         // delProperty
+    JS_PropertyStub,         // getProperty
+    JS_StrictPropertyStub,   // setProperty
+    JS_EnumerateStub,
+    JS_ResolveStub,
+    JS_ConvertStub
+};
+
+Class ParallelMatrixObject::class_ = {
+    "ParallelMatrix",
+    JSCLASS_HAS_CACHED_PROTO(JSProto_ParallelMatrix),
+    JS_PropertyStub,         // addProperty
+    JS_PropertyStub,         // delProperty
+    JS_PropertyStub,         // getProperty
+    JS_StrictPropertyStub,   // setProperty
+    JS_EnumerateStub,
+    JS_ResolveStub,
+    JS_ConvertStub
+};
+
+/*static*/ JSObject *
+ParallelMatrixObject::newInstance(JSContext *cx)
+{
+    return NULL;
+}
+
+JSObject *
+ParallelMatrixObject::initClass(JSContext *cx, HandleObject obj)
+{
+    return NULL;
+}
+
+JSObject *
+js_InitParallelMatrixClass(JSContext *cx, js::HandleObject obj)
+{
+    return ParallelMatrixObject::initClass(cx, obj);
+}
