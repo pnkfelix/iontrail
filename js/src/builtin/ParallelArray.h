@@ -53,6 +53,14 @@ class ParallelArrayObject : public JSObject
     static bool is(const Value &v);
 };
 
+class ParallelMatrixDebtObject : public JSObject
+{
+    static Class protoClass;
+    static JSFunctionSpec methods[];
+  public:
+    static Class class_;
+};
+
 class ParallelMatrixObject : public JSObject
 {
     static Class protoClass;
@@ -81,5 +89,8 @@ js_InitParallelArrayClass(JSContext *cx, js::HandleObject obj);
 
 extern JSObject *
 js_InitParallelMatrixClass(JSContext *cx, js::HandleObject obj);
+
+extern JSObject *
+js_InitParallelMatrixDebtClass(JSContext *cx, js::HandleObject obj);
 
 #endif // ParallelArray_h__

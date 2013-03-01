@@ -296,7 +296,7 @@ JSFunctionSpec ParallelMatrixObject::methods[] = {
 
 Class ParallelMatrixObject::protoClass = {
     "ParallelMatrix",
-    JSCLASS_HAS_CACHED_PROTO(JSProto_ParallelArray),
+    JSCLASS_HAS_CACHED_PROTO(JSProto_ParallelMatrix),
     JS_PropertyStub,         // addProperty
     JS_PropertyStub,         // delProperty
     JS_PropertyStub,         // getProperty
