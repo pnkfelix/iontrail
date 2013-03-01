@@ -1185,6 +1185,7 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
   if (grain === undefined) {
     grain = [];
   } else if (typeof(grain) === "function") {
+    mode = func;
     func = grain;
     grain = [];
   }
@@ -1236,26 +1237,32 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
     var frame = shape.slice(0, sdims - grain.length);
     var frame_indices = ComputeIndices(frame, 0);
     if (grainLen == 1) {
-      mode.print("alpha");
+      mode && mode.print && mode.print("alpha");
       for (var i = 0; i < indexEnd; i++) {
-        mode.print("beta "+i);
+        mode && mode.print && mode.print("beta "+i);
         UnsafeSetElement(buffer, i, func.apply(null, frame_indices));
         StepIndices(frame, frame_indices);
       }
     } else {
       for (var i = 0; i < indexEnd; i+=grainLen) {
-        mode.print("gamma "+i);
+        mode && mode.print && mode.print("gamma "+i);
         var subarray = func.apply(null, frame_indices);
-        if (IS_ARRAY(subarray)) {
+        if (std_Array_isArray(subarray)) {
           for (var j = 0; j < grainLen; j++) {
-            mode.print("delta "+j);
+            mode && mode.print && mode.print("delta "+j);
             UnsafeSetElement(buffer, i+j, subarray[j]);
           }
-        } else {
+          // FIXME 1: what is right way to detect input is of right type?
+          // FIXME 2: Check that the shape matches too (but that might be
+          //          overridden by use of threaded debt-tokens)
+        } else if (subarray.constructor === global.ParallelMatrix) {
           for (var j = 0; j < grainLen; j++) {
-            mode.print("delta "+j);
+            mode && mode.print && mode.print("delta "+j);
             UnsafeSetElement(buffer, i+j, subarray.buffer[j]);
           }
+        } else {
+          var grainshape = "grain with shape:["+grain.join(",")+"]";
+          ThrowError(JSMSG_WRONG_VALUE, grainshape, subarray);
         }
         StepIndices(frame, frame_indices);
       }
