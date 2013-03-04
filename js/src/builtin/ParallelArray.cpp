@@ -382,6 +382,8 @@ ParallelMatrixDebtObject::initProps(JSContext *cx, HandleObject obj)
         return false;
     if (!JSObject::setProperty(cx, obj, obj, cx->names().get, &undef, true))
         return false;
+    if (!JSObject::setProperty(cx, obj, obj, cx->names().length, &undef, true))
+        return false;
 
     return true;
 }
@@ -521,38 +523,6 @@ ParallelMatrixDebtObject::constructHelper(JSContext *cx, MutableHandleFunction c
     RootedObject result(cx, newInstance(cx));
     if (!result)
         return false;
-
-    if (cx->typeInferenceEnabled()) {
-        jsbytecode *pc;
-        RootedScript script(cx, cx->stack.currentScript(&pc));
-        if (script) {
-            if (ctor->nonLazyScript()->shouldCloneAtCallsite) {
-                ctor.set(CloneFunctionAtCallsite(cx, ctor, script, pc));
-                if (!ctor)
-                    return false;
-            }
-
-            // Create the type object for the PM.  Add in the current
-            // properties as definite properties if this type object is newly
-            // created.  To tell if it is newly created, we check whether it
-            // has any properties yet or not, since any returned type object
-            // must have been created by this same C++ code and hence would
-            // already have properties if it had been returned before.
-            types::TypeObject *pmTypeObject =
-                types::TypeScript::InitObject(cx, script, pc, JSProto_ParallelMatrix);
-            if (!pmTypeObject)
-                return false;
-            if (pmTypeObject->getPropertyCount() == 0) {
-                if (!pmTypeObject->addDefiniteProperties(cx, result))
-                    return false;
-
-                // addDefiniteProperties() above should have added one
-                // property for of the fixed slots:
-                JS_ASSERT(pmTypeObject->getPropertyCount() == NumFixedSlots);
-            }
-            result->setType(pmTypeObject);
-        }
-    }
 
     InvokeArgsGuard args;
     if (!cx->stack.pushInvokeArgs(cx, args0.length(), &args))
