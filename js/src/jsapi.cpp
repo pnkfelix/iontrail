@@ -1805,6 +1805,7 @@ static JSStdName standard_class_atoms[] = {
     {js_InitSetClass,                   EAGER_CLASS_ATOM(Set), &js::SetObject::class_},
     {js_InitParallelArrayClass,         EAGER_CLASS_ATOM(ParallelArray), &js::ParallelArrayObject::class_},
     {js_InitParallelMatrixClass,        EAGER_CLASS_ATOM(ParallelMatrix), &js::ParallelMatrixObject::class_},
+    {js_InitParallelMatrixDebtClass,    EAGER_CLASS_ATOM(ParallelMatrixDebt), &js::ParallelMatrixDebtObject::class_},
     {js_InitProxyClass,                 EAGER_ATOM_AND_CLASP(Proxy)},
 #if ENABLE_INTL_API
     {js_InitIntlClass,                  EAGER_ATOM_AND_CLASP(Intl)},

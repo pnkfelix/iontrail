@@ -1173,6 +1173,12 @@ function ParallelArrayToString() {
   return result;
 }
 
+function ParallelMatrixDebt(shape, targetBuffer, targetOffset) {
+  this.shape = shape;
+  this.targetBuffer = targetBuffer;
+  this.targetOffset = targetOffset;
+}
+
 function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) {
 
   if (!mode) mode = func;

@@ -57,8 +57,19 @@ class ParallelMatrixDebtObject : public JSObject
 {
     static Class protoClass;
     static JSFunctionSpec methods[];
+    static const uint32_t NumFixedSlots;
+
+    static bool initProps(JSContext *cx, HandleObject obj);
+
   public:
     static Class class_;
+
+    static JSBool construct(JSContext *cx, unsigned argc, Value *vp);
+    static JSBool constructHelper(JSContext *cx, MutableHandleFunction ctor, CallArgs &args);
+    static JSObject *newInstance(JSContext *cx);
+    static JSFunction *getConstructor(JSContext *cx, unsigned argc);
+    static JSObject *initClass(JSContext *cx, HandleObject obj);
+    static bool is(const Value &v);
 };
 
 class ParallelMatrixObject : public JSObject
