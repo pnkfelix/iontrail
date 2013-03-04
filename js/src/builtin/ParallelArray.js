@@ -1181,9 +1181,15 @@ function ParallelMatrixDebt(shape, targetBuffer, targetOffset) {
     ThrowError(JSMSG_WRONG_VALUE, "shape array", (shape));
   if (!targetBuffer || !(targetBuffer instanceof global.Array))
     ThrowError(JSMSG_WRONG_VALUE, "buffer array", (targetBuffer));
-  if (!targetOffset || !(typeof(targetOffset) == "number"))
+  if (Number(targetOffset) != targetOffset)
     ThrowError(JSMSG_WRONG_VALUE, "integer offset", (targetOffset));
-  if (targetOffset < 0 || targetOffset >= shape.length)
+  var debt_len = 1;
+  for (var i = 0; i < shape.length; i++) {
+    debt_len *= shape[i];
+  }
+  if (targetOffset < 0)
+    ThrowError(JSMSG_WRONG_VALUE, "nonnegative offset", (targetOffset));
+  if (targetOffset+debt_len >= targetBuffer.length)
     ThrowError(JSMSG_WRONG_VALUE, "offset in range", (targetOffset));
 
   this.shape = shape;
@@ -1267,12 +1273,21 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
     grain_len *= shape_amt;
   }
 
-  fillN(len, grain_len);
+  fillN(offset+len, grain_len);
 
   this.buffer = buffer;
   this.offset = offset;
   this.shape = shape;
   this.get = getFunc;
+
+  function SetElem(context, buffer, i, val) {
+    if (i < 0)
+      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "neg idx "+i+" "+context);
+    if (i >= buffer.length)
+      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "big idx "+i+" "+context);
+
+    UnsafeSetElement(buffer, i, val);
+  }
 
   function fillN(indexEnd, grainLen) {
     var frame_indices = ComputeIndices(frame, 0);
@@ -1280,7 +1295,7 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
       mode && mode.print && mode.print("alpha");
       for (var i = 0; i < indexEnd; i++) {
         mode && mode.print && mode.print("beta "+i);
-        UnsafeSetElement(buffer, i, func.apply(null, frame_indices));
+        SetElem("fillN_1", buffer, i, func.apply(null, frame_indices));
         StepIndices(frame, frame_indices);
       }
     } else {
@@ -1290,7 +1305,7 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
         if (std_Array_isArray(subarray)) {
           for (var j = 0; j < grainLen; j++) {
             mode && mode.print && mode.print("delta "+j);
-            UnsafeSetElement(buffer, i+j, subarray[j]);
+            SetElem("fillN_2", buffer, i+j, subarray[j]);
           }
           // FIXME 1: what is right way to detect input is of right type?
           // FIXME 2: Check that the shape matches too (but that might be
@@ -1298,7 +1313,7 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
         } else if (subarray.constructor === global.ParallelMatrix) {
           for (var j = 0; j < grainLen; j++) {
             mode && mode.print && mode.print("delta "+j);
-            UnsafeSetElement(buffer, i+j, subarray.buffer[j]);
+            SetElem("fillN_3", buffer, i+j, subarray.buffer[j]);
           }
         } else {
           var grainshape = "grain with shape:["+grain.join(",")+"]";
