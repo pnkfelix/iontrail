@@ -1189,7 +1189,7 @@ function ParallelMatrixDebt(shape, targetBuffer, targetOffset) {
   }
   if (targetOffset < 0)
     ThrowError(JSMSG_WRONG_VALUE, "nonnegative offset", (targetOffset));
-  if (targetOffset+debt_len >= targetBuffer.length)
+  if (targetOffset+debt_len > targetBuffer.length)
     ThrowError(JSMSG_WRONG_VALUE, "offset in range", (targetOffset));
 
   this.shape = shape;
@@ -1273,7 +1273,7 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
     grain_len *= shape_amt;
   }
 
-  fillN(offset+len, grain_len);
+  fillN(offset, offset+len, grain_len);
 
   this.buffer = buffer;
   this.offset = offset;
@@ -1289,17 +1289,17 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
     UnsafeSetElement(buffer, i, val);
   }
 
-  function fillN(indexEnd, grainLen) {
+  function fillN(indexStart, indexEnd, grainLen) {
     var frame_indices = ComputeIndices(frame, 0);
     if (grainLen == 1) {
       mode && mode.print && mode.print("alpha");
-      for (var i = 0; i < indexEnd; i++) {
+      for (var i = indexStart; i < indexEnd; i++) {
         mode && mode.print && mode.print("beta "+i);
         SetElem("fillN_1", buffer, i, func.apply(null, frame_indices));
         StepIndices(frame, frame_indices);
       }
     } else {
-      for (var i = 0; i < indexEnd; i+=grainLen) {
+      for (var i = indexStart; i < indexEnd; i+=grainLen) {
         mode && mode.print && mode.print("gamma "+i);
         var subarray = func.apply(null, frame_indices);
         if (std_Array_isArray(subarray)) {
