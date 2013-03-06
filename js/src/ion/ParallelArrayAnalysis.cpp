@@ -174,6 +174,7 @@ class ParallelArrayVisitor : public MInstructionVisitor
     CUSTOM_OP(NewObject)
     CUSTOM_OP(NewCallObject)
     CUSTOM_OP(NewParallelArray)
+    UNSAFE_OP(NewParallelMatrixDebt)
     UNSAFE_OP(InitProp)
     SAFE_OP(Start)
     UNSAFE_OP(OsrEntry)

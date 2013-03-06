@@ -1173,7 +1173,7 @@ function ParallelArrayToString() {
   return result;
 }
 function ParallelMatrixDebtGet(i) { return this.shape[i]; }
-function ParallelMatrixDebt(shape, targetBuffer, targetOffset) {
+function ParallelMatrixDebtConstruct(shape, targetBuffer, targetOffset) {
 
   if (targetOffset === undefined)
     ThrowError(JSMSG_MORE_ARGS_NEEDED, "ParallelMatrixDebt", 2, "s");
@@ -1301,7 +1301,10 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
     } else {
       for (var i = indexStart; i < indexEnd; i+=grainLen) {
         mode && mode.print && mode.print("gamma "+i);
+        var token = NewParallelMatrixDebt(ParallelMatrixDebtConstruct, grain, buffer, indexStart);
+        frame_indices.push(token);
         var subarray = func.apply(null, frame_indices);
+        frame_indices.pop();
         if (std_Array_isArray(subarray)) {
           for (var j = 0; j < grainLen; j++) {
             mode && mode.print && mode.print("delta "+j);

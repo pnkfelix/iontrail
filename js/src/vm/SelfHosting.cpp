@@ -298,16 +298,29 @@ js::intrinsic_NewParallelArray(JSContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
-/*
- * NewDenseArray(length): Allocates and returns a new dense array with
- * the given length where all values are initialized to holes.
- */
 JSBool
 js::intrinsic_NewParallelMatrix(JSContext *cx, unsigned argc, Value *vp)
 {
     return false;
 }
 
+JSBool
+js::intrinsic_NewParallelMatrixDebt(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    RootedFunction init(cx, args[0].toObject().toFunction());
+    CallArgs args0 = CallArgsFromVp(argc - 1, vp + 1);
+    if (!js::ParallelMatrixDebtObject::constructHelper(cx, &init, args0))
+        return false;
+    args.rval().set(args0.rval());
+    return true;
+}
+
+/*
+ * NewDenseArray(length): Allocates and returns a new dense array with
+ * the given length where all values are initialized to holes.
+ */
 JSBool
 js::intrinsic_NewDenseArray(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -479,7 +492,8 @@ JSFunctionSpec intrinsic_functions[] = {
     JS_FN("ParallelDo",           intrinsic_ParallelDo,           2,0),
     JS_FN("ParallelSlices",       intrinsic_ParallelSlices,       0,0),
     JS_FN("NewParallelArray",     intrinsic_NewParallelArray,     3,0),
-    JS_FN("NewParallelMatrix",    intrinsic_NewParallelMatrix,     3,0),
+    JS_FN("NewParallelMatrix",    intrinsic_NewParallelMatrix,    3,0),
+    JS_FN("NewParallelMatrixDebt",intrinsic_NewParallelMatrixDebt,4,0),
     JS_FN("NewDenseArray",        intrinsic_NewDenseArray,        1,0),
     JS_FN("UnsafeSetElement",     intrinsic_UnsafeSetElement,     3,0),
     JS_FN("ShouldForceSequential", intrinsic_ShouldForceSequential, 0,0),

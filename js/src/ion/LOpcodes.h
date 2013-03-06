@@ -23,6 +23,7 @@
     _(TableSwitchV)                 \
     _(Goto)                         \
     _(NewParallelArray)             \
+    _(NewParallelMatrixDebt)        \
     _(NewArray)                     \
     _(NewObject)                    \
     _(NewSlots)                     \

@@ -422,7 +422,7 @@ ParallelMatrixObject::getConstructor(JSContext *cx, unsigned argc)
 /* static */ JSFunction *
 ParallelMatrixDebtObject::getConstructor(JSContext *cx, unsigned argc)
 {
-    JSFlatString *name = js_NewStringCopyZ<NoGC>(cx, "ParallelMatrixDebt");
+    JSFlatString *name = js_NewStringCopyZ<NoGC>(cx, "ParallelMatrixDebtConstruct");
     RootedPropertyName ctorName(cx, name->toPropertyName(cx));
     RootedValue ctorValue(cx);
     if (!cx->global()->getIntrinsicValue(cx, ctorName, &ctorValue))
