@@ -322,7 +322,7 @@ Class ParallelMatrixObject::class_ = {
 };
 
 JSFunctionSpec ParallelMatrixDebtObject::methods[] = {
-    { "get",      JSOP_NULLWRAPPER, 1, 0, "ParallelMatrixGet" },
+    { "get",      JSOP_NULLWRAPPER, 1, 0, "ParallelMatrixDebtGet" },
     JS_FS_END
 };
 
