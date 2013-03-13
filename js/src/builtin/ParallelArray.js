@@ -1306,15 +1306,12 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
   function fillN(indexStart, indexEnd, grainLen) {
     var frame_indices = ComputeIndices(frame, 0);
     if (grainLen == 1) {
-      mode && mode.print && mode.print("alpha");
       for (var i = indexStart; i < indexEnd; i++) {
-        mode && mode.print && mode.print("beta "+i);
         SetElem("fillN_1", buffer, i, func.apply(null, frame_indices));
         StepIndices(frame, frame_indices);
       }
     } else {
       for (var i = indexStart; i < indexEnd; i+=grainLen) {
-        mode && mode.print && mode.print("gamma "+i);
         var broker = NewParallelMatrixDebt(ParallelMatrixDebtConstruct, grain, buffer, i);
         frame_indices.push(broker);
         broker.active = true;
@@ -1323,7 +1320,6 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
         frame_indices.pop();
         if (std_Array_isArray(subarray)) {
           for (var j = 0; j < grainLen; j++) {
-            mode && mode.print && mode.print("delta1 i:"+i+" j:"+j);
             SetElem("fillN_2", buffer, i+j, subarray[j]);
           }
           // FIXME 1: what is right way to detect input is of right type?
@@ -1332,8 +1328,6 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
         } else if (subarray.constructor === global.ParallelMatrix) {
           if (broker.discharged && broker.payer == subarray) {
             // the subarray already initialized the buffer; we are done.
-
-            mode && mode.print && mode.print("delta2 i:"+i);
 
           } else if (broker.discharged && broker.payer != subarray) {
             // oops!  The caller passed the broker to the wrong construction 
@@ -1346,7 +1340,6 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
 
             // Another option: copy the subarray anyway.
             for (var j = 0; j < grainLen; j++) {
-              mode && mode.print && mode.print("delta3 i:"+i+" j:"+j);
               SetElem("fillN_3", buffer, i+j, subarray.buffer[j]);
             }
 
