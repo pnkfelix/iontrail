@@ -1327,22 +1327,13 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
           //          overridden by use of threaded debt-brokers)
         } else if (subarray.constructor === global.ParallelMatrix) {
           if (broker.discharged && broker.payer == subarray) {
-            // the subarray already initialized the buffer; we are done.
+            // The subarray already initialized the buffer; we are done.
 
           } else if (broker.discharged && broker.payer != subarray) {
-            // oops!  The caller passed the broker to the wrong construction 
-            ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "broker complains of switch");
+            // Oops!  The caller passed the debt token to wrong construction 
+            ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "returned matrix different from that used to pay debt.");
           } else if (!broker.discharged) {
-
-            // One option: Throw exception if failed to pay broker,
-            // i.e.:
-            // ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "broker unsatisfied");
-
-            // Another option: copy the subarray anyway.
-            for (var j = 0; j < grainLen; j++) {
-              SetElem("fillN_3", buffer, i+j, subarray.buffer[j]);
-            }
-
+            ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "unsatisfied debt");
           }
         } else {
           var grainshape = "grain with shape:["+grain.join(",")+"]";
