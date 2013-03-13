@@ -1173,8 +1173,12 @@ function ParallelArrayToString() {
   return result;
 }
 function ParallelMatrixDebtGet(i) { return this.shape[i]; }
-function ParallelMatrixDebtConstruct(shape, targetBuffer, targetOffset) {
+function ParallelMatrixDebtConstruct(shape, targetBuffer, targetOffset, tokenChain) {
+  ParallelMatrixDebtInitialize(this, shape, targetBuffer, targetOffset);
+  this.next = tokenChain;
+}
 
+function ParallelMatrixDebtInitialize(token, shape, targetBuffer, targetOffset) {
   if (targetOffset === undefined)
     ThrowError(JSMSG_MORE_ARGS_NEEDED, "ParallelMatrixDebt", 2, "s");
   if (!shape || !(shape instanceof global.Array))
@@ -1182,25 +1186,25 @@ function ParallelMatrixDebtConstruct(shape, targetBuffer, targetOffset) {
   if (!targetBuffer || !(targetBuffer instanceof global.Array))
     ThrowError(JSMSG_WRONG_VALUE, "buffer array", (targetBuffer));
   if (Number(targetOffset) != targetOffset)
-    ThrowError(JSMSG_WRONG_VALUE, "integer offset", (targetOffset));
+    ThrowError(JSMSG_WRONG_VALUE, "integer offset", ""+(targetOffset));
   var debt_len = 1;
   for (var i = 0; i < shape.length; i++) {
     debt_len *= shape[i];
-    this[i] = shape[i];
+    token[i] = shape[i];
   }
   if (targetOffset < 0)
     ThrowError(JSMSG_WRONG_VALUE, "nonnegative offset", (targetOffset));
   if (targetOffset+debt_len > targetBuffer.length)
     ThrowError(JSMSG_WRONG_VALUE, "offset in range", (targetOffset));
 
-  this.shape = shape;
-  this.buffer = targetBuffer;
-  this.offset = targetOffset;
-  this.get = ParallelMatrixDebtGet;
-  this.length = shape.length;
-  this.active = false;
-  this.discharged = false;
-  this.payer = null;
+  token.shape = shape;
+  token.buffer = targetBuffer;
+  token.offset = targetOffset;
+  token.get = ParallelMatrixDebtGet;
+  token.length = shape.length;
+  token.active = false;
+  token.discharged = false;
+  token.payer = null;
 }
 
 function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) {
@@ -1294,20 +1298,16 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
     shape.payer = this;
   }
 
-  function SetElem(context, buffer, i, val) {
-    if (i < 0)
-      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "neg idx "+i+" "+context);
-    if (i >= buffer.length)
-      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "big idx "+i+" "+context);
-
-    UnsafeSetElement(buffer, i, val);
-  }
-
   function fillN(indexStart, indexEnd, grainLen) {
     var frame_indices = ComputeIndices(frame, 0);
-    if (grainLen == 1) {
+    if (grainLen <= 1) {
+
+      // If the grainLen < 2, then we are computing leaf elements
+      // of the matrix, not submatrices; thus there is no reason
+      // to use the debt-token protocol.
+
       for (var i = indexStart; i < indexEnd; i++) {
-        SetElem("fillN_1", buffer, i, func.apply(null, frame_indices));
+        UnsafeSetElement(buffer, i, func.apply(null, frame_indices));
         StepIndices(frame, frame_indices);
       }
     } else if (func.length <= frame_indices.length) {
@@ -1338,10 +1338,55 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
     } else {
       // The func has been written to take more arguments than indices
       // for the current matrix-frame; this implies that the caller
-      // will use the debt-token to constuct submatrices.
+      // will use a debt-token to constuct submatrices.
+
+      // Two cases: Either (1.) we are an outermost matrix construction,
+      // and need to allocate enough tokens up-front to handle all
+      // subconstructions, or (2.) we are a nested submatrix construction,
+      // (signalled by itself utilizing a debt-token), and should
+      // reuse the tokens that have been preallocated for us
+      // by our caller.
+
+      var broker;
+      if (!(shape instanceof global.ParallelMatrixDebt)) {
+        // Case 1: Outermost matrix construction.
+        var maxDepth = shape.length;
+        // NOTE: It may seem silly to be using numSlices here,
+        // depending on whether the code that follows actually does a
+        // ParallelDo, or if it merely continues to be a sequential
+        // prototype that is eventually moved into the C++ code.  But
+        // in any case, in the long term the idea *is* to pre-allocate
+        // N*D tokens, where N is numSlices and D is a bound on the
+        // depth of nesting of ParallelMatrix constructions (I am
+        // using shape.length as a conservative value for D).
+        var numSlices = ParallelSlices();
+        var numTokens = numSlices * maxDepth;
+        var chains = new Array(numSlices);
+        for (var i = 0; i < numSlices; i++) {
+          var a = new Array(maxDepth);
+          var c = null;
+          for (var j = 0; j < maxDepth; j++) {
+            c = NewParallelMatrixDebt(ParallelMatrixDebtConstruct,
+                                      grain, buffer, indexStart, c);
+          }
+          chains[i] = c;
+        }
+        broker = chains[0];
+      } else {
+        // Case 2: Nested submatrix construction.
+        broker = shape.next;
+
+        // FIXME: This should never happen.  Kill the code if I can
+        // confirm it does not occur.
+        if (broker == null) {
+          ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "somehow exhausted token depth, shape: ["+shape.join(",")+"] grain: ["+grain.join(",")+"]");
+        }
+
+        ParallelMatrixDebtInitialize(broker, grain, buffer, indexStart);
+      }
 
       for (var i = indexStart; i < indexEnd; i+=grainLen) {
-        var broker = NewParallelMatrixDebt(ParallelMatrixDebtConstruct, grain, buffer, i);
+        ParallelMatrixDebtInitialize(broker, grain, buffer, i);
         frame_indices.push(broker);
         broker.active = true;
         var subarray = func.apply(null, frame_indices);
