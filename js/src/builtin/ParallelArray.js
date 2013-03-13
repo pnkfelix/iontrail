@@ -1310,7 +1310,36 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
         SetElem("fillN_1", buffer, i, func.apply(null, frame_indices));
         StepIndices(frame, frame_indices);
       }
+    } else if (func.length <= frame_indices.length) {
+
+      // If the callback has not been written to take debt token
+      // as an explicit argument, then we assume the function's
+      // body has not been written to work with the token.
+
+      // In this case, just allocate new arrays and copy them in.
+
+      for (var i = indexStart; i < indexEnd; i+=grainLen) {
+        var subarray = func.apply(null, frame_indices);
+        var offset;
+        var subbuffer;
+        if (std_Array_isArray(subarray)) {
+          subbuffer = subarray;
+          offset = 0;
+        } else {
+          subbuffer = subarray.buffer;
+          offset = subarray.offset;
+        }
+        for (var j = 0; j < grainLen; j++) {
+          UnsafeSetElement(buffer, i+j, subbuffer[offset+j]);
+        }
+        StepIndices(frame, frame_indices);
+      }
+
     } else {
+      // The func has been written to take more arguments than indices
+      // for the current matrix-frame; this implies that the caller
+      // will use the debt-token to constuct submatrices.
+
       for (var i = indexStart; i < indexEnd; i+=grainLen) {
         var broker = NewParallelMatrixDebt(ParallelMatrixDebtConstruct, grain, buffer, i);
         frame_indices.push(broker);
@@ -1318,27 +1347,30 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
         var subarray = func.apply(null, frame_indices);
         broker.active = false;
         frame_indices.pop();
-        if (std_Array_isArray(subarray)) {
-          for (var j = 0; j < grainLen; j++) {
-            SetElem("fillN_2", buffer, i+j, subarray[j]);
-          }
-          // FIXME 1: what is right way to detect input is of right type?
-          // FIXME 2: Check that the shape matches too (but that might be
-          //          overridden by use of threaded debt-brokers)
-        } else if (subarray.constructor === global.ParallelMatrix) {
-          if (broker.discharged && broker.payer == subarray) {
-            // The subarray already initialized the buffer; we are done.
 
-          } else if (broker.discharged && broker.payer != subarray) {
-            // Oops!  The caller passed the debt token to wrong construction 
-            ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "returned matrix different from that used to pay debt.");
-          } else if (!broker.discharged) {
-            ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "unsatisfied debt");
-          }
+        // FIXME 1: what is right way to detect input is of right type?
+        // FIXME 2: Check that the shape matches too (but that might be
+        //          overridden by use of threaded debt-brokers)
+        if (subarray.constructor === global.ParallelMatrix &&
+            broker.discharged &&
+            broker.payer == subarray) {
+
+          // The subarray already initialized the buffer and successfully
+          // followed the debt-toekn protocol, returning the constructed
+          // matrix.  We are done!
+
         } else {
-          var grainshape = "grain with shape:["+grain.join(",")+"]";
-          ThrowError(JSMSG_WRONG_VALUE, grainshape, subarray);
+          if (subarray.constructor !== global.ParallelMatrix)
+            ThrowError(JSMSG_WRONG_VALUE,
+                       "must return matrix constructed via debt token.");
+          else if (!broker.discharged)
+            ThrowError(JSMSG_PAR_ARRAY_BAD_ARG,
+                       "unsatisfied debt");
+          else // final case: (broker.payer != subarray)
+            ThrowError(JSMSG_PAR_ARRAY_BAD_ARG,
+                       "returned matrix different from that used to pay debt.");
         }
+
         StepIndices(frame, frame_indices);
       }
     }
