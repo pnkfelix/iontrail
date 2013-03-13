@@ -1,116 +1,90 @@
-ParallelMatrixDebt.prototype.toSource =
-  function toSource() {
-    var ret="({escrow ";
-    for (var i = 0; i < this.length; i++) {
-      ret += this.get(i);
-      if (i+1 < this.length)
-        ret += ", ";
-    }
-    ret+="})";
-    return ret;
-  };
+load(libdir + "parallelarray-helpers.js");
 
-function viewToSource2d(view, width, height, payload) {
-  var i=0;
-  var ret = "[";
-  var matrixNeedsNewline = false;
-  for (var row=0; row < height; row++) {
-    if (matrixNeedsNewline)
-      ret += ",\n ";
-    ret += "[";
-    var rowNeedsComma = false;
-    for (var x=0; x < width; x++) {
-      if (rowNeedsComma)
-        ret += ", ";
-      if (payload == 1) {
-        var val = view(i);
-        if (val !== undefined)
-          ret += val;
-        i++;
-      } else {
-        var entryNeedsComma = false;
-        ret += "(";
-        for (var k=0; k < payload; k++) {
-          // Might be inefficient (does JavaScript have
-          // StringBuffers?, or use them internally, like Tamarin?)
-          if (entryNeedsComma)
-            ret += ", ";
-          var val = view(i);
-          if (val !== undefined)
-            ret += val;
-          entryNeedsComma = true;
-          i++;
-        }
-        ret += ")";
-      }
-      rowNeedsComma = true;
-    }
-    ret += "]";
-    matrixNeedsNewline = true;
+function cell(...args) {
+  var ret = 0;
+  var d;
+  while ((d = args.shift()) != undefined) {
+    ret *= 10;
+    ret += d+1;
   }
-  ret += "]";
   return ret;
 }
 
-function dbprint(x) {
-  // print(x);
+function test_2d() {
+  var pm2d_1 =  new ParallelMatrix([5,6], cell);
+
+  // An grain of length 0 is synonymous with an omitted grain argument.
+  var pm2d_2 =  new ParallelMatrix([5,6], [], cell);
+
+  var pm2d_3 = new ParallelMatrix([5,6], [6],
+    function(i,t) {
+      return new ParallelMatrix(t, [], function (j) cell(i,j));
+    });
+
+  var pm2d_4 = new ParallelMatrix([5,6], [6],
+    function(i,t) {
+      return new ParallelMatrix(t, function (j) cell(i,j));
+    });
+
+  assertEqParallelMatrix(pm2d_1, pm2d_2);
+  assertEqParallelMatrix(pm2d_1, pm2d_3);
+  assertEqParallelMatrix(pm2d_1, pm2d_4);
 }
 
-ParallelMatrix.prototype.toSource =
-  function toSource() {
-    var self = this;
-    var slen = self.shape.length;
-    if (slen == 1) {
-      return "[" + this.buffer.join(",") + "]";
-    } else {
-      var w = self.shape[0];
-      var h = self.shape[1];
-      var p = 1;
-      for (var i = 2; i < slen; i++) {
-        p *= self.shape[i];
-      }
-      return viewToSource2d(function (j) { dbprint("view("+j+")"); return self.buffer[self.offset+j];}, w, h, p );
-    }
-  };
+function test_3d() {
+  var pm3d_1 = new ParallelMatrix([5,6,7], cell);
 
-function C(shape, builder) {
-  this.shape = shape;
-  this.builder = builder;
-  for (var i = 0; i < shape; i++) {
-    this[i] = builder(i);
-  }
+  var pm3d_2 = new ParallelMatrix([5,6,7], [7],
+    function(i,j,t) {
+      return new ParallelMatrix(t, function (k) cell(i,j,k)); });
+
+  var pm3d_3 = new ParallelMatrix([5,6,7], [6,7],
+    function(i,t) {
+      return new ParallelMatrix(t, function (j,k) cell(i,j,k));
+    });
+
+  var pm3d_4 = new ParallelMatrix([5,6,7], [6,7],
+    function(i,t1) {
+      return new ParallelMatrix(t1, [7],
+        function (j,t2) {
+          return new ParallelMatrix(t2, function (k) cell(i,j,k)); }); });
+
+  assertEqParallelMatrix(pm3d_1, pm3d_2);
+  assertEqParallelMatrix(pm3d_1, pm3d_3);
+  assertEqParallelMatrix(pm3d_1, pm3d_4);
 }
 
-C.prototype.map1 = function map(_f) {
-  return new C(this.shape, function (_i) {
-                 return _f(this[_i], _i, this);
-               });
-};
+function test_6d() {
+  // The elements in overall_6d below is trying to hit sweet spot that has:
+  //   (1) a "small" element count, to keep running time manageable,
+  //   (2) non-trivial range in each dimenension.
+  //
+  // At one point, it also tried to provide:
+  //   (3) easy-to-distinguish substrings by eye.
+  // but since the subranges are now derived from overall_6d via slice,
+  // this third goal is unimportant.
+  var overall_6d = [3,3,3,3,3,3];
 
-C.prototype.map2 = function map(_f) {
-  var self = this;
-  return new C(this.shape, function (_i) {
-                 return _f(self[_i], _i, self);
-               });
-};
+  var pm6d_1 = new ParallelMatrix(overall_6d, cell);
 
-// Explicitly initializes the array to force it into a Dense state.
-function NewFilledArray(len) {
-  var buffer = new Array(10);
-  for(var i=0; i < buffer.length; i++) buffer[i] = undefined;
-  return buffer;
+  var pm6d_2 = new ParallelMatrix(overall_6d, overall_6d.slice(2),
+    function(i,j,t) {
+      return new ParallelMatrix(t, function (k,l,m,n) cell(i,j,k,l,m,n)); });
+
+  var pm6d_3 = new ParallelMatrix(overall_6d, overall_6d.slice(2),
+    function(i,j,t1) {
+      return new ParallelMatrix(t1, overall_6d.slice(3),
+        function (k,t2) {
+          dbprint("t1:"+t1.toSource());
+          dbprint("t2:"+t2.toSource());
+          return new ParallelMatrix(t2, function(l,m,n) cell(i,j,k,l,m,n));
+        });
+    });
+
+  assertEqParallelMatrix(pm6d_1, pm6d_2);
+  assertEqParallelMatrix(pm6d_1, pm6d_3);
 }
 
-var buffer = NewFilledArray(10);
-var d1 =  new ParallelMatrixDebt([5], buffer, 0);
-var d2 =  new ParallelMatrixDebt([5], buffer, 5);
-function fill(j, context) {
-  return function (i) {
-    dbprint("callback for "+context+" i:"+i+" j:"+j); j = j ? j : 0;
-    return 100+i*10+j;
-  };}
-var pm1 =  new ParallelMatrix(d1, fill(1, "pm1"));
-var pm2 =  new ParallelMatrix(d2, fill(2, "pm2"));
-var pm3 =  new ParallelMatrix([5], fill(3, "pm3"));
-
-var pm4 =  new ParallelMatrix([5,5], function(i,j) (100+i*10+j));
+test_2d();
+test_3d();
+test_6d();

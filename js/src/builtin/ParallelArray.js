@@ -1186,6 +1186,7 @@ function ParallelMatrixDebtConstruct(shape, targetBuffer, targetOffset) {
   var debt_len = 1;
   for (var i = 0; i < shape.length; i++) {
     debt_len *= shape[i];
+    this[i] = shape[i];
   }
   if (targetOffset < 0)
     ThrowError(JSMSG_WRONG_VALUE, "nonnegative offset", (targetOffset));
@@ -1197,6 +1198,9 @@ function ParallelMatrixDebtConstruct(shape, targetBuffer, targetOffset) {
   this.offset = targetOffset;
   this.get = ParallelMatrixDebtGet;
   this.length = shape.length;
+  this.active = false;
+  this.discharged = false;
+  this.payer = null;
 }
 
 function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) {
@@ -1227,6 +1231,11 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
   var sdims = shape.length;
 
   if (shape instanceof global.ParallelMatrixDebt) {
+    if (shape.discharged)
+      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " previously discharged: "+shape).toSource();
+    if (!shape.active)
+      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " inactive debt: "+shape.toSource());
+
     for(var i = 0; i < shape.length; i++) {
       len *= shape.get(i);
     }
@@ -1280,6 +1289,11 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
   this.shape = shape;
   this.get = getFunc;
 
+  if (shape instanceof global.ParallelMatrixDebt) {
+    shape.discharged = true;
+    shape.payer = this;
+  }
+
   function SetElem(context, buffer, i, val) {
     if (i < 0)
       ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "neg idx "+i+" "+context);
@@ -1301,22 +1315,41 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
     } else {
       for (var i = indexStart; i < indexEnd; i+=grainLen) {
         mode && mode.print && mode.print("gamma "+i);
-        var token = NewParallelMatrixDebt(ParallelMatrixDebtConstruct, grain, buffer, indexStart);
-        frame_indices.push(token);
+        var broker = NewParallelMatrixDebt(ParallelMatrixDebtConstruct, grain, buffer, i);
+        frame_indices.push(broker);
+        broker.active = true;
         var subarray = func.apply(null, frame_indices);
+        broker.active = false;
         frame_indices.pop();
         if (std_Array_isArray(subarray)) {
           for (var j = 0; j < grainLen; j++) {
-            mode && mode.print && mode.print("delta "+j);
+            mode && mode.print && mode.print("delta1 i:"+i+" j:"+j);
             SetElem("fillN_2", buffer, i+j, subarray[j]);
           }
           // FIXME 1: what is right way to detect input is of right type?
           // FIXME 2: Check that the shape matches too (but that might be
-          //          overridden by use of threaded debt-tokens)
+          //          overridden by use of threaded debt-brokers)
         } else if (subarray.constructor === global.ParallelMatrix) {
-          for (var j = 0; j < grainLen; j++) {
-            mode && mode.print && mode.print("delta "+j);
-            SetElem("fillN_3", buffer, i+j, subarray.buffer[j]);
+          if (broker.discharged && broker.payer == subarray) {
+            // the subarray already initialized the buffer; we are done.
+
+            mode && mode.print && mode.print("delta2 i:"+i);
+
+          } else if (broker.discharged && broker.payer != subarray) {
+            // oops!  The caller passed the broker to the wrong construction 
+            ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "broker complains of switch");
+          } else if (!broker.discharged) {
+
+            // One option: Throw exception if failed to pay broker,
+            // i.e.:
+            // ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "broker unsatisfied");
+
+            // Another option: copy the subarray anyway.
+            for (var j = 0; j < grainLen; j++) {
+              mode && mode.print && mode.print("delta3 i:"+i+" j:"+j);
+              SetElem("fillN_3", buffer, i+j, subarray.buffer[j]);
+            }
+
           }
         } else {
           var grainshape = "grain with shape:["+grain.join(",")+"]";
