@@ -1377,7 +1377,7 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
         // N*D tokens, where N is numSlices and D is a bound on the
         // depth of nesting of ParallelMatrix constructions (I am
         // using shape.length as a conservative value for D).
-        var numSlices = ParallelSlices();
+        var numSlices = ForkJoinSlices();
         var numTokens = numSlices * maxDepth;
         var chains = new Array(numSlices);
         for (var i = 0; i < numSlices; i++) {
