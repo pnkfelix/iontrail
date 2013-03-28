@@ -55,8 +55,6 @@ ShouldMonitorReturnType(JSFunction *fun)
 bool
 InvokeFunction(JSContext *cx, HandleFunction fun0, uint32_t argc, Value *argv, Value *rval)
 {
-    AssertCanGC();
-
     RootedFunction fun(cx, fun0);
     if (fun->isInterpreted()) {
         if (fun->isInterpretedLazy() && !fun->getOrCreateScript(cx))
@@ -75,7 +73,7 @@ InvokeFunction(JSContext *cx, HandleFunction fun0, uint32_t argc, Value *argv, V
         // In order to prevent massive bouncing between Ion and JM, see if we keep
         // hitting functions that are uncompilable.
         if (cx->methodJitEnabled && !fun->nonLazyScript()->canIonCompile()) {
-            UnrootedScript script = GetTopIonJSScript(cx);
+            RawScript script = GetTopIonJSScript(cx);
             if (script->hasIonScript() &&
                 ++script->ion->slowCallCount >= js_IonOptions.slowCallLimit)
             {
@@ -256,7 +254,6 @@ template bool StringsEqual<false>(JSContext *cx, HandleString lhs, HandleString 
 JSBool
 ObjectEmulatesUndefined(RawObject obj)
 {
-    AutoAssertNoGC nogc;
     return EmulatesUndefined(obj);
 }
 
@@ -566,6 +563,21 @@ GetDynamicName(JSContext *cx, JSObject *scopeChain, JSString *str, Value *vp)
     }
 
     vp->setUndefined();
+}
+
+JSBool
+FilterArguments(JSContext *cx, JSString *str)
+{
+    // getChars() is fallible, but cannot GC: it can only allocate a character
+    // for the flattened string. If this call fails then the calling Ion code
+    // will bailout, resume in the interpreter and likely fail again when
+    // trying to flatten the string and unwind the stack.
+    const jschar *chars = str->getChars(cx);
+    if (!chars)
+        return false;
+
+    static jschar arguments[] = {'a', 'r', 'g', 'u', 'm', 'e', 'n', 't', 's'};
+    return !StringHasPattern(chars, str->length(), arguments, mozilla::ArrayLength(arguments));
 }
 
 } // namespace ion

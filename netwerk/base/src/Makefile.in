@@ -60,6 +60,7 @@ CPPSRCS		= \
 		nsSocketTransport2.cpp \
 		nsSocketTransportService2.cpp \
 		nsServerSocket.cpp \
+		nsUDPServerSocket.cpp \
 		nsStreamListenerTee.cpp \
 		nsStreamLoader.cpp \
 		nsSyncStreamListener.cpp \
@@ -79,6 +80,12 @@ CPPSRCS		= \
 		Dashboard.cpp \
 		NetworkActivityMonitor.cpp \
 		$(NULL)
+
+ifdef MOZ_MEDIA
+CPPSRCS		+= \
+		nsMediaFragmentURIParser.cpp \
+		$(NULL)
+endif
 
 LOCAL_INCLUDES	+= -I$(topsrcdir)/dom/base
 

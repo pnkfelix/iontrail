@@ -34,6 +34,7 @@
 #include "nsIFormControlFrame.h"
 #include "nsITextControlFrame.h"
 #include "nsIFrame.h"
+#include "nsRangeFrame.h"
 #include "nsEventStates.h"
 #include "nsIServiceManager.h"
 #include "nsError.h"
@@ -583,6 +584,7 @@ nsHTMLInputElement::nsHTMLInputElement(already_AddRefed<nsINodeInfo> aNodeInfo,
   , mCanShowValidUI(true)
   , mCanShowInvalidUI(true)
   , mHasRange(false)
+  , mIsDraggingRange(false)
 {
   // We are in a type=text so we now we currenty need a nsTextEditorState.
   mInputData.mState = new nsTextEditorState(this);
@@ -2551,6 +2553,60 @@ nsHTMLInputElement::PreHandleEvent(nsEventChainPreVisitor& aVisitor)
   return nsGenericHTMLFormElement::PreHandleEvent(aVisitor);
 }
 
+void
+nsHTMLInputElement::StartRangeThumbDrag(nsGUIEvent* aEvent)
+{
+  mIsDraggingRange = true;
+  mRangeThumbDragStartValue = GetValueAsDouble();
+  nsIPresShell::SetCapturingContent(this, CAPTURE_IGNOREALLOWED |
+                                          CAPTURE_RETARGETTOELEMENT);
+  nsRangeFrame* rangeFrame = do_QueryFrame(GetPrimaryFrame());
+  SetValueOfRangeForUserEvent(rangeFrame->GetValueAtEventPoint(aEvent));
+}
+
+void
+nsHTMLInputElement::FinishRangeThumbDrag(nsGUIEvent* aEvent)
+{
+  MOZ_ASSERT(mIsDraggingRange);
+  
+  if (nsIPresShell::GetCapturingContent() == this) {
+    nsIPresShell::SetCapturingContent(nullptr, 0); // cancel capture
+  }
+  if (aEvent) {
+    nsRangeFrame* rangeFrame = do_QueryFrame(GetPrimaryFrame());
+    SetValueOfRangeForUserEvent(rangeFrame->GetValueAtEventPoint(aEvent));
+  }
+  mIsDraggingRange = false;
+}
+
+void
+nsHTMLInputElement::CancelRangeThumbDrag()
+{
+  MOZ_ASSERT(mIsDraggingRange);
+
+  if (nsIPresShell::GetCapturingContent() == this) {
+    nsIPresShell::SetCapturingContent(nullptr, 0); // cancel capture
+  }
+  SetValueOfRangeForUserEvent(mRangeThumbDragStartValue);
+  mIsDraggingRange = false;
+}
+
+void
+nsHTMLInputElement::SetValueOfRangeForUserEvent(double aValue)
+{
+  MOZ_ASSERT(MOZ_DOUBLE_IS_FINITE(aValue));
+
+  nsAutoString val;
+  ConvertNumberToString(aValue, val);
+  SetValueInternal(val, true, true);
+  nsIFrame* frame = GetPrimaryFrame();
+  if (frame) {
+    // Trigger reflow to update the position of the thumb:
+    frame->PresContext()->GetPresShell()->
+      FrameNeedsReflow(frame, nsIPresShell::eResize, NS_FRAME_IS_DIRTY);
+  }
+}
+
 static bool
 SelectTextFieldOnFocus()
 {
@@ -2569,6 +2625,17 @@ SelectTextFieldOnFocus()
   return gSelectTextFieldOnFocus == 1;
 }
 
+static bool
+IsLTR(Element* aElement)
+{
+  nsIFrame *frame = aElement->GetPrimaryFrame();
+  if (frame) {
+    return frame->StyleVisibility()->mDirection == NS_STYLE_DIRECTION_LTR;
+  }
+  // at least for HTML, directionality is exclusively LTR or RTL
+  return aElement->GetDirectionality() == eDir_LTR;
+}
+
 nsresult
 nsHTMLInputElement::PostHandleEvent(nsEventChainPostVisitor& aVisitor)
 {
@@ -2581,6 +2648,11 @@ nsHTMLInputElement::PostHandleEvent(nsEventChainPostVisitor& aVisitor)
     if (aVisitor.mEvent->message == NS_FOCUS_CONTENT && 
         IsSingleLineTextControl(false)) {
       GetValueInternal(mFocusedValue);
+    }
+
+    if (mIsDraggingRange &&
+        aVisitor.mEvent->message == NS_BLUR_CONTENT) {
+      FinishRangeThumbDrag();
     }
 
     UpdateValidityUIBits(aVisitor.mEvent->message == NS_FOCUS_CONTENT);
@@ -2835,6 +2907,65 @@ nsHTMLInputElement::PostHandleEvent(nsEventChainPostVisitor& aVisitor)
             NS_ENSURE_SUCCESS(rv, rv);
           }
 
+          if (aVisitor.mEvent->message == NS_KEY_PRESS &&
+              mType == NS_FORM_INPUT_RANGE && !keyEvent->IsAlt() &&
+              !keyEvent->IsControl() && !keyEvent->IsMeta() &&
+              (keyEvent->keyCode == NS_VK_LEFT ||
+               keyEvent->keyCode == NS_VK_RIGHT ||
+               keyEvent->keyCode == NS_VK_UP ||
+               keyEvent->keyCode == NS_VK_DOWN ||
+               keyEvent->keyCode == NS_VK_PAGE_UP ||
+               keyEvent->keyCode == NS_VK_PAGE_DOWN ||
+               keyEvent->keyCode == NS_VK_HOME ||
+               keyEvent->keyCode == NS_VK_END)) {
+            double minimum = GetMinimum();
+            double maximum = GetMaximum();
+            MOZ_ASSERT(MOZ_DOUBLE_IS_FINITE(minimum) &&
+                       MOZ_DOUBLE_IS_FINITE(maximum));
+            if (minimum < maximum) { // else the value is locked to the minimum
+              double value = GetValueAsDouble();
+              double step = GetStep();
+              if (step == kStepAny) {
+                step = GetDefaultStep();
+              }
+              MOZ_ASSERT(MOZ_DOUBLE_IS_FINITE(value) &&
+                         MOZ_DOUBLE_IS_FINITE(step));
+              double newValue;
+              switch (keyEvent->keyCode) {
+                case  NS_VK_LEFT:
+                  newValue = value + (IsLTR(this) ? -step : step);
+                  break;
+                case  NS_VK_RIGHT:
+                  newValue = value + (IsLTR(this) ? step : -step);
+                  break;
+                case  NS_VK_UP:
+                  // Even for horizontal range, "up" means "increase"
+                  newValue = value + step;
+                  break;
+                case  NS_VK_DOWN:
+                  // Even for horizontal range, "down" means "decrease"
+                  newValue = value - step;
+                  break;
+                case  NS_VK_HOME:
+                  newValue = minimum;
+                  break;
+                case  NS_VK_END:
+                  newValue = maximum;
+                  break;
+                case  NS_VK_PAGE_UP:
+                  // For PgUp/PgDn we jump 10% of the total range, unless step
+                  // requires us to jump more.
+                  newValue = value + std::max(step, 0.1 * (maximum - minimum));
+                  break;
+                case  NS_VK_PAGE_DOWN:
+                  newValue = value - std::max(step, 0.1 * (maximum - minimum));
+                  break;
+              }
+              SetValueOfRangeForUserEvent(newValue);
+              aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
+            }
+          }
+
         } break; // NS_KEY_PRESS || NS_KEY_UP
 
         case NS_MOUSE_BUTTON_DOWN:
@@ -2923,7 +3054,107 @@ nsHTMLInputElement::PostHandleEvent(nsEventChainPostVisitor& aVisitor)
     }
   } // if
 
+  if (NS_SUCCEEDED(rv) && mType == NS_FORM_INPUT_RANGE) {
+    PostHandleEventForRangeThumb(aVisitor);
+  }
+
   return rv;
+}
+
+void
+nsHTMLInputElement::PostHandleEventForRangeThumb(nsEventChainPostVisitor& aVisitor)
+{
+  MOZ_ASSERT(mType == NS_FORM_INPUT_RANGE);
+
+  if (nsEventStatus_eConsumeNoDefault == aVisitor.mEventStatus ||
+      !(aVisitor.mEvent->eventStructType == NS_MOUSE_EVENT ||
+        aVisitor.mEvent->eventStructType == NS_TOUCH_EVENT ||
+        aVisitor.mEvent->eventStructType == NS_KEY_EVENT)) {
+    return;
+  }
+
+  nsRangeFrame* rangeFrame = do_QueryFrame(GetPrimaryFrame());
+  if (!rangeFrame && mIsDraggingRange) {
+    CancelRangeThumbDrag();
+    return;
+  }
+
+  switch (aVisitor.mEvent->message)
+  {
+    case NS_MOUSE_BUTTON_DOWN:
+    case NS_TOUCH_START: {
+      if (mIsDraggingRange) {
+        break;
+      }
+      if (nsIPresShell::GetCapturingContent()) {
+        break; // don't start drag if someone else is already capturing
+      }
+      nsInputEvent* inputEvent = static_cast<nsInputEvent*>(aVisitor.mEvent);
+      if (inputEvent->IsShift() || inputEvent->IsControl() ||
+          inputEvent->IsAlt() || inputEvent->IsMeta() ||
+          inputEvent->IsAltGraph() || inputEvent->IsFn() ||
+          inputEvent->IsOS()) {
+        break; // ignore
+      }
+      if (aVisitor.mEvent->message == NS_MOUSE_BUTTON_DOWN) {
+        nsMouseEvent* mouseEvent = static_cast<nsMouseEvent*>(aVisitor.mEvent);
+        if (mouseEvent->buttons == nsMouseEvent::eLeftButtonFlag) {
+          StartRangeThumbDrag(inputEvent);
+        } else if (mIsDraggingRange) {
+          CancelRangeThumbDrag();
+        }
+      } else {
+        nsTouchEvent* touchEvent = static_cast<nsTouchEvent*>(aVisitor.mEvent);
+        if (touchEvent->touches.Length() == 1) {
+          StartRangeThumbDrag(inputEvent);
+        } else if (mIsDraggingRange) {
+          CancelRangeThumbDrag();
+        }
+      }
+      aVisitor.mEvent->mFlags.mMultipleActionsPrevented = true;
+    } break;
+
+    case NS_MOUSE_MOVE:
+    case NS_TOUCH_MOVE:
+      if (!mIsDraggingRange) {
+        break;
+      }
+      if (nsIPresShell::GetCapturingContent() != this) {
+        // Someone else grabbed capture.
+        CancelRangeThumbDrag();
+        break;
+      }
+      SetValueOfRangeForUserEvent(rangeFrame->GetValueAtEventPoint(
+                                    static_cast<nsInputEvent*>(aVisitor.mEvent)));
+      aVisitor.mEvent->mFlags.mMultipleActionsPrevented = true;
+      break;
+
+    case NS_MOUSE_BUTTON_UP:
+    case NS_TOUCH_END:
+      if (!mIsDraggingRange) {
+        break;
+      }
+      // We don't check to see whether we are the capturing content here and
+      // call CancelRangeThumbDrag() if that is the case. We just finish off
+      // the drag and set our final value (unless someone has called
+      // preventDefault() and prevents us getting here).
+      FinishRangeThumbDrag(static_cast<nsInputEvent*>(aVisitor.mEvent));
+      aVisitor.mEvent->mFlags.mMultipleActionsPrevented = true;
+      break;
+
+    case NS_KEY_PRESS:
+      if (mIsDraggingRange &&
+          static_cast<nsKeyEvent*>(aVisitor.mEvent)->keyCode == NS_VK_ESCAPE) {
+        CancelRangeThumbDrag();
+      }
+      break;
+
+    case NS_TOUCH_CANCEL:
+      if (mIsDraggingRange) {
+        CancelRangeThumbDrag();
+      }
+      break;
+  }
 }
 
 void
@@ -3018,6 +3249,10 @@ nsHTMLInputElement::UnbindFromTree(bool aDeep, bool aNullParent)
 void
 nsHTMLInputElement::HandleTypeChange(uint8_t aNewType)
 {
+  if (mType == NS_FORM_INPUT_RANGE && mIsDraggingRange) {
+    CancelRangeThumbDrag();
+  }
+
   ValueModeType aOldValueMode = GetValueMode();
   uint8_t oldType = mType;
   nsAutoString aOldValue;
@@ -3836,7 +4071,8 @@ FireEventForAccessibility(nsIDOMHTMLInputElement* aTarget,
                           const nsAString& aEventType)
 {
   nsCOMPtr<nsIDOMEvent> event;
-  if (NS_SUCCEEDED(nsEventDispatcher::CreateEvent(aPresContext, nullptr,
+  nsCOMPtr<mozilla::dom::Element> element = do_QueryInterface(aTarget);
+  if (NS_SUCCEEDED(nsEventDispatcher::CreateEvent(element, aPresContext, nullptr,
                                                   NS_LITERAL_STRING("Events"),
                                                   getter_AddRefs(event)))) {
     event->InitEvent(aEventType, true, true);
@@ -3977,7 +4213,7 @@ nsHTMLInputElement::SubmitNamesValues(nsFormSubmission* aFormSubmission)
                                        "Submit", defaultValue);
     value = defaultValue;
   }
-      
+
   //
   // Submit file if its input type=file and this encoding method accepts files
   //
@@ -3987,13 +4223,13 @@ nsHTMLInputElement::SubmitNamesValues(nsFormSubmission* aFormSubmission)
     const nsCOMArray<nsIDOMFile>& files = GetFiles();
 
     for (int32_t i = 0; i < files.Count(); ++i) {
-      aFormSubmission->AddNameFilePair(name, files[i]);
+      aFormSubmission->AddNameFilePair(name, files[i], NullString());
     }
 
     if (files.Count() == 0) {
       // If no file was selected, pretend we had an empty file with an
       // empty filename.
-      aFormSubmission->AddNameFilePair(name, nullptr);
+      aFormSubmission->AddNameFilePair(name, nullptr, NullString());
 
     }
 
@@ -4353,7 +4589,8 @@ nsHTMLInputElement::IsHTMLFocusable(bool aWithMouse, bool *aIsFocusable, int32_t
     return true;
   }
 
-  if (IsSingleLineTextControl(false)) {
+  if (IsSingleLineTextControl(false) ||
+      mType == NS_FORM_INPUT_RANGE) {
     *aIsFocusable = true;
     return false;
   }

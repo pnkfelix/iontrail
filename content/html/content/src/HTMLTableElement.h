@@ -9,7 +9,6 @@
 #include "nsIDOMHTMLTableElement.h"
 #include "mozilla/dom/HTMLTableCaptionElement.h"
 #include "mozilla/dom/HTMLTableSectionElement.h"
-#include "nsMappedAttributes.h"
 
 namespace mozilla {
 namespace dom {
@@ -204,8 +203,7 @@ public:
   nsMappedAttributes* GetAttributesMappedForCell();
 
 protected:
-  virtual JSObject* WrapNode(JSContext *aCx, JSObject *aScope,
-                             bool *aTriedToWrap) MOZ_OVERRIDE;
+  virtual JSObject* WrapNode(JSContext *aCx, JSObject *aScope) MOZ_OVERRIDE;
 
   nsIContent* GetChild(nsIAtom *aTag) const
   {
@@ -224,12 +222,7 @@ protected:
   // to be recalculated.
   nsMappedAttributes *mTableInheritedAttributes;
   void BuildInheritedAttributes();
-  void ReleaseInheritedAttributes() {
-    if (mTableInheritedAttributes &&
-        mTableInheritedAttributes != TABLE_ATTRS_DIRTY)
-      NS_RELEASE(mTableInheritedAttributes);
-      mTableInheritedAttributes = TABLE_ATTRS_DIRTY;
-  }
+  void ReleaseInheritedAttributes();
 };
 
 } // namespace dom

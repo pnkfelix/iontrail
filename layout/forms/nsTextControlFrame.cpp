@@ -778,7 +778,7 @@ nsTextControlFrame::SetSelectionInternal(nsIDOMNode *aStartNode,
   // Note that we use a new range to avoid having to do
   // isIncreasing checks to avoid possible errors.
 
-  nsRefPtr<nsRange> range = new nsRange();
+  nsRefPtr<nsRange> range = new nsRange(mContent);
   nsresult rv = range->SetStart(aStartNode, aStartOffset);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1074,18 +1074,10 @@ nsTextControlFrame::GetSelectionRange(int32_t* aSelectionStart,
   rv = selCon->GetSelection(nsISelectionController::SELECTION_NORMAL, getter_AddRefs(selection));  
   NS_ENSURE_SUCCESS(rv, rv);
   NS_ENSURE_TRUE(selection, NS_ERROR_FAILURE);
-  nsCOMPtr<nsISelectionPrivate> selPriv = do_QueryInterface(selection);
-  NS_ENSURE_TRUE(selPriv, NS_ERROR_FAILURE);
-  nsRefPtr<nsFrameSelection> frameSel;
-  rv = selPriv->GetFrameSelection(getter_AddRefs(frameSel));
-  NS_ENSURE_SUCCESS(rv, rv);
-  NS_ENSURE_TRUE(frameSel, NS_ERROR_FAILURE);
-  nsRefPtr<Selection> typedSel =
-    frameSel->GetSelection(nsISelectionController::SELECTION_NORMAL);
-  NS_ENSURE_TRUE(typedSel, NS_ERROR_FAILURE);
 
+  Selection* sel = static_cast<Selection*>(selection.get());
   if (aDirection) {
-    nsDirection direction = typedSel->GetSelectionDirection();
+    nsDirection direction = sel->GetSelectionDirection();
     if (direction == eDirNext) {
       *aDirection = eForward;
     } else if (direction == eDirPrevious) {
@@ -1101,7 +1093,7 @@ nsTextControlFrame::GetSelectionRange(int32_t* aSelectionStart,
 
   mozilla::dom::Element* root = GetRootNodeAndInitializeEditor();
   NS_ENSURE_STATE(root);
-  nsContentUtils::GetSelectionInTextControl(typedSel, root,
+  nsContentUtils::GetSelectionInTextControl(sel, root,
                                             *aSelectionStart, *aSelectionEnd);
 
   return NS_OK;
@@ -1478,7 +1470,11 @@ nsTextControlFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   DisplayBorderBackgroundOutline(aBuilder, aLists);
 
   nsIFrame* kid = mFrames.FirstChild();
-  nsDisplayListSet set(aLists, aLists.Content());
+  // Redirect all lists to the Content list so that nothing can escape, ie
+  // opacity creating stacking contexts that then get sorted with stacking
+  // contexts external to us.
+  nsDisplayList* content = aLists.Content();
+  nsDisplayListSet set(content, content, content, content, content, content);
 
   while (kid) {
     // If the frame is the placeholder frame, we should only show it if the

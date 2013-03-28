@@ -249,7 +249,8 @@ class Descriptor(DescriptorProvider):
             'NamedSetter': None,
             'NamedCreator': None,
             'NamedDeleter': None,
-            'Stringifier': None
+            'Stringifier': None,
+            'LegacyCaller': None
             }
         if self.concrete:
             self.proxy = False
@@ -262,6 +263,16 @@ class Descriptor(DescriptorProvider):
             for m in iface.members:
                 if m.isMethod() and m.isStringifier():
                     addOperation('Stringifier', m)
+                # Don't worry about inheriting legacycallers either: in
+                # practice these are on most-derived prototypes.
+                if m.isMethod() and m.isLegacycaller():
+                    if not m.isIdentifierLess():
+                        raise TypeError("We don't support legacycaller with "
+                                        "identifier.\n%s" % m.location);
+                    if len(m.signatures()) != 1:
+                        raise TypeError("We don't support overloaded "
+                                        "legacycaller.\n%s" % m.location)
+                    addOperation('LegacyCaller', m)
             while iface:
                 for m in iface.members:
                     if not m.isMethod():
@@ -284,6 +295,10 @@ class Descriptor(DescriptorProvider):
                         addIndexedOrNamedOperation('Creator', m)
                     if m.isDeleter():
                         addIndexedOrNamedOperation('Deleter', m)
+                    if m.isLegacycaller() and iface != self.interface:
+                        raise TypeError("We don't support legacycaller on "
+                                        "non-leaf interface %s.\n%s" %
+                                        (iface, iface.location))
 
                 iface.setUserData('hasConcreteDescendant', True)
                 iface = iface.parent
@@ -303,16 +318,15 @@ class Descriptor(DescriptorProvider):
                     raise SyntaxError("%s supports named properties but does "
                                       "not have a named getter.\n%s" %
                                       (self.interface, self.interface.location))
+                if operations['LegacyCaller']:
+                    raise SyntaxError("%s has a legacy caller but is a proxy; "
+                                      "we don't support that yet.\n%s" %
+                                      (self.interface, self.interface.location))
                 iface = self.interface
                 while iface:
                     iface.setUserData('hasProxyDescendant', True)
                     iface = iface.parent
         self.operations = operations
-
-        if self.interface.isExternal() and 'prefable' in desc:
-            raise TypeError("%s is external but has a prefable setting" %
-                            self.interface.identifier.name)
-        self.prefable = desc.get('prefable', False)
 
         if self.workers:
             if desc.get('nativeOwnership', 'worker') != 'worker':
@@ -332,10 +346,6 @@ class Descriptor(DescriptorProvider):
                              (self.workers or
                               (self.nativeOwnership != 'owned' and
                                desc.get('wrapperCache', True))))
-
-        if not self.wrapperCache and self.prefable:
-            raise TypeError("Descriptor for %s is prefable but not wrappercached" %
-                            self.interface.identifier.name)
 
         def make_name(name):
             return name + "_workers" if self.workers else name
@@ -370,6 +380,10 @@ class Descriptor(DescriptorProvider):
             addExtendedAttribute(attribute, desc.get(attribute, {}))
 
         self.binaryNames = desc.get('binaryNames', {})
+        if '__legacycaller' not in self.binaryNames:
+            self.binaryNames["__legacycaller"] = "LegacyCall"
+        if '__stringifier' not in self.binaryNames:
+            self.binaryNames["__stringifier"] = "Stringify"
 
         # Build the prototype chain.
         self.prototypeChain = []

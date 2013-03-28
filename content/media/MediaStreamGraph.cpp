@@ -118,8 +118,19 @@ MediaStreamGraphImpl::ExtractPendingInput(SourceMediaStream* aStream,
       StreamTime t =
         GraphTimeToStreamTime(aStream, mStateComputedTime) +
         (aDesiredUpToTime - mStateComputedTime);
+      LOG(PR_LOG_DEBUG, ("Calling NotifyPull aStream=%p t=%f current end=%f", aStream,
+                         MediaTimeToSeconds(t),
+                         MediaTimeToSeconds(aStream->mBuffer.GetEnd())));
       if (t > aStream->mBuffer.GetEnd()) {
         *aEnsureNextIteration = true;
+#ifdef DEBUG
+        if (aStream->mListeners.Length() == 0) {
+          LOG(PR_LOG_ERROR, ("No listeners in NotifyPull aStream=%p desired=%f current end=%f",
+                             aStream, MediaTimeToSeconds(t),
+                             MediaTimeToSeconds(aStream->mBuffer.GetEnd())));
+          aStream->DumpTrackInfo();
+        }
+#endif
         for (uint32_t j = 0; j < aStream->mListeners.Length(); ++j) {
           MediaStreamListener* l = aStream->mListeners[j];
           {
@@ -386,7 +397,16 @@ MediaStreamGraphImpl::WillUnderrun(MediaStream* aStream, GraphTime aTime,
   GraphTime bufferEnd =
     StreamTimeToGraphTime(aStream, aStream->GetBufferEnd(),
                           INCLUDE_TRAILING_BLOCKED_INTERVAL);
-  NS_ASSERTION(bufferEnd >= mCurrentTime, "Buffer underran");
+#ifdef DEBUG
+  if (bufferEnd < mCurrentTime) {
+    LOG(PR_LOG_ERROR, ("MediaStream %p underrun, "
+                       "bufferEnd %f < mCurrentTime %f (%lld < %lld), Streamtime %lld",
+                       aStream, MediaTimeToSeconds(bufferEnd), MediaTimeToSeconds(mCurrentTime),
+                       bufferEnd, mCurrentTime, aStream->GetBufferEnd()));
+    aStream->DumpTrackInfo();
+    NS_ASSERTION(bufferEnd >= mCurrentTime, "Buffer underran");
+  }
+#endif
   // We should block after bufferEnd.
   if (bufferEnd <= aTime) {
     LOG(PR_LOG_DEBUG, ("MediaStream %p will block due to data underrun, "
@@ -1213,7 +1233,7 @@ MediaStreamGraphImpl::RunInStableState()
       // the graph might exit immediately on finding it has no streams. The
       // first message for a new graph must create a stream.
       nsCOMPtr<nsIRunnable> event = new MediaStreamGraphThreadRunnable(this);
-      NS_NewThread(getter_AddRefs(mThread), event);
+      NS_NewNamedThread("MediaStreamGrph", getter_AddRefs(mThread), event);
     }
 
     if (mCurrentTaskMessageQueue.IsEmpty()) {
@@ -1597,7 +1617,11 @@ MediaStream::RemoveListener(MediaStreamListener* aListener)
     }
     nsRefPtr<MediaStreamListener> mListener;
   };
-  GraphImpl()->AppendMessage(new Message(this, aListener));
+  // If the stream is destroyed the Listeners have or will be
+  // removed.
+  if (!IsDestroyed()) {
+    GraphImpl()->AppendMessage(new Message(this, aListener));
+  }
 }
 
 void
@@ -1637,22 +1661,25 @@ SourceMediaStream::AddTrack(TrackID aID, TrackRate aRate, TrackTicks aStart,
   }
 }
 
-void
+bool
 SourceMediaStream::AppendToTrack(TrackID aID, MediaSegment* aSegment)
 {
   MutexAutoLock lock(mMutex);
   // ::EndAllTrackAndFinished() can end these before the sources notice
+  bool appended = false;
   if (!mFinished) {
     TrackData *track = FindDataForTrack(aID);
     if (track) {
       track->mData->AppendFrom(aSegment);
+      appended = true;
     } else {
-      NS_ERROR("Append to non-existent track!");
+      aSegment->Clear();
     }
   }
   if (!mDestroyed) {
     GraphImpl()->EnsureNextIteration();
   }
+  return appended;
 }
 
 bool
@@ -1663,8 +1690,7 @@ SourceMediaStream::HaveEnoughBuffered(TrackID aID)
   if (track) {
     return track->mHaveEnough;
   }
-  NS_ERROR("No track in HaveEnoughBuffered!");
-  return true;
+  return false;
 }
 
 void
@@ -1674,7 +1700,7 @@ SourceMediaStream::DispatchWhenNotEnoughBuffered(TrackID aID,
   MutexAutoLock lock(mMutex);
   TrackData* data = FindDataForTrack(aID);
   if (!data) {
-    NS_ERROR("No track in DispatchWhenNotEnoughBuffered");
+    aSignalThread->Dispatch(aSignalRunnable, 0);
     return;
   }
 
@@ -1694,8 +1720,6 @@ SourceMediaStream::EndTrack(TrackID aID)
     TrackData *track = FindDataForTrack(aID);
     if (track) {
       track->mCommands |= TRACK_END;
-    } else {
-      NS_ERROR("End of non-existant track");
     }
   }
   if (!mDestroyed) {

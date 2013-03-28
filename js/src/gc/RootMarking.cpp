@@ -28,6 +28,7 @@
 
 #include "jsgcinlines.h"
 #include "jsobjinlines.h"
+#include "ion/IonCode.h"
 
 #ifdef MOZ_VALGRIND
 # include <valgrind/memcheck.h>
@@ -47,7 +48,10 @@ static inline void
 MarkExactStackRoot(JSTracer *trc, Rooted<void*> *rooter, ThingRootKind kind)
 {
     void **addr = (void **)rooter->address();
-    if (!*addr)
+    if (IsNullTaggedPointer(*addr))
+        return;
+
+    if (kind == THING_ROOT_OBJECT && *addr == Proxy::LazyProto)
         return;
 
     switch (kind) {
@@ -58,6 +62,7 @@ MarkExactStackRoot(JSTracer *trc, Rooted<void*> *rooter, ThingRootKind kind)
       case THING_ROOT_BASE_SHAPE:  MarkBaseShapeRoot(trc, (BaseShape **)addr, "exact-baseshape"); break;
       case THING_ROOT_TYPE:        MarkTypeRoot(trc, (types::Type *)addr, "exact-type"); break;
       case THING_ROOT_TYPE_OBJECT: MarkTypeObjectRoot(trc, (types::TypeObject **)addr, "exact-typeobject"); break;
+      case THING_ROOT_ION_CODE:    MarkIonCodeRoot(trc, (ion::IonCode **)addr, "exact-ioncode"); break;
       case THING_ROOT_VALUE:       MarkValueRoot(trc, (Value *)addr, "exact-value"); break;
       case THING_ROOT_ID:          MarkIdRoot(trc, (jsid *)addr, "exact-id"); break;
       case THING_ROOT_PROPERTY_ID: MarkIdRoot(trc, &((js::PropertyId *)addr)->asId(), "exact-propertyid"); break;
@@ -82,7 +87,7 @@ MarkExactStackRoots(JSTracer *trc)
         for (ContextIter cx(trc->runtime); !cx.done(); cx.next())
             MarkExactStackRootList(trc, cx->thingGCRooters[i], ThingRootKind(i));
 
-        MarkExactStackRootList(trc, trc->runtime->mainThread->thingGCRooters[i], ThingRootKind(i));
+        MarkExactStackRootList(trc, trc->runtime->mainThread.thingGCRooters[i], ThingRootKind(i));
     }
 }
 #endif /* JSGC_USE_EXACT_ROOTING */
@@ -575,12 +580,6 @@ AutoGCRooter::trace(JSTracer *trc)
         return;
       }
 
-      case SHAPERANGE: {
-        Shape::Range::AutoRooter *rooter = static_cast<Shape::Range::AutoRooter *>(this);
-        rooter->trace(trc);
-        return;
-      }
-
       case STACKSHAPE: {
         StackShape::AutoRooter *rooter = static_cast<StackShape::AutoRooter *>(this);
         if (rooter->shape->base)
@@ -684,13 +683,6 @@ AutoGCRooter::traceAllWrappers(JSTracer *trc)
         if (gcr->tag_ == WRAPVECTOR || gcr->tag_ == WRAPPER)
             gcr->trace(trc);
     }
-}
-
-void
-Shape::Range::AutoRooter::trace(JSTracer *trc)
-{
-    if (r->cursor)
-        MarkShapeRoot(trc, const_cast<Shape**>(&r->cursor), "Shape::Range::AutoRooter");
 }
 
 void

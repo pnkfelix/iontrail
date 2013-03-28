@@ -302,14 +302,14 @@ class IonBuilder : public MIRGenerator
 
     MInstruction *addConvertElementsToDoubles(MDefinition *elements);
     MInstruction *addBoundsCheck(MDefinition *index, MDefinition *length);
-    MInstruction *addShapeGuard(MDefinition *obj, const UnrootedShape shape, BailoutKind bailoutKind);
+    MInstruction *addShapeGuard(MDefinition *obj, const RawShape shape, BailoutKind bailoutKind);
 
     JSObject *getNewArrayTemplateObject(uint32_t count);
 
     bool invalidatedIdempotentCache();
 
     bool loadSlot(MDefinition *obj, HandleShape shape, MIRType rvalType);
-    bool storeSlot(MDefinition *obj, UnrootedShape shape, MDefinition *value, bool needsBarrier);
+    bool storeSlot(MDefinition *obj, RawShape shape, MDefinition *value, bool needsBarrier);
 
     // jsop_getprop() helpers.
     bool getPropTryArgumentsLength(bool *emitted);
@@ -459,8 +459,6 @@ class IonBuilder : public MIRGenerator
     InliningStatus inlineNativeCall(CallInfo &callInfo, JSNative native);
 
     // Call functions
-    bool jsop_call_inline(HandleFunction callee, CallInfo &callInfo, MBasicBlock *bottom,
-                          Vector<MDefinition *, 8, IonAllocPolicy> &retvalDefns);
     bool inlineScriptedCalls(AutoObjectVector &targets, AutoObjectVector &originals,
                              CallInfo &callInfo);
     bool inlineScriptedCall(HandleFunction target, CallInfo &callInfo);
@@ -509,7 +507,7 @@ class IonBuilder : public MIRGenerator
 
     void clearForBackEnd();
 
-    UnrootedScript script() const { return script_.get(); }
+    JSScript *script() const { return script_.get(); }
 
     CodeGenerator *backgroundCodegen() const { return backgroundCodegen_; }
     void setBackgroundCodegen(CodeGenerator *codegen) { backgroundCodegen_ = codegen; }
@@ -538,7 +536,7 @@ class IonBuilder : public MIRGenerator
     Vector<MInstruction *, 2, IonAllocPolicy> iterators_;
     TypeOracle *oracle;
 
-    size_t inliningDepth;
+    size_t inliningDepth_;
     Vector<MDefinition *, 0, IonAllocPolicy> inlinedArguments_;
 
     // True if script->failedBoundsCheck is set for the current script or
@@ -659,7 +657,7 @@ class CallInfo
     }
 
     void popFormals(MBasicBlock *current) {
-        current->popn(argc() + 2);
+        current->popn(numFormals());
     }
 
     void pushFormals(MBasicBlock *current) {
@@ -680,8 +678,11 @@ class CallInfo
         return types_;
     }
 
-    uint32_t argc() {
+    uint32_t argc() const {
         return args_.length();
+    }
+    uint32_t numFormals() const {
+        return argc() + 2;
     }
 
     void setArgs(Vector<MDefinition *> *args) {

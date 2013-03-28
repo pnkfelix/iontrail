@@ -40,13 +40,13 @@ Debug_SetSlotRangeToCrashOnTouch(HeapSlot *begin, HeapSlot *end)
 
 } // namespace js
 
-inline js::UnrootedShape
+inline js::RawShape
 js::ObjectImpl::nativeLookup(JSContext *cx, PropertyId pid)
 {
     return nativeLookup(cx, pid.asId());
 }
 
-inline js::UnrootedShape
+inline js::RawShape
 js::ObjectImpl::nativeLookup(JSContext *cx, PropertyName *name)
 {
     return nativeLookup(cx, NameToId(name));
@@ -70,42 +70,34 @@ js::ObjectImpl::nativeContains(JSContext *cx, Shape *shape)
     return nativeLookup(cx, shape->propid()) == shape;
 }
 
-inline bool
-js::ObjectImpl::nativeLookupPure(PropertyId pid, Shape **shapep)
+inline js::RawShape
+js::ObjectImpl::nativeLookupPure(PropertyId pid)
 {
-    return nativeLookupPure(pid.asId(), shapep);
+    return nativeLookupPure(pid.asId());
+}
+
+inline js::RawShape
+js::ObjectImpl::nativeLookupPure(PropertyName *name)
+{
+    return nativeLookupPure(NameToId(name));
 }
 
 inline bool
-js::ObjectImpl::nativeLookupPure(PropertyName *name, Shape **shapep)
+js::ObjectImpl::nativeContainsPure(jsid id)
 {
-    return nativeLookupPure(NameToId(name), shapep);
+    return nativeLookupPure(id) != NULL;
 }
 
 inline bool
-js::ObjectImpl::nativeContainsPure(jsid id, bool *contains)
+js::ObjectImpl::nativeContainsPure(PropertyName *name)
 {
-    Shape *shape;
-    if (!nativeLookupPure(id, &shape))
-        return false;
-    *contains = !!shape;
-    return true;
+    return nativeContainsPure(NameToId(name));
 }
 
 inline bool
-js::ObjectImpl::nativeContainsPure(PropertyName *name, bool *contains)
+js::ObjectImpl::nativeContainsPure(Shape *shape)
 {
-    return nativeContainsPure(NameToId(name), contains);
-}
-
-inline bool
-js::ObjectImpl::nativeContainsPure(Shape *shape, bool *contains)
-{
-    Shape *shape2;
-    if (!nativeLookupPure(shape->propid(), &shape2))
-        return false;
-    *contains = shape == shape2;
-    return true;
+    return nativeLookupPure(shape->propid()) == shape;
 }
 
 inline bool
@@ -352,7 +344,7 @@ js::ObjectImpl::dynamicSlotsCount(uint32_t nfixed, uint32_t span)
 inline size_t
 js::ObjectImpl::sizeOfThis() const
 {
-    return arenaHeader()->getThingSize();
+    return js::gc::Arena::thingSize(getAllocKind());
 }
 
 /* static */ inline void
@@ -397,7 +389,7 @@ js::ObjectImpl::writeBarrierPre(ObjectImpl *obj)
      * This would normally be a null test, but TypeScript::global uses 0x1 as a
      * special value.
      */
-    if (uintptr_t(obj) < 32)
+    if (IsNullTaggedPointer(obj))
         return;
 
     Zone *zone = obj->zone();
@@ -414,7 +406,7 @@ js::ObjectImpl::writeBarrierPre(ObjectImpl *obj)
 js::ObjectImpl::writeBarrierPost(ObjectImpl *obj, void *addr)
 {
 #ifdef JSGC_GENERATIONAL
-    if (uintptr_t(obj) < 32)
+    if (IsNullTaggedPointer(obj))
         return;
     obj->runtime()->gcStoreBuffer.putCell((Cell **)addr);
 #endif

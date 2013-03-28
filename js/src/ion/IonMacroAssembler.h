@@ -83,12 +83,13 @@ class MacroAssembler : public MacroAssemblerSpecific
         if (!GetIonContext()->temp)
             alloc_.construct(cx);
 #ifdef JS_CPU_ARM
+        initWithAllocator();
         m_buffer.id = GetIonContext()->getNextAssemblerId();
 #endif
     }
 
     // This constructor should only be used when there is no IonContext active
-    // (for example, Trampoline-$(ARCH).cpp).
+    // (for example, Trampoline-$(ARCH).cpp and IonCaches.cpp).
     MacroAssembler(JSContext *cx)
       : enoughMemory_(true),
         sps_(NULL) // no need for instrumentation in trampolines and such
@@ -97,6 +98,7 @@ class MacroAssembler : public MacroAssemblerSpecific
         ionContext_.construct(cx, cx->compartment, (js::ion::TempAllocator *)NULL);
         alloc_.construct(cx);
 #ifdef JS_CPU_ARM
+        initWithAllocator();
         m_buffer.id = GetIonContext()->getNextAssemblerId();
 #endif
     }
@@ -148,6 +150,12 @@ class MacroAssembler : public MacroAssemblerSpecific
     }
     void branchTestObjShape(Condition cond, Register obj, const Shape *shape, Label *label) {
         branchPtr(cond, Address(obj, JSObject::offsetOfShape()), ImmGCPtr(shape), label);
+    }
+
+    // Branches to |label| if |reg| is false. |reg| should be a C++ bool.
+    void branchIfFalseBool(const Register &reg, Label *label) {
+        // Note that C++ bool is only 1 byte, so ignore the higher-order bits.
+        branchTest32(Assembler::Zero, reg, Imm32(0xFF), label);
     }
 
     void loadObjPrivate(Register obj, uint32_t nfixed, Register dest) {
@@ -532,22 +540,12 @@ class MacroAssembler : public MacroAssemblerSpecific
         Push(ImmWord(uintptr_t(codeVal)));
         Push(ImmWord(uintptr_t(NULL)));
     }
-    void enterParExitFrame(const VMFunction *f, Register slice, Register scratch) {
-        // Load the current ForkJoinSlice *. If we need a parallel exit frame,
-        // chances are we are about to do something very slow anyways, so just
-        // call ParForkJoinSlice again instead of using the cached version.
-        setupUnalignedABICall(0, scratch);
-        callWithABI(JS_FUNC_TO_DATA_PTR(void *, ParForkJoinSlice));
-        if (ReturnReg != slice)
-            movePtr(ReturnReg, slice);
-        // Load the PerThreadData from from the slice.
-        loadPtr(Address(slice, offsetof(ForkJoinSlice, perThreadData)), scratch);
-        linkParExitFrame(scratch);
-        // Push the ioncode.
-        exitCodePatch_ = PushWithPatch(ImmWord(-1));
-        // Push the VMFunction pointer, to mark arguments.
-        Push(ImmWord(f));
-    }
+
+    void enterParallelExitFrameAndLoadSlice(const VMFunction *f, Register slice,
+                                            Register scratch);
+
+    void enterExitFrameAndLoadContext(const VMFunction *f, Register cxReg, Register scratch,
+                                      ExecutionMode executionMode);
 
     void leaveExitFrame() {
         freeStack(IonExitFooterFrame::Size());
@@ -602,6 +600,8 @@ class MacroAssembler : public MacroAssemblerSpecific
             sps_->reenter(*this, InvalidReg);
     }
 
+    void handleFailure(ExecutionMode executionMode);
+
     // see above comment for what is returned
     uint32_t callIon(const Register &callee) {
         leaveSPSFrame();
@@ -629,31 +629,8 @@ class MacroAssembler : public MacroAssemblerSpecific
         return ret;
     }
 
-    void tagCallee(Register callee, ExecutionMode mode) {
-        switch (mode) {
-          case SequentialExecution:
-            // CalleeToken_Function is untagged, so we don't need to do anything.
-            return;
-          case ParallelExecution:
-            orPtr(Imm32(CalleeToken_ParFunction), callee);
-            return;
-          default:
-            JS_NOT_REACHED("unknown execution mode");
-        }
-    }
-
-    void clearCalleeTag(Register callee, ExecutionMode mode) {
-        switch (mode) {
-          case SequentialExecution:
-            // CalleeToken_Function is untagged, so we don't need to do anything.
-            return;
-          case ParallelExecution:
-            andPtr(Imm32(~0x3), callee);
-            return;
-          default:
-            JS_NOT_REACHED("unknown execution mode");
-        }
-    }
+    void tagCallee(Register callee, ExecutionMode mode);
+    void clearCalleeTag(Register callee, ExecutionMode mode);
 
 
   private:
@@ -715,7 +692,7 @@ class MacroAssembler : public MacroAssemblerSpecific
         bind(&stackFull);
     }
 
-    void spsPushFrame(SPSProfiler *p, const char *str, UnrootedScript s, Register temp) {
+    void spsPushFrame(SPSProfiler *p, const char *str, RawScript s, Register temp) {
         Label stackFull;
         spsProfileEntryAddress(p, 0, temp, &stackFull);
 
@@ -793,4 +770,3 @@ JSOpToDoubleCondition(JSOp op)
 } // namespace js
 
 #endif // jsion_macro_assembler_h__
-

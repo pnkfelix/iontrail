@@ -13,6 +13,7 @@
 #include "ion/Bailouts.h"
 #include "ion/VMFunctions.h"
 #include "ion/IonSpewer.h"
+#include "vm/ForkJoin.h"
 
 #include "jsscriptinlines.h"
 
@@ -384,9 +385,6 @@ IonRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
     // Wrapper register set is a superset of Volatile register set.
     JS_STATIC_ASSERT((Register::Codes::VolatileMask & ~Register::Codes::WrapperMask) == 0);
 
-    // Scratch register.
-    Register temp = regs.getAny();
-
     // The context is the first argument.
     Register cxreg = IntArgReg0;
 
@@ -397,10 +395,7 @@ IonRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
     //  +0  returnAddress
     //
     // We're aligned to an exit frame, so link it up.
-    if (f.parallel)
-        masm.enterParExitFrame(&f, cxreg, temp);
-    else
-        masm.enterExitFrame(&f);
+    masm.enterExitFrameAndLoadContext(&f, cxreg, regs.getAny(), f.executionMode);
 
     // Save the current stack pointer as the base for copying arguments.
     Register argsBase = InvalidReg;
@@ -436,13 +431,7 @@ IonRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
         break;
     }
 
-    masm.setupUnalignedABICall(f.argc(), temp);
-
-    // Initialize the context parameter if sequential. For parallel execution,
-    // we've already loaded the context earlier in entering the parallel exit
-    // frame.
-    if (!f.parallel)
-        masm.loadJSContext(cxreg);
+    masm.setupUnalignedABICall(f.argc(), regs.getAny());
     masm.passABIArg(cxreg);
 
     size_t argDisp = 0;
@@ -475,15 +464,19 @@ IonRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
     masm.callWithABI(f.wrapped);
 
     // Test for failure.
-    Label exception;
+    Label failure;
     switch (f.failType()) {
       case Type_Object:
         masm.testq(rax, rax);
-        masm.j(Assembler::Zero, &exception);
+        masm.j(Assembler::Zero, &failure);
         break;
       case Type_Bool:
         masm.testb(rax, rax);
-        masm.j(Assembler::Zero, &exception);
+        masm.j(Assembler::Zero, &failure);
+        break;
+      case Type_ParallelResult:
+        masm.cmp32(rax, Imm32(TP_SUCCESS));
+        masm.j(Assembler::NotEqual, &failure);
         break;
       default:
         JS_NOT_REACHED("unknown failure kind");
@@ -511,11 +504,8 @@ IonRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
     masm.leaveExitFrame();
     masm.retn(Imm32(sizeof(IonExitFrameLayout) + f.explicitStackSlots() * sizeof(void *)));
 
-    masm.bind(&exception);
-    if (f.parallel)
-        masm.handleParException();
-    else
-        masm.handleException();
+    masm.bind(&failure);
+    masm.handleFailure(f.executionMode);
 
     Linker linker(masm);
     IonCode *wrapper = linker.newCode(cx);
@@ -558,4 +548,3 @@ IonRuntime::generatePreBarrier(JSContext *cx, MIRType type)
     Linker linker(masm);
     return linker.newCode(cx);
 }
-

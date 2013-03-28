@@ -3,6 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+Cu.import("resource://gre/modules/PageThumbs.jsm");
+
 /**
  * Constants
  */
@@ -46,7 +48,8 @@ let Elements = {};
   ["progress",           "progress-control"],
   ["contentNavigator",   "content-navigator"],
   ["aboutFlyout",        "about-flyoutpanel"],
-  ["prefsFlyout",        "prefs-flyoutpanel"]
+  ["prefsFlyout",        "prefs-flyoutpanel"],
+  ["syncFlyout",         "sync-flyoutpanel"]
 ].forEach(function (aElementGlobal) {
   let [name, id] = aElementGlobal;
   XPCOMUtils.defineLazyGetter(Elements, name, function() {
@@ -82,6 +85,7 @@ var BrowserUI = {
 
     messageManager.addMessageListener("Browser:OpenURI", this);
     messageManager.addMessageListener("Browser:SaveAs:Return", this);
+    messageManager.addMessageListener("Content:StateChange", this);
 
     // listening escape to dismiss dialog on VK_ESCAPE
     window.addEventListener("keypress", this, true);
@@ -96,11 +100,11 @@ var BrowserUI = {
     ContextUI.init();
     StartUI.init();
     PanelUI.init();
-    IdentityUI.init();
     if (Browser.getHomePage() === "about:start") {
       StartUI.show();
     }
     FlyoutPanelsUI.init();
+    PageThumbs.init();
 
     // show the right toolbars, awesomescreen, etc for the os viewstate
     BrowserUI._adjustDOMforViewState();
@@ -194,6 +198,8 @@ var BrowserUI = {
     StartUI.uninit();
     Downloads.uninit();
     SettingsCharm.uninit();
+    messageManager.removeMessageListener("Content:StateChange", this);
+    PageThumbs.uninit();
   },
 
 
@@ -757,6 +763,32 @@ var BrowserUI = {
     }
   },
 
+  openFile: function() {
+    try {
+      const nsIFilePicker = Ci.nsIFilePicker;
+      let fp = Cc["@mozilla.org/filepicker;1"].createInstance(nsIFilePicker);
+      let self = this;
+      let fpCallback = function fpCallback_done(aResult) {
+        if (aResult == nsIFilePicker.returnOK) {
+          self.goToURI(fp.fileURL.spec);
+        }
+      };
+
+      let windowTitle = Strings.browser.GetStringFromName("browserForOpenLocation");
+      fp.init(window, windowTitle, nsIFilePicker.modeOpen);
+      fp.appendFilters(nsIFilePicker.filterAll | nsIFilePicker.filterText |
+                       nsIFilePicker.filterImages | nsIFilePicker.filterXML |
+                       nsIFilePicker.filterHTML);
+      fp.open(fpCallback);
+    } catch (ex) {
+      dump ('BrowserUI openFile exception: ' + ex + '\n');
+    }
+  },
+
+  savePage: function() {
+    Browser.savePage();
+  },
+
   receiveMessage: function receiveMessage(aMessage) {
     let browser = aMessage.target;
     let json = aMessage.json;
@@ -778,9 +810,87 @@ var BrowserUI = {
         //Browser.addTab(json.uri, json.bringFront, Browser.selectedTab, { referrerURI: referrerURI });
         this.goToURI(json.uri);
         break;
+      case "Content:StateChange":
+        let currBrowser = Browser.selectedBrowser;
+        if (this.shouldCaptureThumbnails(currBrowser)) {
+          PageThumbs.captureAndStore(currBrowser);
+          let currPage = currBrowser.currentURI.spec;
+          Services.obs.notifyObservers(null, "Metro:RefreshTopsiteThumbnail", currPage);
+        }
+        break;
     }
 
     return {};
+  },
+
+  // Private Browsing is not supported on metro at this time, when it is added
+  //  this function must be updated to skip capturing those pages
+  shouldCaptureThumbnails: function shouldCaptureThumbnails(aBrowser) {
+    // Capture only if it's the currently selected tab.
+    if (aBrowser != Browser.selectedBrowser) {
+      return false;
+    }
+    // FIXME Bug 720575 - Don't capture thumbnails for SVG or XML documents as
+    //       that currently regresses Talos SVG tests.
+    let doc = aBrowser.contentDocument;
+    if (doc instanceof SVGDocument || doc instanceof XMLDocument) {
+      return false;
+    }
+
+    // There's no point in taking screenshot of loading pages.
+    if (aBrowser.docShell.busyFlags != Ci.nsIDocShell.BUSY_FLAGS_NONE) {
+      return false;
+    }
+
+    // Don't take screenshots of about: pages.
+    if (aBrowser.currentURI.schemeIs("about")) {
+      return false;
+    }
+
+    // No valid document channel. We shouldn't take a screenshot.
+    let channel = aBrowser.docShell.currentDocumentChannel;
+    if (!channel) {
+      return false;
+    }
+
+    // Don't take screenshots of internally redirecting about: pages.
+    // This includes error pages.
+    let uri = channel.originalURI;
+    if (uri.schemeIs("about")) {
+      return false;
+    }
+
+    // http checks
+    let httpChannel;
+    try {
+      httpChannel = channel.QueryInterface(Ci.nsIHttpChannel);
+    } catch (e) { /* Not an HTTP channel. */ }
+
+    if (httpChannel) {
+      // Continue only if we have a 2xx status code.
+      try {
+        if (Math.floor(httpChannel.responseStatus / 100) != 2) {
+          return false;
+        }
+      } catch (e) {
+        // Can't get response information from the httpChannel
+        // because mResponseHead is not available.
+        return false;
+      }
+
+      // Cache-Control: no-store.
+      if (httpChannel.isNoStoreResponse()) {
+        return false;
+      }
+
+      // Desktop has a pref that allows users to override this. We do not
+      //   support that pref currently
+      if (uri.schemeIs("https")) {
+        return false;
+      }
+    }
+
+    return true;
   },
 
   supportsCommand : function(cmd) {
@@ -811,6 +921,8 @@ var BrowserUI = {
       case "cmd_zoomout":
       case "cmd_volumeLeft":
       case "cmd_volumeRight":
+      case "cmd_openFile":
+      case "cmd_savePage":
         isSupported = true;
         break;
       default:
@@ -934,6 +1046,12 @@ var BrowserUI = {
         // Zoom out (portrait) or in (landscape)
         Browser.zoom(Util.isPortrait() ? 1 : -1);
         break;
+      case "cmd_openFile":
+        this.openFile();
+        break;
+      case "cmd_savePage":
+        this.savePage();
+        break;
     }
   }
 };
@@ -953,6 +1071,7 @@ var ContextUI = {
   init: function init() {
     Elements.browsers.addEventListener("mousedown", this, true);
     Elements.browsers.addEventListener("touchstart", this, true);
+    Elements.browsers.addEventListener("AlertActive", this, true);
     window.addEventListener("MozEdgeUIGesture", this, true);
     window.addEventListener("keypress", this, true);
     window.addEventListener("KeyboardChanged", this, false);
@@ -1163,6 +1282,8 @@ var ContextUI = {
           this.dismiss();
         break;
       case "touchstart":
+      // ContextUI can hide the notification bar. Workaround until bug 845348 is fixed.
+      case "AlertActive":
         this.dismiss();
         break;
       case "keypress":
@@ -1306,6 +1427,18 @@ var StartUI = {
   }
 };
 
+var SyncPanelUI = {
+  init: function() {
+    // Run some setup code the first time the panel is shown.
+    Elements.syncFlyout.addEventListener("PopupChanged", function onShow(aEvent) {
+      if (aEvent.detail && aEvent.popup === Elements.syncFlyout) {
+        Elements.syncFlyout.removeEventListener("PopupChanged", onShow, false);
+        WeaveGlue.init();
+      }
+    }, false);
+  }
+};
+
 var FlyoutPanelsUI = {
   get _aboutVersionLabel() {
     return document.getElementById('about-version-label');
@@ -1325,11 +1458,13 @@ var FlyoutPanelsUI = {
   init: function() {
     this._initAboutPanel();
     PreferencesPanelView.init();
+    SyncPanelUI.init();
   },
 
   hide: function() {
     Elements.aboutFlyout.hide();
     Elements.prefsFlyout.hide();
+    Elements.syncFlyout.hide();
   }
 };
 
@@ -1608,6 +1743,11 @@ var SettingsCharm = {
     this.addEntry({
         label: Strings.browser.GetStringFromName("optionsCharm"),
         onselected: function() Elements.prefsFlyout.show()
+    });
+    // Sync 
+    this.addEntry({
+        label: Strings.browser.GetStringFromName("syncCharm"),
+        onselected: function() Elements.syncFlyout.show()
     });
     // About
     this.addEntry({

@@ -21,6 +21,7 @@
 #ifdef ACCESSIBILITY
 #include "mozilla/a11y/Accessible.h"
 #endif
+#include "mozilla/layers/CompositorParent.h"
 
 #include "mozwrlbase.h"
 
@@ -112,6 +113,10 @@ public:
   float         GetDPI();
   virtual bool  IsVisible() const;
   virtual bool  IsEnabled() const;
+  // ShouldUseOffMainThreadCompositing is defined in base widget
+  virtual bool  ShouldUseOffMainThreadCompositing();
+  bool          ShouldUseMainThreadD3D10Manager();
+  bool          ShouldUseBasicManager();
   virtual LayerManager* GetLayerManager(PLayersChild* aShadowManager = nullptr,
                                         LayersBackend aBackendHint = mozilla::layers::LAYERS_NONE,
                                         LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT,
@@ -121,12 +126,11 @@ public:
   NS_IMETHOD_(void) SetInputContext(const InputContext& aContext,
                                     const InputContextAction& aAction);
   NS_IMETHOD_(nsIWidget::InputContext) GetInputContext();
-  NS_IMETHOD    ResetInputState();
-  NS_IMETHOD    CancelIMEComposition();
+  NS_IMETHOD    NotifyIME(NotificationToIME aNotification) MOZ_OVERRIDE;
   NS_IMETHOD    GetToggledKeyState(uint32_t aKeyCode, bool* aLEDState);
-  NS_IMETHOD    OnIMEFocusChange(bool aFocus);
-  NS_IMETHOD    OnIMETextChange(uint32_t aStart, uint32_t aOldEnd, uint32_t aNewEnd);
-  NS_IMETHOD    OnIMESelectionChange(void);
+  NS_IMETHOD    NotifyIMEOfTextChange(uint32_t aStart,
+                                      uint32_t aOldEnd,
+                                      uint32_t aNewEnd) MOZ_OVERRIDE;
 
   // FrameworkView helpers
   void SizeModeChanged();
@@ -197,4 +201,5 @@ protected:
   HWND mWnd;
   WNDPROC mMetroWndProc;
   nsIWidget::InputContext mInputContext;
+  bool mTempBasicLayerInUse;
 };

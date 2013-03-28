@@ -180,6 +180,10 @@ pref("media.gstreamer.enabled", true);
 #endif
 #ifdef MOZ_WEBRTC
 pref("media.navigator.enabled", true);
+pref("media.navigator.video.default_width",640);
+pref("media.navigator.video.default_height",480);
+pref("media.navigator.video.default_fps",30);
+pref("media.navigator.video.default_minfps",10);
 pref("media.peerconnection.enabled", true);
 pref("media.navigator.permission.disabled", false);
 pref("media.peerconnection.default_iceservers", "[{\"url\": \"stun:23.21.150.121\"}]");
@@ -402,6 +406,9 @@ pref("view_source.editor.path", "");
 // allows to add further arguments to the editor; use the %LINE% placeholder
 // for jumping to a specific line (e.g. "/line:%LINE%" or "--goto %LINE%")
 pref("view_source.editor.args", "");
+
+// When true this will word-wrap plain text documents.
+pref("plain_text.wrap_long_lines", false);
 
 // dispatch left clicks only to content in browser (still allows clicks to chrome/xul)
 pref("nglayout.events.dispatchLeftClickOnly", true);
@@ -704,10 +711,6 @@ pref("dom.send_after_paint_to_content", false);
 pref("dom.min_timeout_value", 4);
 // And for background windows
 pref("dom.min_background_timeout_value", 1000);
-
-// Use the new DOM bindings (only affects any scopes created after the pref is
-// changed)
-pref("dom.experimental_bindings", true);
 
 // Run content XBL in a separate scope.
 pref("dom.xbl_scopes", true);
@@ -1041,21 +1044,27 @@ pref("dom.server-events.default-reconnection-time", 5000); // in milliseconds
 // by the jar channel.
 pref("network.jar.open-unsafe-types", false);
 
-// This preference controls whether or not internationalized domain names (IDN)
-// are handled.  IDN requires a nsIIDNService implementation.
-pref("network.enableIDN", true);
-
 // This preference, if true, causes all UTF-8 domain names to be normalized to
 // punycode.  The intention is to allow UTF-8 domain names as input, but never
 // generate them from punycode.
 pref("network.IDN_show_punycode", false);
 
-// TLDs with "network.IDN.whitelist.tld" explicitly set to true are treated as 
+// If "network.IDN.use_whitelist" is set to true, TLDs with
+// "network.IDN.whitelist.tld" explicitly set to true are treated as
 // IDN-safe. Otherwise, they're treated as unsafe and punycode will be used
-// for displaying them in the UI (e.g. URL bar). Note that these preferences
-// are referred to ONLY when "network.IDN_show_punycode" is false. In other
-// words, all IDNs will be shown in punycode if "network.IDN_show_punycode"
-// is true.
+// for displaying them in the UI (e.g. URL bar), unless they conform to one of
+// the profiles specified in
+// http://www.unicode.org/reports/tr36/proposed.html#Security_Levels_and_Alerts
+// If "network.IDN.restriction_profile" is "high", the Highly Restrictive
+// profile is used.
+// If "network.IDN.restriction_profile" is "moderate", the Moderately
+// Restrictive profile is used.
+// In all other cases, the ASCII-Only profile is used.
+// Note that these preferences are referred to ONLY when
+// "network.IDN_show_punycode" is false. In other words, all IDNs will be shown
+// in punycode if "network.IDN_show_punycode" is true.
+pref("network.IDN.restriction_profile", "moderate");
+pref("network.IDN.use_whitelist", true);
 
 // ccTLDs
 pref("network.IDN.whitelist.ac", true);
@@ -1145,11 +1154,8 @@ pref("network.IDN.whitelist.xn--kprw13d", true);  // Simplified
 pref("network.IDN.whitelist.asia", true);
 pref("network.IDN.whitelist.biz", true);
 pref("network.IDN.whitelist.cat", true);
-pref("network.IDN.whitelist.com", true);
 pref("network.IDN.whitelist.info", true);
 pref("network.IDN.whitelist.museum", true);
-pref("network.IDN.whitelist.name", true);
-pref("network.IDN.whitelist.net", true);
 pref("network.IDN.whitelist.org", true);
 pref("network.IDN.whitelist.tel", true);
 
@@ -1781,6 +1787,7 @@ pref("dom.archivereader.enabled", false);
 // resolved.
 pref("hangmonitor.timeout", 0);
 
+pref("plugins.load_appdir_plugins", false);
 // If true, plugins will be click to play
 pref("plugins.click_to_play", false);
 
@@ -3982,6 +3989,7 @@ pref("alerts.disableSlidingEffect", false);
 // DOM full-screen API.
 pref("full-screen-api.enabled", false);
 pref("full-screen-api.allow-trusted-requests-only", true);
+pref("full-screen-api.content-only", false);
 pref("full-screen-api.pointer-lock.enabled", true);
 
 // DOM idle observers API

@@ -923,6 +923,7 @@ FrameLayerBuilder::RemoveFrameFromLayerManager(nsIFrame* aFrame,
         nsIntRegion rgn = old.ScaleToOutsidePixels(thebesData->mXScale, thebesData->mYScale, thebesData->mAppUnitsPerDevPixel);
         rgn.MoveBy(-GetTranslationForThebesLayer(t));
         thebesData->mRegionToInvalidate.Or(thebesData->mRegionToInvalidate, rgn);
+        thebesData->mRegionToInvalidate.SimplifyOutward(8);
       }
     }
 
@@ -2854,6 +2855,10 @@ FrameLayerBuilder::BuildContainerLayerFor(nsDisplayListBuilder* aBuilder,
   NS_ASSERTION(!aContainerItem ||
                aContainerItem->GetUnderlyingFrame() == aContainerFrame,
                "Container display item must match given frame");
+
+  if (!aParameters.mXScale || !aParameters.mYScale) {
+    return nullptr;
+  }
 
   nsRefPtr<ContainerLayer> containerLayer;
   if (aManager == mRetainingManager) {

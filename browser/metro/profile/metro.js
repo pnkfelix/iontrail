@@ -21,6 +21,9 @@ pref("metro.debug.selection.displayRanges", false);
 pref("metro.debug.selection.dumpRanges", false);
 pref("metro.debug.selection.dumpEvents", false);
 
+// Enable off main thread compositing
+pref("layers.offmainthreadcomposition.enabled", false);
+
 // Form helper options: 0 = disabled, 1 = enabled, 2 = dynamic depending on screen size
 pref("formhelper.mode", 0);
 // Auto zoom to form elements when they take focus 
@@ -223,10 +226,6 @@ pref("accessibility.browsewithcaret", false);
 // successfully applied.
 pref("app.update.showInstalledUI", false);
 
-// Whether the character encoding options are displayed in the app bar.
-pref("browser.menu.showCharacterEncoding", false);
-pref("intl.charsetmenu.browser.static", "chrome://browser/locale/browser.properties");
-
 // pointer to the default engine name
 pref("browser.search.defaultenginename", "chrome://browser/locale/browser.properties");
 
@@ -362,9 +361,6 @@ pref("privacy.sanitize.timeSpan", 1);
 pref("privacy.sanitize.sanitizeOnShutdown", false);
 pref("privacy.sanitize.migrateFx3Prefs",    false);
 
-// URL to the Learn More link XXX this is the firefox one.  Bug 495578 fixes this.
-pref("browser.geolocation.warning.infoURL", "http://www.mozilla.com/%LOCALE%/firefox/geolocation/");
-
 // enable geo
 pref("geo.enabled", true);
 
@@ -396,11 +392,10 @@ pref("dom.ipc.content.nice", 1);
 
 // product URLs
 // The breakpad report server to link to in about:crashes
-pref("breakpad.reportURL", "http://crash-stats.mozilla.com/report/index/");
+pref("breakpad.reportURL", "https://crash-stats.mozilla.com/report/index/");
 pref("app.releaseNotesURL", "http://www.mozilla.com/%LOCALE%/mobile/%VERSION%/releasenotes/");
 pref("app.sync.tutorialURL", "https://support.mozilla.org/kb/sync-firefox-between-desktop-and-mobile");
 pref("app.support.baseURL", "http://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/");
-pref("app.feedbackURL", "http://input.mozilla.com/feedback/");
 pref("app.privacyURL", "http://www.mozilla.com/legal/privacy/");
 pref("app.creditsURL", "http://www.mozilla.org/credits/");
 pref("app.channelURL", "http://www.mozilla.org/%LOCALE%/firefox/channel/");
@@ -476,8 +471,6 @@ pref("services.sync.prefs.sync.signon.rememberSignons", true);
 pref("ui.dragThresholdX", 50);
 pref("ui.dragThresholdY", 50);
 
-pref("notification.feature.enabled", true);
-
 // prevent tooltips from showing up
 pref("browser.chrome.toolbar_tips", false);
 
@@ -535,8 +528,8 @@ pref("browser.safebrowsing.provider.0.reportMalwareURL", "http://{moz:locale}.ma
 pref("browser.safebrowsing.provider.0.reportMalwareErrorURL", "http://{moz:locale}.malware-error.mozilla.com/?hl={moz:locale}");
 
 // FAQ URLs
-pref("browser.safebrowsing.warning.infoURL", "http://www.mozilla.com/%LOCALE%/%APP%/phishing-protection/");
-pref("browser.geolocation.warning.infoURL", "http://www.mozilla.com/%LOCALE%/%APP%/geolocation/");
+pref("browser.safebrowsing.warning.infoURL", "https://www.mozilla.org/%LOCALE%/firefox/phishing-protection/");
+pref("browser.geolocation.warning.infoURL", "https://www.mozilla.org/%LOCALE%/firefox/geolocation/");
 
 // Name of the about: page contributed by safebrowsing to handle display of error
 // pages on phishing/malware hits.  (bug 399233)
@@ -580,3 +573,18 @@ pref("media.realtime_decoder.enabled", true);
 
 // Mobile manages state by autodetection
 pref("network.manage-offline-status", true);
+
+// Enable HTML fullscreen API in content.
+pref("full-screen-api.enabled", true);
+// But don't require approval when content enters fullscreen; we'll keep our
+// UI/chrome visible still, so there's no need to approve entering fullscreen.
+pref("full-screen-api.approval-required", false);
+// Don't allow fullscreen requests to percolate across content/chrome boundary,
+// so that our chrome/UI remains visible after content enters fullscreen.
+pref("full-screen-api.content-only", true);
+// Don't make top-level widgets fullscreen. This only applies when running in
+// "metrodesktop" mode, not when running in full metro mode. This prevents the
+// window from changing size when we go fullscreen; the content expands to fill
+// the window, the window size doesn't change. This pref has no effect when
+// running in actual Metro mode, as the widget will already be fullscreen then.
+pref("full-screen-api.ignore-widgets", true);

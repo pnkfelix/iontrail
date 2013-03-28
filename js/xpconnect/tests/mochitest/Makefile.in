@@ -37,7 +37,6 @@ MOCHITEST_FILES =	chrome_wrappers_helper.html \
 		test_bug478438.html \
 		test_bug500691.html \
 		bug500931_helper.html \
-		test_bug502959.html \
 		test_bug503926.html \
 		test_bug504877.html \
 		bug504877_helper.html \
@@ -90,6 +89,7 @@ MOCHITEST_FILES =	chrome_wrappers_helper.html \
 		file_bug802557.html \
 		test_bug803730.html \
 		test_bug809547.html \
+		test_bug809674.html \
 		file_crosscompartment_weakmap.html \
 		test_crosscompartment_weakmap.html \
 		$(NULL)

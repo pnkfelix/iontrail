@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/DebugOnly.h"
+#include "mozilla/MathAlgorithms.h"
 
 #ifdef MOZ_LOGGING
 #define FORCE_PR_LOG /* Allow logging in the release build */
@@ -48,8 +49,6 @@
 #include "sampler.h"
 
 #include <algorithm>
-#include <cstdlib> // for std::abs(int/long)
-#include <cmath> // for std::abs(float/double)
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -57,6 +56,9 @@ using namespace mozilla::unicode;
 using mozilla::services::GetObserverService;
 
 gfxFontCache *gfxFontCache::gGlobalCache = nullptr;
+
+static const PRUnichar kEllipsisChar[] = { 0x2026, 0x0 };
+static const PRUnichar kASCIIPeriodsChar[] = { '.', '.', '.', 0x0 };
 
 #ifdef DEBUG_roc
 #define DEBUG_TEXT_RUN_STORAGE_METRICS
@@ -788,7 +790,7 @@ CalcStyleMatch(gfxFontEntry *aFontEntry, const gfxFontStyle *aStyle)
          }
 
         // measure of closeness of weight to the desired value
-        rank += 9 - abs(aFontEntry->Weight() / 100 - aStyle->ComputeWeight());
+        rank += 9 - Abs(aFontEntry->Weight() / 100 - aStyle->ComputeWeight());
     } else {
         // if no font to match, prefer non-bold, non-italic fonts
         if (!aFontEntry->IsItalic()) {
@@ -2449,13 +2451,19 @@ gfxFont::GetShapedWord(gfxContext *aContext,
     }
     gfxShapedWord *sw = entry->mShapedWord;
 
+    bool isContent = !mStyle.systemFont;
+
     if (sw) {
         sw->ResetAge();
-        Telemetry::Accumulate(Telemetry::WORD_CACHE_HITS, aLength);
+        Telemetry::Accumulate((isContent ? Telemetry::WORD_CACHE_HITS_CONTENT :
+                                   Telemetry::WORD_CACHE_HITS_CHROME),
+                              aLength);
         return sw;
     }
 
-    Telemetry::Accumulate(Telemetry::WORD_CACHE_MISSES, aLength);
+    Telemetry::Accumulate((isContent ? Telemetry::WORD_CACHE_MISSES_CONTENT :
+                               Telemetry::WORD_CACHE_MISSES_CHROME),
+                          aLength);
     sw = entry->mShapedWord = gfxShapedWord::Create(aText, aLength,
                                                     aRunScript,
                                                     aAppUnitsPerDevUnit,
@@ -2958,8 +2966,8 @@ gfxFont::InitMetricsFromSfntTables(Metrics& aMetrics)
             uint16_t(os2->version) >= 2) {
             // version 2 and later includes the x-height field
             SET_SIGNED(xHeight, os2->sxHeight);
-            // std::abs because of negative xHeight seen in Kokonor (Tibetan) font
-            aMetrics.xHeight = std::abs(aMetrics.xHeight);
+            // Abs because of negative xHeight seen in Kokonor (Tibetan) font
+            aMetrics.xHeight = Abs(aMetrics.xHeight);
         }
         // this should always be present
         if (os2data.Length() >= offsetof(OS2Table, yStrikeoutPosition) +
@@ -3448,7 +3456,8 @@ gfxFontGroup::HasFont(const gfxFontEntry *aFontEntry)
     return false;
 }
 
-gfxFontGroup::~gfxFontGroup() {
+gfxFontGroup::~gfxFontGroup()
+{
     mFonts.Clear();
     SetUserFontSet(nullptr);
 }
@@ -4025,6 +4034,39 @@ gfxFontGroup::InitScriptRun(gfxContext *aContext,
     }
 }
 
+gfxTextRun *
+gfxFontGroup::GetEllipsisTextRun(int32_t aAppUnitsPerDevPixel,
+                                 LazyReferenceContextGetter& aRefContextGetter)
+{
+    if (mCachedEllipsisTextRun &&
+        mCachedEllipsisTextRun->GetAppUnitsPerDevUnit() == aAppUnitsPerDevPixel) {
+        return mCachedEllipsisTextRun;
+    }
+
+    // Use a Unicode ellipsis if the font supports it,
+    // otherwise use three ASCII periods as fallback.
+    gfxFont* firstFont = GetFontAt(0);
+    nsString ellipsis = firstFont->HasCharacter(kEllipsisChar[0])
+        ? nsDependentString(kEllipsisChar,
+                            ArrayLength(kEllipsisChar) - 1)
+        : nsDependentString(kASCIIPeriodsChar,
+                            ArrayLength(kASCIIPeriodsChar) - 1);
+
+    nsRefPtr<gfxContext> refCtx = aRefContextGetter.GetRefContext();
+    Parameters params = {
+        refCtx, nullptr, nullptr, nullptr, 0, aAppUnitsPerDevPixel
+    };
+    gfxTextRun* textRun =
+        MakeTextRun(ellipsis.get(), ellipsis.Length(), &params, TEXT_IS_PERSISTENT);
+    if (!textRun) {
+        return nullptr;
+    }
+    mCachedEllipsisTextRun = textRun;
+    textRun->ReleaseFontGroup(); // don't let the presence of a cached ellipsis
+                                 // textrun prolong the fontgroup's life
+    return textRun;
+}
+
 already_AddRefed<gfxFont>
 gfxFontGroup::TryAllFamilyMembers(gfxFontFamily* aFamily, uint32_t aCh)
 {
@@ -4276,6 +4318,7 @@ gfxFontGroup::UpdateFontList()
         ForEachFont(FindPlatformFont, this);
 #endif
         mCurrGeneration = GetGeneration();
+        mCachedEllipsisTextRun = nullptr;
     }
 }
 
@@ -4750,6 +4793,7 @@ gfxTextRun::gfxTextRun(const gfxTextRunFactory::Parameters *aParams,
     : gfxShapedText(aLength, aFlags, aParams->mAppUnitsPerDevUnit)
     , mUserData(aParams->mUserData)
     , mFontGroup(aFontGroup)
+    , mReleasedFontGroup(false)
 {
     NS_ASSERTION(mAppUnitsPerDevUnit > 0, "Invalid app unit scale");
     MOZ_COUNT_CTOR(gfxTextRun);
@@ -4778,8 +4822,22 @@ gfxTextRun::~gfxTextRun()
     mFlags = 0xFFFFFFFF;
 #endif
 
-    NS_RELEASE(mFontGroup);
+    // The cached ellipsis textrun (if any) in a fontgroup will have already
+    // been told to release its reference to the group, so we mustn't do that
+    // again here.
+    if (!mReleasedFontGroup) {
+        NS_RELEASE(mFontGroup);
+    }
+
     MOZ_COUNT_DTOR(gfxTextRun);
+}
+
+void
+gfxTextRun::ReleaseFontGroup()
+{
+    NS_ASSERTION(!mReleasedFontGroup, "doubly released!");
+    NS_RELEASE(mFontGroup);
+    mReleasedFontGroup = true;
 }
 
 bool

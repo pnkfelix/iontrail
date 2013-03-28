@@ -59,8 +59,8 @@ members = [
     'nsIDOMCanvasPattern.*',
 
     # dom/interfaces/core
-    'nsIDOMNamedNodeMap.item',
-    'nsIDOMNamedNodeMap.length',
+    'nsIDOMMozNamedAttrMap.item',
+    'nsIDOMMozNamedAttrMap.length',
     'nsIDOMDOMStringList.*',
     'nsIDOMXULDocument.getBoxObjectFor',
 
@@ -147,8 +147,6 @@ members = [
     # dom/interfaces/json - None.
     # All methods of nsIJSON call GetCurrentNativeCallContext.
 
-    # dom/interfaces/load-save - None.
-
     # dom/interfaces/offline - None.
 
     # dom/interfaces/range
@@ -173,7 +171,6 @@ members = [
     # dom/interfaces/svg - None.
 
     # dom/interfaces/traversal
-    'nsIDOMNodeIterator.nextNode',
 
     # dom/interfaces/xbl - None.
 

@@ -38,6 +38,7 @@ namespace ion {
     _(Call)                                                                 \
     _(ApplyArgs)                                                            \
     _(GetDynamicName)                                                       \
+    _(FilterArguments)                                                      \
     _(CallDirectEval)                                                       \
     _(BitNot)                                                               \
     _(TypeOf)                                                               \
@@ -98,7 +99,6 @@ namespace ion {
     _(FunctionEnvironment)                                                  \
     _(TypeBarrier)                                                          \
     _(MonitorTypes)                                                         \
-    _(ExcludeType)                                                          \
     _(GetPropertyCache)                                                     \
     _(GetElementCache)                                                      \
     _(BindNameCache)                                                        \

@@ -10,6 +10,7 @@
 #include "nsAttrValueInlines.h"
 #include "nsRuleData.h"
 #include "nsHTMLStyleSheet.h"
+#include "nsMappedAttributes.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/HTMLCollectionBinding.h"
 #include "mozilla/dom/HTMLTableElementBinding.h"
@@ -50,11 +51,9 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(TableRowsCollection)
 
   // nsWrapperCache
-  virtual JSObject* WrapObject(JSContext *cx, JSObject *scope,
-                               bool *triedToWrap)
+  virtual JSObject* WrapObject(JSContext *cx, JSObject *scope) MOZ_OVERRIDE
   {
-    return mozilla::dom::HTMLCollectionBinding::Wrap(cx, scope, this,
-                                                     triedToWrap);
+    return mozilla::dom::HTMLCollectionBinding::Wrap(cx, scope, this);
   }
 
 protected:
@@ -320,9 +319,9 @@ HTMLTableElement::~HTMLTableElement()
 }
 
 JSObject*
-HTMLTableElement::WrapNode(JSContext *aCx, JSObject *aScope, bool *aTriedToWrap)
+HTMLTableElement::WrapNode(JSContext *aCx, JSObject *aScope)
 {
-  return HTMLTableElementBinding::Wrap(aCx, aScope, this, aTriedToWrap);
+  return HTMLTableElementBinding::Wrap(aCx, aScope, this);
 }
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(HTMLTableElement, nsGenericHTMLElement)
@@ -1209,6 +1208,15 @@ HTMLTableElement::BuildInheritedAttributes()
     mTableInheritedAttributes = newAttrs;
     NS_IF_ADDREF(mTableInheritedAttributes);
   }
+}
+
+void
+HTMLTableElement::ReleaseInheritedAttributes()
+{
+  if (mTableInheritedAttributes &&
+      mTableInheritedAttributes != TABLE_ATTRS_DIRTY)
+    NS_RELEASE(mTableInheritedAttributes);
+  mTableInheritedAttributes = TABLE_ATTRS_DIRTY;
 }
 
 nsresult

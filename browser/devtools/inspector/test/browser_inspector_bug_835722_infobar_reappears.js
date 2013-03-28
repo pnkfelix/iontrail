@@ -2,7 +2,7 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 function test() {
-  let inspector;
+  let inspector, utils;
 
   function startLocationTests() {
     openInspector(runInspectorTests);
@@ -10,12 +10,22 @@ function test() {
 
   function runInspectorTests(aInspector) {
     inspector = aInspector;
-
+    utils = inspector.panelWin
+                     .QueryInterface(Ci.nsIInterfaceRequestor)
+                     .getInterface(Ci.nsIDOMWindowUtils);
+    ok(utils, "utils is defined");
     executeSoon(function() {
       inspector.selection.once("new-node", onNewSelection);
       info("selecting the DOCTYPE node");
       inspector.selection.setNode(content.document.doctype, "test");
     });
+  }
+
+  function sendMouseEvent(node, type, x, y) {
+    let rect = node.getBoundingClientRect();
+    let left = rect.left + x;
+    let top = rect.top + y;
+    utils.sendMouseEventToWindow(type, left, top, 0, 1, 0, false, 0, 0);
   }
 
   function onNewSelection() {
@@ -27,24 +37,24 @@ function test() {
       ruleView.removeEventListener("mouseover", onMouseOver, false);
       is(inspector.highlighter.isHidden(), true,
          "The infobar was hidden so mouseover on the rules view did nothing");
-      mouseOutAndContinue();
+      executeSoon(mouseOutAndContinue);
     }, false);
-    EventUtils.synthesizeMouse(ruleView, 10, 50, {type: "mouseover"},
-                               ruleView.ownerDocument.defaultView);
+    sendMouseEvent(ruleView, "mouseover", 10, 10);
   }
 
   function mouseOutAndContinue() {
     let ruleView = inspector.sidebar.getTab("ruleview");
+    info("adding mouseout listener");
     ruleView.addEventListener("mouseout", function onMouseOut() {
+      info("mouseout happened");
       ruleView.removeEventListener("mouseout", onMouseOut, false);
       is(inspector.highlighter.isHidden(), true,
          "The infobar should not be visible after we mouseout of rules view");
       switchToWebConsole();
     }, false);
-    EventUtils.synthesizeMouse(ruleView, 10, 10, {type: "mousemove"},
-                               ruleView.ownerDocument.defaultView);
-    EventUtils.synthesizeMouse(ruleView, -10, -10, {type: "mouseout"},
-                               ruleView.ownerDocument.defaultView);
+    info("Synthesizing mouseout on " + ruleView);
+    sendMouseEvent(inspector._markupBox, "mousemove", 50, 50);
+    info("mouseout synthesized");
   }
 
   function switchToWebConsole() {
@@ -76,6 +86,7 @@ function test() {
 
   function testEnd() {
     gBrowser.removeCurrentTab();
+    utils = null;
     executeSoon(finish);
   }
 

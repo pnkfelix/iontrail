@@ -6,11 +6,10 @@
 #ifndef mozilla_dom_SVGSymbolElement_h
 #define mozilla_dom_SVGSymbolElement_h
 
-#include "DOMSVGTests.h"
+#include "mozilla/dom/SVGTests.h"
 #include "nsSVGElement.h"
 #include "nsSVGViewBox.h"
 #include "SVGAnimatedPreserveAspectRatio.h"
-#include "nsGkAtoms.h"
 
 nsresult NS_NewSVGSymbolElement(nsIContent **aResult,
                                 already_AddRefed<nsINodeInfo> aNodeInfo);
@@ -22,13 +21,13 @@ typedef nsSVGElement SVGSymbolElementBase;
 
 class SVGSymbolElement MOZ_FINAL : public SVGSymbolElementBase,
                                    public nsIDOMSVGElement,
-                                   public DOMSVGTests
+                                   public SVGTests
 {
 protected:
   friend nsresult (::NS_NewSVGSymbolElement(nsIContent **aResult,
                                             already_AddRefed<nsINodeInfo> aNodeInfo));
   SVGSymbolElement(already_AddRefed<nsINodeInfo> aNodeInfo);
-  virtual JSObject* WrapNode(JSContext *cx, JSObject *scope, bool *triedToWrap) MOZ_OVERRIDE;
+  virtual JSObject* WrapNode(JSContext *cx, JSObject *scope) MOZ_OVERRIDE;
 
 public:
   // interfaces:

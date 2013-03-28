@@ -8,6 +8,7 @@
 #include "nscore.h"
 #include "nsPluginHost.h"
 
+#include <cstdlib>
 #include <stdio.h>
 #include "prio.h"
 #include "prmem.h"
@@ -87,8 +88,6 @@
 #include "nsIMIMEService.h"
 #include "nsCExternalHandlerService.h"
 #include "nsIFileChannel.h"
-
-#include "nsPluginSafety.h"
 
 #include "nsICharsetConverterManager.h"
 #include "nsIPlatformCharset.h"
@@ -2643,7 +2642,10 @@ nsPluginHost::ReadPluginInfo()
   if (NS_FAILED(rv))
     return rv;
 
-  int32_t flen = int64_t(fileSize);
+  if (fileSize > INT32_MAX) {
+    return NS_ERROR_FAILURE;
+  }
+  int32_t flen = int32_t(fileSize);
   if (flen == 0) {
     NS_WARNING("Plugins Registry Empty!");
     return NS_OK; // ERROR CONDITION

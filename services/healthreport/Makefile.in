@@ -19,14 +19,12 @@ testing_modules := \
   utils.jsm \
   $(NULL)
 
-TEST_DIRS += tests
-
 healthreport_depends = \
   HealthReport.jsm \
   ../common/async.js \
   ../common/bagheeraclient.js \
   ../metrics/Metrics.jsm \
-  ../metrics/collector.jsm \
+  ../metrics/providermanager.jsm \
   ../metrics/dataprovider.jsm \
   ../metrics/storage.jsm \
   healthreporter.jsm \

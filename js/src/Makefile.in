@@ -11,28 +11,6 @@ srcdir		= @srcdir@
 run_for_side_effects := $(shell echo "MAKE: $(MAKE)")
 include $(DEPTH)/config/autoconf.mk
 
-DIRS		= config
-
-ifdef DEHYDRA_PATH
-DIRS += analysis-tests
-endif
-
-ifdef JS_NATIVE_EDITLINE
-DIRS += editline
-endif
-
-# editline needs to get built before the shell
-ifndef JS_DISABLE_SHELL
-DIRS += shell
-endif
-
-# FIXME: bug 530688 covers getting these working on Android
-ifneq ($(OS_ARCH),ANDROID)
-TEST_DIRS += jsapi-tests
-endif
-
-TEST_DIRS += tests gdb
-
 MODULE		    = js
 LIBRARY_NAME	    = mozjs
 STATIC_LIBRARY_NAME = js_static
@@ -138,7 +116,6 @@ CPPSRCS		= \
 		FoldConstants.cpp \
 		Intl.cpp \
 		NameFunctions.cpp \
-		ParallelDo.cpp \
 		ParallelArray.cpp \
 		ParseMaps.cpp \
 		ParseNode.cpp \
@@ -986,17 +963,20 @@ selfhosting_srcs := \
 selfhosted_out_h_deps := \
   $(selfhosting_srcs) \
   $(srcdir)/js.msg \
-  $(srcdir)/builtin/macros.py \
-  $(srcdir)/builtin/js2c.py \
-  $(srcdir)/builtin/embedjs.py
+  $(srcdir)/builtin/embedjs.py \
+  $(NULL)
 
 ifeq ($(MOZ_DEBUG),1)
-selfhosting_embed_flags += -d
+selfhosting_defines += -DDEBUG
+endif
+
+ifneq (,$(MOZ_ZLIB_LIBS)$(MOZ_GLUE_LDFLAGS))
+selfhosting_defines += -DUSE_ZLIB
 endif
 
 selfhosted.out.h: $(selfhosted_out_h_deps)
-	$(PYTHON) $(srcdir)/builtin/embedjs.py $(selfhosting_embed_flags) $@ \
-	  $(srcdir)/js.msg $(srcdir)/builtin/macros.py $(selfhosting_srcs)
+	$(PYTHON) $(srcdir)/builtin/embedjs.py $(selfhosting_defines) \
+	  -p '$(CPP)' -m $(srcdir)/js.msg -o $@ $(selfhosting_srcs)
 
 ###############################################
 # BEGIN kludges for the Nitro assembler
@@ -1038,4 +1018,3 @@ endif
 #
 # END kludges for the Nitro assembler
 ###############################################
-

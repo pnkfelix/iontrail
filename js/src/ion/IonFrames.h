@@ -29,14 +29,14 @@ enum CalleeTokenTag
 {
     CalleeToken_Function = 0x0, // untagged
     CalleeToken_Script = 0x1,
-    CalleeToken_ParFunction = 0x2
+    CalleeToken_ParallelFunction = 0x2
 };
 
 static inline CalleeTokenTag
 GetCalleeTokenTag(CalleeToken token)
 {
     CalleeTokenTag tag = CalleeTokenTag(uintptr_t(token) & 0x3);
-    JS_ASSERT(tag <= CalleeToken_ParFunction);
+    JS_ASSERT(tag <= CalleeToken_ParallelFunction);
     return tag;
 }
 static inline CalleeToken
@@ -50,9 +50,9 @@ CalleeToToken(RawScript script)
     return CalleeToken(uintptr_t(script) | uintptr_t(CalleeToken_Script));
 }
 static inline CalleeToken
-ParCalleeToToken(JSFunction *fun)
+CalleeToParallelToken(JSFunction *fun)
 {
-    return CalleeToken(uintptr_t(fun) | uintptr_t(CalleeToken_ParFunction));
+    return CalleeToken(uintptr_t(fun) | uintptr_t(CalleeToken_ParallelFunction));
 }
 static inline bool
 CalleeTokenIsFunction(CalleeToken token)
@@ -66,32 +66,31 @@ CalleeTokenToFunction(CalleeToken token)
     return (JSFunction *)token;
 }
 static inline RawFunction
-CalleeTokenToParFunction(CalleeToken token)
+CalleeTokenToParallelFunction(CalleeToken token)
 {
-    JS_ASSERT(GetCalleeTokenTag(token) == CalleeToken_ParFunction);
+    JS_ASSERT(GetCalleeTokenTag(token) == CalleeToken_ParallelFunction);
     return (RawFunction)(uintptr_t(token) & ~uintptr_t(0x3));
 }
-static inline UnrootedScript
+static inline RawScript
 CalleeTokenToScript(CalleeToken token)
 {
     JS_ASSERT(GetCalleeTokenTag(token) == CalleeToken_Script);
     return (RawScript)(uintptr_t(token) & ~uintptr_t(0x3));
 }
 
-static inline UnrootedScript
+static inline RawScript
 ScriptFromCalleeToken(CalleeToken token)
 {
-    AutoAssertNoGC nogc;
     switch (GetCalleeTokenTag(token)) {
       case CalleeToken_Script:
         return CalleeTokenToScript(token);
       case CalleeToken_Function:
         return CalleeTokenToFunction(token)->nonLazyScript();
-      case CalleeToken_ParFunction:
-        return CalleeTokenToParFunction(token)->nonLazyScript();
+      case CalleeToken_ParallelFunction:
+        return CalleeTokenToParallelFunction(token)->nonLazyScript();
     }
     JS_NOT_REACHED("invalid callee token tag");
-    return UnrootedScript(NULL);
+    return NULL;
 }
 
 // In between every two frames lies a small header describing both frames. This
@@ -224,7 +223,7 @@ class FrameSizeClass
 
     explicit FrameSizeClass(uint32_t class_) : class_(class_)
     { }
-  
+
   public:
     FrameSizeClass()
     { }
@@ -261,7 +260,7 @@ struct ResumeFromException
 };
 
 void HandleException(ResumeFromException *rfe);
-void HandleParException(ResumeFromException *rfe);
+void HandleParallelFailure(ResumeFromException *rfe);
 
 void EnsureExitFrame(IonCommonFrameLayout *frame);
 
@@ -288,7 +287,7 @@ MakeFrameDescriptor(uint32_t frameSize, FrameType type)
 namespace js {
 namespace ion {
 
-UnrootedScript
+RawScript
 GetTopIonJSScript(JSContext *cx,
                   const SafepointIndex **safepointIndexOut = NULL,
                   void **returnAddrOut = NULL);
@@ -323,4 +322,3 @@ ReadFrameDoubleSlot(IonJSFrameLayout *fp, int32_t slot)
 } /* namespace js */
 
 #endif // jsion_frames_h__
-

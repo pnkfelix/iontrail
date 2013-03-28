@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #include "mozilla/Assertions.h"
+#include "mozilla/MathAlgorithms.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Selection.h"
 #include "mozilla/dom/Element.h"
@@ -54,8 +55,6 @@
 #include "nsThreadUtils.h"
 #include "nsUnicharUtils.h"
 #include "nsWSRunObject.h"
-#include <cstdlib> // for std::abs(int/long)
-#include <cmath> // for std::abs(float/double)
 #include <algorithm>
 
 class nsISupports;
@@ -248,20 +247,26 @@ nsHTMLEditRules::Init(nsPlaintextEditor *aEditor)
   mReturnInEmptyLIKillsList = !returnInEmptyLIKillsList.EqualsLiteral("false");
 
   // make a utility range for use by the listenter
-  mUtilRange = new nsRange();
+  nsCOMPtr<nsINode> node = mHTMLEditor->GetRoot();
+  if (!node) {
+    node = mHTMLEditor->GetDocument();
+  }
+
+  NS_ENSURE_STATE(node);
+
+  mUtilRange = new nsRange(node);
    
   // set up mDocChangeRange to be whole doc
-  nsCOMPtr<nsIDOMElement> rootElem = do_QueryInterface(mHTMLEditor->GetRoot());
-  if (rootElem)
-  {
-    // temporarily turn off rules sniffing
-    nsAutoLockRulesSniffing lockIt((nsTextEditRules*)this);
-    if (!mDocChangeRange)
-    {
-      mDocChangeRange = new nsRange();
-    }
-    mDocChangeRange->SelectNode(rootElem);
-    res = AdjustSpecialBreaks();
+  // temporarily turn off rules sniffing
+  nsAutoLockRulesSniffing lockIt((nsTextEditRules*)this);
+  if (!mDocChangeRange) {
+    mDocChangeRange = new nsRange(node);
+  }
+
+  if (node->IsElement()) {
+    ErrorResult rv;
+    mDocChangeRange->SelectNode(*node, rv);
+    res = AdjustSpecialBreaks(node);
     NS_ENSURE_SUCCESS(res, res);
   }
 
@@ -1441,7 +1446,9 @@ nsHTMLEditRules::WillInsertText(EditAction aAction,
     // the correct portion of the document.
     if (!mDocChangeRange)
     {
-      mDocChangeRange = new nsRange();
+      nsCOMPtr<nsINode> node = do_QueryInterface(selNode);
+      NS_ENSURE_STATE(node);
+      mDocChangeRange = new nsRange(node);
     }
     res = mDocChangeRange->SetStart(selNode, selOffset);
     NS_ENSURE_SUCCESS(res, res);
@@ -1929,7 +1936,7 @@ nsHTMLEditRules::WillDeleteSelection(Selection* aSelection,
       res = nsWSRunObject::PrepareToDeleteRange(mHTMLEditor, address_of(visNode), &so, address_of(visNode), &eo);
       NS_ENSURE_SUCCESS(res, res);
       nsCOMPtr<nsIDOMCharacterData> nodeAsText(do_QueryInterface(visNode));
-      res = mHTMLEditor->DeleteText(nodeAsText, std::min(so, eo), std::abs(eo - so));
+      res = mHTMLEditor->DeleteText(nodeAsText, std::min(so, eo), Abs(eo - so));
       *aHandled = true;
       NS_ENSURE_SUCCESS(res, res);    
       res = InsertBRIfNeeded(aSelection);
@@ -4389,7 +4396,7 @@ nsHTMLEditRules::CreateStyleForInsertText(nsISelection *aSelection,
     if (relFontSize) {
       // dir indicated bigger versus smaller.  1 = bigger, -1 = smaller
       int32_t dir = relFontSize > 0 ? 1 : -1;
-      for (int32_t j = 0; j < abs(relFontSize); j++) {
+      for (int32_t j = 0; j < Abs(relFontSize); j++) {
         res = mHTMLEditor->RelativeFontChangeOnTextNode(dir, nodeAsText,
                                                         0, -1);
         NS_ENSURE_SUCCESS(res, res);
@@ -5070,7 +5077,9 @@ nsHTMLEditRules::ExpandSelectionForDeletion(nsISelection *aSelection)
     bool nodeBefore=false, nodeAfter=false;
     
     // create a range that represents expanded selection
-    nsRefPtr<nsRange> range = new nsRange();
+    nsCOMPtr<nsINode> node = do_QueryInterface(selStartNode);
+    NS_ENSURE_STATE(node);
+    nsRefPtr<nsRange> range = new nsRange(node);
     res = range->SetStart(selStartNode, selStartOffset);
     NS_ENSURE_SUCCESS(res, res);
     res = range->SetEnd(selEndNode, selEndOffset);
@@ -6117,7 +6126,9 @@ nsHTMLEditRules::GetNodesFromPoint(DOMPoint point,
   point.GetPoint(node, offset);
   
   // use it to make a range
-  nsRefPtr<nsRange> range = new nsRange();
+  nsCOMPtr<nsINode> nativeNode = do_QueryInterface(node);
+  NS_ENSURE_STATE(nativeNode);
+  nsRefPtr<nsRange> range = new nsRange(nativeNode);
   res = range->SetStart(node, offset);
   NS_ENSURE_SUCCESS(res, res);
   /* SetStart() will also set the end for this new range
@@ -7297,7 +7308,9 @@ nsHTMLEditRules::PinSelectionToNewBlock(nsISelection *aSelection)
   temp = selNode;
   
   // use ranges and sRangeHelper to compare sel point to new block
-  nsRefPtr<nsRange> range = new nsRange();
+  nsCOMPtr<nsINode> node = do_QueryInterface(selNode);
+  NS_ENSURE_STATE(node);
+  nsRefPtr<nsRange> range = new nsRange(node);
   res = range->SetStart(selNode, selOffset);
   NS_ENSURE_SUCCESS(res, res);
   res = range->SetEnd(selNode, selOffset);

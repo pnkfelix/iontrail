@@ -10,6 +10,7 @@
 
 #include "mozilla/a11y/DocManager.h"
 #include "mozilla/a11y/FocusManager.h"
+#include "mozilla/a11y/SelectionManager.h"
 
 #include "nsIObserver.h"
 
@@ -28,6 +29,11 @@ class ApplicationAccessible;
 FocusManager* FocusMgr();
 
 /**
+ * Return selection manager.
+ */
+SelectionManager* SelectionMgr();
+
+/**
  * Returns the application accessible.
  */
 ApplicationAccessible* ApplicationAcc();
@@ -37,6 +43,7 @@ ApplicationAccessible* ApplicationAcc();
 
 class nsAccessibilityService : public mozilla::a11y::DocManager,
                                public mozilla::a11y::FocusManager,
+                               public mozilla::a11y::SelectionManager,
                                public nsIAccessibilityService,
                                public nsIObserver
 {
@@ -103,6 +110,12 @@ public:
    * Update the image map.
    */
   void UpdateImageMap(nsImageFrame* aImageFrame);
+
+  /**
+   * Update the label accessible tree when rendered @value is changed.
+   */
+  void UpdateLabelValue(nsIPresShell* aPresShell, nsIContent* aLabelElm,
+                        const nsString& aNewValue);
 
   /**
    * Notify accessibility that anchor jump has been accomplished to the given
@@ -205,6 +218,7 @@ private:
 
   friend nsAccessibilityService* GetAccService();
   friend mozilla::a11y::FocusManager* mozilla::a11y::FocusMgr();
+  friend mozilla::a11y::SelectionManager* mozilla::a11y::SelectionMgr();
   friend mozilla::a11y::ApplicationAccessible* mozilla::a11y::ApplicationAcc();
 
   friend nsresult NS_GetAccessibilityService(nsIAccessibilityService** aResult);

@@ -1591,8 +1591,7 @@ nsDisplayBackgroundImage::AppendBackgroundItemsToTop(nsDisplayListBuilder* aBuil
   const nsStyleBackground* bg = nullptr;
   nsPresContext* presContext = aFrame->PresContext();
   bool isThemed = aFrame->IsThemed();
-  if (!isThemed &&
-      nsCSSRendering::FindBackground(presContext, aFrame, &bgSC)) {
+  if (!isThemed && nsCSSRendering::FindBackground(aFrame, &bgSC)) {
     bg = bgSC->StyleBackground();
   }
 
@@ -1791,6 +1790,14 @@ nsDisplayBackgroundImage::TryOptimizeToImageLayer(LayerManager* aManager,
   uint32_t flags = aBuilder->GetBackgroundPaintFlags();
   nsRect borderArea = nsRect(ToReferenceFrame(), mFrame->GetSize());
   const nsStyleBackground::Layer &layer = mBackgroundStyle->mLayers[mLayer];
+
+  if (layer.mClip != NS_STYLE_BG_CLIP_BORDER) {
+    return false;
+  }
+  nscoord radii[8];
+  if (mFrame->GetBorderRadii(radii)) {
+    return false;
+  }
 
   nsBackgroundLayerState state =
     nsCSSRendering::PrepareBackgroundLayer(presContext,
@@ -2969,6 +2976,19 @@ nsDisplayFixedPosition::BuildLayer(nsDisplayListBuilder* aBuilder,
     anchor.y = anchorRect.YMost();
 
   layer->SetFixedPositionAnchor(anchor);
+
+  // Also make sure the layer is aware of any fixed position margins that have
+  // been set.
+  nsMargin fixedMargins = presContext->PresShell()->GetContentDocumentFixedPositionMargins();
+  mozilla::gfx::Margin fixedLayerMargins(NSAppUnitsToFloatPixels(fixedMargins.top, factor) *
+                                           aContainerParameters.mYScale,
+                                         NSAppUnitsToFloatPixels(fixedMargins.right, factor) *
+                                           aContainerParameters.mXScale,
+                                         NSAppUnitsToFloatPixels(fixedMargins.bottom, factor) *
+                                           aContainerParameters.mYScale,
+                                         NSAppUnitsToFloatPixels(fixedMargins.left, factor) *
+                                           aContainerParameters.mXScale);
+  layer->SetFixedPositionMargins(fixedLayerMargins);
 
   return layer.forget();
 }

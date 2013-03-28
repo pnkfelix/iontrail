@@ -9,15 +9,22 @@
          unused: false, strict: false, trailing: true,
 */
 
-/*global ToObject: false, ToInteger: false, IsCallable: false, ThrowError: false,
-         AssertionFailed: false, MakeConstructible: false, DecompileArg: false,
+/*global ToObject: false, ToInteger: false, IsCallable: false,
+         ThrowError: false, AssertionFailed: false, SetScriptHints: false,
+         MakeConstructible: false, DecompileArg: false,
          RuntimeDefaultLocale: false,
+         ParallelDo: false, ParallelSlices: false, NewDenseArray: false,
+         UnsafeSetElement: false, ShouldForceSequential: false,
+         ParallelTestsShouldPass: false,
+         Dump: false,
          callFunction: false,
          IS_UNDEFINED: false, TO_UINT32: false,
          JSMSG_NOT_FUNCTION: false, JSMSG_MISSING_FUN_ARG: false,
          JSMSG_EMPTY_ARRAY_REDUCE: false,
 */
 
+/* Utility macros */
+#define TO_UINT32(x) (x >>> 0)
 
 /* cache built-in functions before applications can change them */
 var std_isFinite = isFinite;
@@ -133,4 +140,3 @@ function assert(b, info) {
     if (!b)
         AssertionFailed(info);
 }
-

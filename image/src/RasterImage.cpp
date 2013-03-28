@@ -986,11 +986,7 @@ RasterImage::GetAnimated(bool *aAnimated)
   return NS_OK;
 }
 
-
-//******************************************************************************
-/* [noscript] gfxImageSurface copyFrame(in uint32_t aWhichFrame,
- *                                      in uint32_t aFlags); */
-NS_IMETHODIMP
+nsresult
 RasterImage::CopyFrame(uint32_t aWhichFrame,
                        uint32_t aFlags,
                        gfxImageSurface **_retval)
@@ -3049,9 +3045,10 @@ RasterImage::DrawWithPreDownscaleIfNeeded(imgFrame *aFrame,
     }
   }
 
-  nsIntMargin padding(framerect.x, framerect.y,
+  nsIntMargin padding(framerect.y,
                       mSize.width - framerect.XMost(),
-                      mSize.height - framerect.YMost());
+                      mSize.height - framerect.YMost(),
+                      framerect.x);
 
   frame->Draw(aContext, aFilter, userSpaceToImageSpace, aFill, padding, subimage);
 }
@@ -3063,6 +3060,8 @@ RasterImage::DrawWithPreDownscaleIfNeeded(imgFrame *aFrame,
  *                      [const] in gfxRect aFill,
  *                      [const] in nsIntRect aSubimage,
  *                      [const] in nsIntSize aViewportSize,
+ *                      [const] in SVGImageContext aSVGContext,
+ *                      in uint32_t aWhichFrame,
  *                      in uint32_t aFlags); */
 NS_IMETHODIMP
 RasterImage::Draw(gfxContext *aContext,
@@ -3071,8 +3070,13 @@ RasterImage::Draw(gfxContext *aContext,
                   const gfxRect &aFill,
                   const nsIntRect &aSubimage,
                   const nsIntSize& /*aViewportSize - ignored*/,
+                  const SVGImageContext* /*aSVGContext - ignored*/,
+                  uint32_t aWhichFrame,
                   uint32_t aFlags)
 {
+  if (aWhichFrame > FRAME_MAX_VALUE)
+    return NS_ERROR_INVALID_ARG;
+
   if (mError)
     return NS_ERROR_FAILURE;
 
@@ -3131,7 +3135,9 @@ RasterImage::Draw(gfxContext *aContext,
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  imgFrame *frame = GetCurrentDrawableImgFrame();
+  uint32_t frameIndex = aWhichFrame == FRAME_FIRST ? 0
+                                                   : GetCurrentImgFrameIndex();
+  imgFrame *frame = GetDrawableImgFrame(frameIndex);
   if (!frame) {
     return NS_OK; // Getting the frame (above) touches the image and kicks off decoding
   }
@@ -3146,14 +3152,6 @@ RasterImage::Draw(gfxContext *aContext,
   }
 
   return NS_OK;
-}
-
-//******************************************************************************
-/* [notxpcom] nsIFrame GetRootLayoutFrame() */
-nsIFrame*
-RasterImage::GetRootLayoutFrame()
-{
-  return nullptr;
 }
 
 //******************************************************************************

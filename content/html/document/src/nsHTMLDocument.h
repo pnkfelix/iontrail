@@ -9,7 +9,6 @@
 #include "nsDocument.h"
 #include "nsIHTMLDocument.h"
 #include "nsIDOMHTMLDocument.h"
-#include "nsIDOMHTMLBodyElement.h"
 #include "nsIDOMHTMLCollection.h"
 #include "nsIScriptElement.h"
 #include "jsapi.h"
@@ -26,6 +25,7 @@
 
 #include "nsICommandManager.h"
 #include "mozilla/dom/HTMLSharedElement.h"
+#include "nsDOMEvent.h"
 
 class nsIEditor;
 class nsIParser;
@@ -99,6 +99,11 @@ public:
 
   // nsIDOMHTMLDocument interface
   NS_DECL_NSIDOMHTMLDOCUMENT
+
+  void RouteEvent(nsDOMEvent& aEvent)
+  {
+    RouteEvent(&aEvent);
+  }
 
   /**
    * Returns the result of document.all[aID] which can either be a node
@@ -296,8 +301,6 @@ protected:
   int32_t mNumForms;
 
   static uint32_t gWyciwygSessionCnt;
-
-  static bool IsAsciiCompatible(const nsACString& aPreferredName);
 
   static void TryHintCharset(nsIMarkupDocumentViewer* aMarkupDV,
                              int32_t& aCharsetSource,

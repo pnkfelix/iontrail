@@ -196,8 +196,7 @@ public:
     NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(WebGLContext,
                                                            nsIDOMWebGLRenderingContext)
 
-    virtual JSObject* WrapObject(JSContext *cx, JSObject *scope,
-                                 bool *triedToWrap);
+    virtual JSObject* WrapObject(JSContext *cx, JSObject *scope) MOZ_OVERRIDE;
 
     NS_DECL_NSIDOMWEBGLRENDERINGCONTEXT
 
@@ -764,6 +763,9 @@ public:
     bool ValidateUniformSetter(const char* name, WebGLUniformLocation *location_object, GLint& location);
     void ValidateProgram(WebGLProgram *prog);
     bool ValidateUniformLocation(const char* info, WebGLUniformLocation *location_object);
+    bool ValidateSamplerUniformSetter(const char* info,
+                                    WebGLUniformLocation *location,
+                                    WebGLint value);
 
     void VertexAttrib1f(WebGLuint index, WebGLfloat x0);
     void VertexAttrib2f(WebGLuint index, WebGLfloat x0, WebGLfloat x1);

@@ -3959,7 +3959,7 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.14.2, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.14.3, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 if test -n "$MOZ_NATIVE_NSS"; then
@@ -4221,6 +4221,7 @@ MOZ_OMX_PLUGIN=
 MOZ_VP8=
 MOZ_VP8_ERROR_CONCEALMENT=
 MOZ_VP8_ENCODER=
+MOZ_WEBVTT=1
 VPX_AS=
 VPX_ASFLAGS=
 VPX_AS_DASH_C_FLAG=
@@ -4296,6 +4297,12 @@ case "${target}" in
 
 esac
 
+MOZ_ARG_WITH_STRING(external-source-dir,
+[  --with-external-source-dir=dir
+                          External directory containing additional build files.],
+[ EXTERNAL_SOURCE_DIR=$withval])
+AC_SUBST(EXTERNAL_SOURCE_DIR)
+
 MOZ_ARG_ENABLE_STRING(application,
 [  --enable-application=APP
                           Options include:
@@ -4324,9 +4331,10 @@ if test -z "$MOZ_BUILD_APP"; then
   AC_MSG_RESULT([browser])
   MOZ_BUILD_APP=browser
 else
-  # default mobile to be mobile/xul
+  # "mobile" no longer exists.
   if test "$MOZ_BUILD_APP" = "mobile" ; then
-    MOZ_BUILD_APP=mobile/xul
+    AC_MSG_RESULT([none])
+    AC_MSG_ERROR([--enable-application=mobile is no longer supported.])
   fi
   # We have a valid application only if it has a build.mk file in its top
   # directory.
@@ -4436,9 +4444,6 @@ dnl ========================================================
 if test -z "$gonkdir" ; then
     # Minimum Android SDK API Level we require.
     case "$MOZ_BUILD_APP" in
-    mobile/xul)
-        android_min_api_level=13
-        ;;
     mobile/android)
         android_min_api_level=16
         ;;
@@ -5694,6 +5699,10 @@ if test -n "$MOZ_OPUS"; then
     AC_DEFINE(MOZ_OPUS)
 fi
 
+if test -n "$MOZ_WEBVTT"; then
+    AC_DEFINE(MOZ_WEBVTT)
+fi
+
 dnl ========================================================
 dnl = Check alsa availability on Linux if using sydneyaudio
 dnl ========================================================
@@ -5970,9 +5979,12 @@ if test -n "$MOZ_CRASHREPORTER"; then
     AC_MSG_ERROR([Breakpad tools do not support compiling on $HOST_OS_ARCH while targeting $OS_ARCH.  Use --disable-crashreporter.])
   fi
 
-  if test "$OS_ARCH" = "WINNT" -a -z "$HAVE_64BIT_OS"; then
-    MOZ_CRASHREPORTER_INJECTOR=1
-    AC_DEFINE(MOZ_CRASHREPORTER_INJECTOR)
+  if test "$OS_ARCH" = "WINNT"; then
+    AC_DEFINE_UNQUOTED(BREAKPAD_CUSTOM_STDINT_H, "mozilla/StandardInteger.h")
+    if test -z "$HAVE_64BIT_OS"; then
+      MOZ_CRASHREPORTER_INJECTOR=1
+      AC_DEFINE(MOZ_CRASHREPORTER_INJECTOR)
+    fi
   fi
 fi
 
@@ -8264,6 +8276,13 @@ dnl ========================================================
 if test "$MOZ_ENABLE_SKIA"; then
   MOZ_SKIA_LIBS='$(DEPTH)/gfx/skia/$(LIB_PREFIX)skia.$(LIB_SUFFIX)'
   AC_DEFINE(MOZ_ENABLE_SKIA)
+  AC_DEFINE(USE_SKIA)
+  if test "${MOZ_WIDGET_TOOLKIT}" = "android" -o x"$MOZ_WIDGET_TOOLKIT" = x"gonk"; then
+    AC_DEFINE(SK_BUILD_FOR_ANDROID_NDK)
+  elif test "$OS_ARCH" = "WINNT"; then
+    AC_DEFINE(SKIA_DLL)
+    AC_DEFINE(GR_DLL)
+  fi
 else
   MOZ_SKIA_LIBS=
 fi
@@ -8821,6 +8840,7 @@ AC_SUBST(MOZ_VORBIS)
 AC_SUBST(MOZ_TREMOR)
 AC_SUBST(MOZ_OPUS)
 AC_SUBST(MOZ_WEBM)
+AC_SUBST(MOZ_WEBVTT)
 AC_SUBST(MOZ_DASH)
 AC_SUBST(MOZ_WMF)
 AC_SUBST(MOZ_MEDIA_PLUGINS)
@@ -8961,11 +8981,14 @@ HAVE_SYS_VFS_H
 HAVE_SYS_MOUNT_H
 "
 
+# FUTURE? Consider moving all these to moz.build files.
 AC_CONFIG_HEADER(
 netwerk/necko-config.h
 xpcom/xpcom-config.h
 xpcom/xpcom-private.h
 )
+
+AC_OUTPUT([mozilla-config.h])
 
 # Hack around an Apple bug that affects the egrep that comes with OS X 10.7.
 # "env ARCHPREFERENCE=i386,x86_64 arch egrep" first tries to use the 32-bit
@@ -8982,15 +9005,6 @@ case "$host" in
     FIXED_EGREP="egrep"
     ;;
 esac
-
-dnl Load the list of Makefiles to generate.
-dnl   To add new Makefiles, edit allmakefiles.sh.
-dnl   allmakefiles.sh sets the variable, MAKEFILES.
-. ${srcdir}/allmakefiles.sh
-
-echo $MAKEFILES > unallmakefiles
-
-AC_OUTPUT($MAKEFILES)
 
 # target_arch is from {ia32|x64|arm|ppc}
 case "$CPU_ARCH" in
@@ -9029,9 +9043,9 @@ if test "${OS_TARGET}" = "WINNT"; then
 elif test "${OS_TARGET}" = "Android"; then
    EXTRA_GYP_DEFINES="-D gtest_target_type=executable -D android_toolchain=${android_toolchain} -G os=android "
    if test -n "$ARM_ARCH" && test "$ARM_ARCH" -lt 7; then
-      EXTRA_GYP_DEFINES+=" -D armv7=0 "
+      EXTRA_GYP_DEFINES="${EXTRA_GYP_DEFINES} -D armv7=0 "
    else
-      EXTRA_GYP_DEFINES+=" -D armv7=1 "
+      EXTRA_GYP_DEFINES="${EXTRA_GYP_DEFINES} -D armv7=1 "
    fi
 fi
 
@@ -9118,6 +9132,7 @@ MOZ_WIDGET_TOOLKIT=${MOZ_WIDGET_TOOLKIT} \
 UNIVERSAL_BINARY=${UNIVERSAL_BINARY} \
 MOZ_CRASHREPORTER=${MOZ_CRASHREPORTER} \
 MOZ_APP_NAME=${MOZ_APP_NAME} \
+TOPSRCDIR=${_topsrcdir} \
   $PYTHON ${_topsrcdir}/config/writemozinfo.py ./mozinfo.json.tmp
 if cmp -s ./mozinfo.json.tmp ./mozinfo.json; then
   rm ./mozinfo.json.tmp
@@ -9186,6 +9201,11 @@ if test -z "$MOZ_NATIVE_JEMALLOC" -a "$MOZ_MEMORY" && test -n "$MOZ_JEMALLOC3" -
   fi
   _save_cache_file="$cache_file"
   cache_file=$_objdir/memory/jemalloc/src/config.cache
+
+  if ! test -e memory/jemalloc; then
+    mkdir -p memory/jemalloc
+  fi
+
   AC_OUTPUT_SUBDIRS(memory/jemalloc/src)
   cache_file="$_save_cache_file"
   ac_configure_args="$_SUBDIR_CONFIG_ARGS"
@@ -9200,6 +9220,11 @@ if test "$MOZ_TREE_FREETYPE"; then
    export LDFLAGS="$LDFLAGS $MOZ_DEBUG_LDFLAGS"
    export CONFIG_FILES="unix-cc.mk:unix-cc.in unix-def.mk:unix-def.in freetype-config freetype2.pc:freetype2.in"
    ac_configure_args="$ac_configure_args --host=$target --disable-shared --with-pic=yes"
+
+   if ! test -e modules; then
+     mkdir modules
+   fi
+
    AC_OUTPUT_SUBDIRS(modules/freetype2)
 fi
 
@@ -9332,6 +9357,11 @@ export STLPORT_CPPFLAGS
 export STLPORT_LDFLAGS
 export STLPORT_LIBS
 export JS_STANDALONE=no
+
+if ! test -e js; then
+    mkdir js
+fi
+
 AC_OUTPUT_SUBDIRS(js/src)
 ac_configure_args="$_SUBDIR_CONFIG_ARGS"
 

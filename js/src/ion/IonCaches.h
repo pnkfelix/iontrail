@@ -8,16 +8,16 @@
 #ifndef jsion_caches_h__
 #define jsion_caches_h__
 
-#include "vm/ForkJoin.h"
-
 #include "IonCode.h"
 #include "TypeOracle.h"
 #include "Registers.h"
+#include "vm/ForkJoin.h"
 
 class JSFunction;
 class JSScript;
 
 namespace js {
+
 namespace ion {
 
 #define IONCACHE_KIND_LIST(_)                                   \
@@ -27,7 +27,7 @@ namespace ion {
     _(BindName)                                                 \
     _(Name)                                                     \
     _(CallsiteClone)                                            \
-    _(ParGetProperty)
+    _(ParallelGetProperty)
 
 // Forward declarations of Cache kinds.
 #define FORWARD_DECLARE(kind) class kind##IC;
@@ -115,6 +115,8 @@ class IonCacheVisitor
 class IonCache
 {
   public:
+    class StubPatcher;
+
     enum Kind {
 #   define DEFINE_CACHEKINDS(ickind) Cache_##ickind,
         IONCACHE_KIND_LIST(DEFINE_CACHEKINDS)
@@ -149,17 +151,7 @@ class IonCache
     CodeLocationJump initialJump_;
     CodeLocationJump lastJump_;
     CodeLocationLabel fallbackLabel_;
-
-    // Offset from the initial jump to the rejoin label.
-#ifdef JS_CPU_ARM
-    static const size_t REJOIN_LABEL_OFFSET = 4;
-#else
-    static const size_t REJOIN_LABEL_OFFSET = 0;
-#endif
-
-    // A set of all objects that are stubbed. Used to detect duplicates in
-    // parallel execution.
-    ObjectSet *stubbedObjects_;
+    CodeLocationLabel rejoinLabel_;
 
     // Location of this operation, NULL for idempotent caches.
     JSScript *script;
@@ -173,19 +165,6 @@ class IonCache
         JS_ASSERT(stubCount_);
     }
 
-    CodeLocationLabel fallbackLabel() const {
-        return fallbackLabel_;
-    }
-    CodeLocationLabel rejoinLabel() const {
-        uint8_t *ptr = initialJump_.raw();
-#ifdef JS_CPU_ARM
-        uint32_t i = 0;
-        while (i < REJOIN_LABEL_OFFSET)
-            ptr = Assembler::nextInstruction(ptr, &i);
-#endif
-        return CodeLocationLabel(ptr);
-    }
-
   public:
 
     IonCache()
@@ -196,18 +175,12 @@ class IonCache
         initialJump_(),
         lastJump_(),
         fallbackLabel_(),
-        stubbedObjects_(NULL),
         script(NULL),
         pc(NULL)
     {
     }
 
-    ~IonCache() {
-        if (stubbedObjects_)
-            js_delete(stubbedObjects_);
-    }
-
-    void disable();
+    void disable(uint8_t **stubEntry);
     inline bool isDisabled() const {
         return disabled_;
     }
@@ -216,11 +189,12 @@ class IonCache
     // jump that will point to out-of-line code (such as the slow path, or
     // stubs), and the rejoinLabel is the position that all out-of-line paths
     // will rejoin to.
-    void setInlineJump(CodeOffsetJump initialJump, CodeOffsetLabel rejoinLabel) {
+    void setInlineJump(CodeOffsetJump initialJump) {
         initialJump_ = initialJump;
         lastJump_ = initialJump;
-
-        JS_ASSERT(rejoinLabel.offset() == initialJump.offset() + REJOIN_LABEL_OFFSET);
+    }
+    void setRejoinLabel(CodeOffsetLabel rejoinLabel) {
+        rejoinLabel_ = rejoinLabel;
     }
 
     // Set the initial 'out-of-line' jump state of the cache. The fallbackLabel is
@@ -233,8 +207,15 @@ class IonCache
     // Update labels once the code is copied and finalized.
     void updateBaseAddress(IonCode *code, MacroAssembler &masm);
 
+    // Update dispatch label and entry once the code is copied and finalized.
+    void updateDispatchLabelAndEntry(IonCode *code, CodeOffsetLabel &dispatchLabel,
+                                     uint8_t **dispatchEntry, MacroAssembler &masm);
+
     // Reset the cache around garbage collection.
-    void reset();
+    virtual void reset(uint8_t **stubEntry);
+
+    // Destroy any extra resources the cache uses upon IonCode finalization.
+    virtual void destroy() { }
 
     bool canAttachStub() const {
         return stubCount_ < MAX_STUBS;
@@ -251,18 +232,18 @@ class IonCache
     // this function returns CACHE_FLUSHED. In case of allocation issue this
     // function returns LINK_ERROR.
     LinkStatus linkCode(JSContext *cx, MacroAssembler &masm, IonScript *ion, IonCode **code);
-
     // Fixup variables and update jumps in the list of stubs.  Increment the
     // number of attached stubs accordingly.
-    void attachStub(MacroAssembler &masm, IonCode *code, CodeOffsetJump &rejoinOffset,
-                    CodeOffsetJump *exitOffset, CodeOffsetLabel *stubOffset = NULL);
+    void attachStub(MacroAssembler &masm, StubPatcher &patcher, IonCode *code);
 
-    // Combine both linkCode and attachStub into one function. In addition, it
+    // Combine both linkStub and attachStub into one function. In addition, it
     // produces a spew augmented with the attachKind string.
-    bool linkAndAttachStub(JSContext *cx, MacroAssembler &masm, IonScript *ion,
-                           const char *attachKind, CodeOffsetJump &rejoinOffset,
-                           CodeOffsetJump *exitOffset, CodeOffsetLabel *stubOffset = NULL);
+    bool linkAndAttachStub(JSContext *cx, MacroAssembler &masm, StubPatcher &patcher,
+                           IonScript *ion, const char *attachKind);
 
+    bool isAllocated() {
+        return fallbackLabel_.isSet();
+    }
     bool pure() {
         return pure_;
     }
@@ -276,7 +257,7 @@ class IonCache
         idempotent_ = true;
     }
 
-    void setScriptedLocation(UnrootedScript script, jsbytecode *pc) {
+    void setScriptedLocation(RawScript script, jsbytecode *pc) {
         JS_ASSERT(!idempotent_);
         this->script = script;
         this->pc = pc;
@@ -285,21 +266,6 @@ class IonCache
     void getScriptedLocation(MutableHandleScript pscript, jsbytecode **ppc) {
         pscript.set(script);
         *ppc = pc;
-    }
-
-    bool initStubbedObjects(JSContext *cx) {
-        // Note: to avoid double freeing, only initialize stubbedObjects after
-        // the cache has been allocated (copied) into the cacheList.
-        if (!stubbedObjects_) {
-            stubbedObjects_ = cx->new_<ObjectSet>(cx);
-            return stubbedObjects_ && stubbedObjects_->init();
-        }
-        return true;
-    }
-
-    ObjectSet *stubbedObjects() const {
-        JS_ASSERT_IF(stubbedObjects_, stubbedObjects_->initialized());
-        return stubbedObjects_;
     }
 };
 
@@ -332,6 +298,13 @@ class GetPropertyIC : public IonCache
     bool allowGetters_ : 1;
     bool hasArrayLengthStub_ : 1;
     bool hasTypedArrayLengthStub_ : 1;
+
+    bool attachReadSlotWithPatcher(JSContext *cx, StubPatcher &patcher, IonScript *ion,
+                                   JSObject *obj, JSObject *holder, HandleShape shape);
+
+    bool generateCallGetter(JSContext *cx, MacroAssembler &masm, StubPatcher &patcher,
+                            JSObject *obj, JSObject *holder, HandleShape shape,
+                            void *returnAddr, jsbytecode *pc, Label *nonRepatchFailures = NULL);
 
   public:
     GetPropertyIC(RegisterSet liveRegs,
@@ -378,23 +351,6 @@ class GetPropertyIC : public IonCache
     bool attachTypedArrayLength(JSContext *cx, IonScript *ion, JSObject *obj);
 
     static bool update(JSContext *cx, size_t cacheIndex, HandleObject obj, MutableHandleValue vp);
-};
-
-class ParGetPropertyIC : public GetPropertyIC
-{
-   public:
-    ParGetPropertyIC(RegisterSet liveRegs,
-                     Register object, PropertyName *name,
-                     TypedOrValueRegister output,
-                     bool allowGetters)
-      : GetPropertyIC(liveRegs, object, name, output, allowGetters)
-    {
-    }
-
-    CACHE_HEADER(ParGetProperty)
-
-    static bool update(ForkJoinSlice *slice, size_t cacheIndex, HandleObject obj,
-                       MutableHandleValue vp);
 };
 
 class SetPropertyIC : public IonCache
@@ -611,6 +567,56 @@ class CallsiteCloneIC : public IonCache
     bool attach(JSContext *cx, IonScript *ion, HandleFunction original, HandleFunction clone);
 
     static JSObject *update(JSContext *cx, size_t cacheIndex, HandleObject callee);
+};
+
+// Parallel ICs adhere to the invariant of parallel mode execution that any
+// bailout restarts the entire parallel computation instead of resuming in the
+// interpreter. Thus, the meaning of returning false in parallel ICs is "bail
+// out of the entire parallel execution" for any reason, error or
+// otherwise. Specifically, invalidations are handled by the parallel
+// execution at large and are unsafe to be called from within the parallel
+// ICs.
+//
+// Re-entry into the VM is unsafe in general in parallel, and each parallel
+// cache must have a special, pure path for VM entry carved out for the
+// functionality they need. These paths are generally marked by the suffix
+// "pure" and return false if they otherwise would have been effectful.
+
+class ParallelGetPropertyIC : public GetPropertyIC
+{
+  protected:
+    // A set of all objects that are stubbed. Used to detect duplicates in
+    // parallel execution.
+    ObjectSet *stubbedObjects_;
+
+   public:
+    ParallelGetPropertyIC(RegisterSet liveRegs,
+                          Register object, PropertyName *name,
+                          TypedOrValueRegister output,
+                          bool allowGetters)
+      : GetPropertyIC(liveRegs, object, name, output, allowGetters),
+        stubbedObjects_(NULL)
+    {
+    }
+
+    CACHE_HEADER(ParallelGetProperty)
+
+    void reset(uint8_t **stubEntry);
+    void destroy();
+
+    bool initStubbedObjects(JSContext *cx);
+    ObjectSet *stubbedObjects() const {
+        JS_ASSERT_IF(stubbedObjects_, stubbedObjects_->initialized());
+        return stubbedObjects_;
+    }
+
+    bool attachReadSlot(LockedJSContext &cx, IonScript *ion, JSObject *obj, JSObject *holder,
+                        HandleShape shape, uint8_t **stubEntry);
+    bool tryAttachReadSlot(LockedJSContext &cx, IonScript *ion, HandleObject obj,
+                           HandlePropertyName name, uint8_t **stubEntry, bool *isCacheable);
+
+    static ParallelResult update(ForkJoinSlice *slice, size_t cacheIndex, HandleObject obj,
+                                 MutableHandleValue vp);
 };
 
 #undef CACHE_HEADER

@@ -507,8 +507,10 @@ MacroAssembler::initGCThing(const Register &obj, JSObject *templateObject)
                 Address(obj, elementsOffset + ObjectElements::offsetOfInitializedLength()));
         store32(Imm32(templateObject->getArrayLength()),
                 Address(obj, elementsOffset + ObjectElements::offsetOfLength()));
-        store32(Imm32(templateObject->shouldConvertDoubleElements() ? 1 : 0),
-                Address(obj, elementsOffset + ObjectElements::offsetOfConvertDoubleElements()));
+        store32(Imm32(templateObject->shouldConvertDoubleElements()
+                      ? ObjectElements::CONVERT_DOUBLE_ELEMENTS
+                      : 0),
+                Address(obj, elementsOffset + ObjectElements::offsetOfFlags()));
     } else {
         storePtr(ImmWord(emptyObjectElements), Address(obj, JSObject::offsetOfElements()));
 
@@ -782,6 +784,97 @@ MacroAssembler::generateBailoutTail(Register scratch)
     bind(&exception);
     {
         handleException();
+    }
+}
+
+void
+MacroAssembler::enterParallelExitFrameAndLoadSlice(const VMFunction *f, Register slice,
+                                                   Register scratch)
+{
+    // Load the current ForkJoinSlice *. If we need a parallel exit frame,
+    // chances are we are about to do something very slow anyways, so just
+    // call ParForkJoinSlice again instead of using the cached version.
+    setupUnalignedABICall(0, scratch);
+    callWithABI(JS_FUNC_TO_DATA_PTR(void *, ParForkJoinSlice));
+    if (ReturnReg != slice)
+        movePtr(ReturnReg, slice);
+    // Load the PerThreadData from from the slice.
+    loadPtr(Address(slice, offsetof(ForkJoinSlice, perThreadData)), scratch);
+    linkParallelExitFrame(scratch);
+    // Push the ioncode.
+    exitCodePatch_ = PushWithPatch(ImmWord(-1));
+    // Push the VMFunction pointer, to mark arguments.
+    Push(ImmWord(f));
+}
+
+void
+MacroAssembler::enterExitFrameAndLoadContext(const VMFunction *f, Register cxReg, Register scratch,
+                                             ExecutionMode executionMode)
+{
+    switch (executionMode) {
+      case SequentialExecution:
+        // The scratch register is not used for sequential execution.
+        enterExitFrame(f);
+        loadJSContext(cxReg);
+        break;
+      case ParallelExecution:
+        enterParallelExitFrameAndLoadSlice(f, cxReg, scratch);
+        break;
+      default:
+        JS_NOT_REACHED("unknown execution mode");
+    }
+}
+
+void
+MacroAssembler::handleFailure(ExecutionMode executionMode)
+{
+    // Re-entry code is irrelevant because the exception will leave the
+    // running function and never come back
+    if (sps_)
+        sps_->skipNextReenter();
+    leaveSPSFrame();
+    switch (executionMode) {
+      case SequentialExecution:
+        MacroAssemblerSpecific::handleException();
+        break;
+      case ParallelExecution:
+        MacroAssemblerSpecific::handleParallelFailure();
+        break;
+      default:
+        JS_NOT_REACHED("unknown execution mode");
+    }
+    // Doesn't actually emit code, but balances the leave()
+    if (sps_)
+        sps_->reenter(*this, InvalidReg);
+}
+
+void
+MacroAssembler::tagCallee(Register callee, ExecutionMode mode)
+{
+    switch (mode) {
+      case SequentialExecution:
+        // CalleeToken_Function is untagged, so we don't need to do anything.
+        return;
+      case ParallelExecution:
+        orPtr(Imm32(CalleeToken_ParallelFunction), callee);
+        return;
+      default:
+        JS_NOT_REACHED("unknown execution mode");
+    }
+}
+
+void
+MacroAssembler::clearCalleeTag(Register callee, ExecutionMode mode)
+{
+    switch (mode) {
+      case SequentialExecution:
+        // CalleeToken_Function is untagged, so we don't need to do anything.
+        return;
+      case ParallelExecution:
+        andPtr(Imm32(~0x3), callee);
+        return;
+      default:
+        JS_NOT_REACHED("unknown execution mode");
     }
 }
 

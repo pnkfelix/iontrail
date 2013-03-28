@@ -103,14 +103,6 @@ struct ImmGCPtr
     {
         JS_ASSERT(!IsPoisonedPtr(ptr));
     }
-
-    // ImmGCPtr is rooted so we can convert safely directly from Unrooted<T>.
-    template <typename T>
-    explicit ImmGCPtr(Unrooted<T> ptr)
-      : value(reinterpret_cast<uintptr_t>(static_cast<T>(ptr)))
-    {
-        JS_ASSERT(!IsPoisonedPtr(static_cast<T>(ptr)));
-    }
 };
 
 // Specifies a hardcoded, absolute address.
@@ -246,9 +238,12 @@ class Label : public LabelBase
     { }
     ~Label()
     {
-        // Note: the condition is a hack to avoid this assert when OOM testing,
+#ifdef DEBUG
+        // Note: the condition is a hack to silence this assert when OOM testing,
         // see bug 756614.
-        JS_ASSERT_IF(OOM_counter < OOM_maxAllocations, !used());
+        if (!js_IonOptions.parallelCompilation)
+            JS_ASSERT_IF(!GetIonContext()->cx->runtime->hadOutOfMemory, !used());
+#endif
     }
 };
 
@@ -441,6 +436,10 @@ class CodeLocationJump
 
     void repoint(IonCode *code, MacroAssembler* masm = NULL);
 
+    bool isSet() {
+        return raw_ != (uint8_t *) 0xdeadc0de;
+    }
+
     uint8_t *raw() const {
         JS_ASSERT(absolute_ && raw_ != (uint8_t *) 0xdeadc0de);
         return raw_;
@@ -504,12 +503,16 @@ class CodeLocationLabel
 
     void repoint(IonCode *code, MacroAssembler *masm = NULL);
 
+    bool isSet() {
+        return raw_ != (uint8_t *) 0xdeadc0de;
+    }
+
     uint8_t *raw() {
-        JS_ASSERT(absolute_ && raw_ != (uint8_t *) 0xdeadc0de);
+        JS_ASSERT(absolute_ && isSet());
         return raw_;
     }
     uint8_t *offset() {
-        JS_ASSERT(!absolute_ && raw_ != (uint8_t *) 0xdeadc0de);
+        JS_ASSERT(!absolute_ && isSet());
         return raw_;
     }
 };
@@ -519,4 +522,3 @@ class CodeLocationLabel
 } // namespace js
 
 #endif // jsion_assembler_shared_h__
-

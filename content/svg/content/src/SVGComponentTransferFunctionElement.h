@@ -44,11 +44,11 @@ public:
           int32_t aNameSpaceID, nsIAtom* aAttribute) const;
 
   virtual int32_t GetChannel() = 0;
-  void GenerateLookupTable(uint8_t* aTable);
+  bool GenerateLookupTable(uint8_t* aTable);
 
   // WebIDL
   virtual JSObject*
-  WrapNode(JSContext* aCx, JSObject* aScope, bool* aTriedToWrap) MOZ_OVERRIDE = 0;
+  WrapNode(JSContext* aCx, JSObject* aScope) MOZ_OVERRIDE = 0;
   already_AddRefed<nsIDOMSVGAnimatedEnumeration> Type();
   already_AddRefed<DOMSVGAnimatedNumberList> TableValues();
   already_AddRefed<nsIDOMSVGAnimatedNumber> Slope();
@@ -114,7 +114,7 @@ public:
   virtual nsIDOMNode* AsDOMNode() { return this; }
 
   virtual JSObject*
-  WrapNode(JSContext* aCx, JSObject* aScope, bool* aTriedToWrap) MOZ_OVERRIDE;
+  WrapNode(JSContext* aCx, JSObject* aScope) MOZ_OVERRIDE;
 };
 
 } // namespace dom
@@ -154,7 +154,7 @@ public:
   virtual nsIDOMNode* AsDOMNode() { return this; }
 
   virtual JSObject*
-  WrapNode(JSContext* aCx, JSObject* aScope, bool* aTriedToWrap) MOZ_OVERRIDE;
+  WrapNode(JSContext* aCx, JSObject* aScope) MOZ_OVERRIDE;
 };
 
 } // namespace dom
@@ -194,7 +194,7 @@ public:
   virtual nsIDOMNode* AsDOMNode() { return this; }
 
   virtual JSObject*
-  WrapNode(JSContext* aCx, JSObject* aScope, bool* aTriedToWrap) MOZ_OVERRIDE;
+  WrapNode(JSContext* aCx, JSObject* aScope) MOZ_OVERRIDE;
 };
 
 } // namespace dom
@@ -234,7 +234,7 @@ public:
   virtual nsIDOMNode* AsDOMNode() { return this; }
 
   virtual JSObject*
-  WrapNode(JSContext* aCx, JSObject* aScope, bool* aTriedToWrap) MOZ_OVERRIDE;
+  WrapNode(JSContext* aCx, JSObject* aScope) MOZ_OVERRIDE;
 };
 
 } // namespace dom

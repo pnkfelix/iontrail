@@ -84,7 +84,6 @@ class CodeGenerator : public CodeGeneratorSpecific
     bool visitConvertElementsToDoubles(LConvertElementsToDoubles *lir);
     bool visitTypeBarrier(LTypeBarrier *lir);
     bool visitMonitorTypes(LMonitorTypes *lir);
-    bool visitExcludeType(LExcludeType *lir);
     bool visitCallNative(LCallNative *call);
     bool emitCallInvokeFunction(LInstruction *call, Register callereg,
                                 uint32_t argc, uint32_t unusedStack);
@@ -95,6 +94,7 @@ class CodeGenerator : public CodeGeneratorSpecific
     void emitPopArguments(LApplyArgsGeneric *apply, Register extraStackSize);
     bool visitApplyArgsGeneric(LApplyArgsGeneric *apply);
     bool visitGetDynamicName(LGetDynamicName *lir);
+    bool visitFilterArguments(LFilterArguments *lir);
     bool visitCallDirectEval(LCallDirectEval *lir);
     bool visitDoubleToInt32(LDoubleToInt32 *lir);
     bool visitNewSlots(LNewSlots *lir);
@@ -227,6 +227,7 @@ class CodeGenerator : public CodeGeneratorSpecific
 
     bool visitOutOfLineParNewGCThing(OutOfLineParNewGCThing *ool);
     bool visitOutOfLineParallelAbort(OutOfLineParallelAbort *ool);
+    bool visitOutOfLinePropagateParallelAbort(OutOfLinePropagateParallelAbort *ool);
 
     // Inline caches visitors.
     bool visitOutOfLineCache(OutOfLineUpdateCache *ool);
@@ -246,7 +247,7 @@ class CodeGenerator : public CodeGeneratorSpecific
     bool visitCallsiteCloneCache(LCallsiteCloneCache *ins);
 
     bool visitGetPropertyIC(OutOfLineUpdateCache *ool, GetPropertyIC *ic);
-    bool visitParGetPropertyIC(OutOfLineUpdateCache *ool, ParGetPropertyIC *ic);
+    bool visitParallelGetPropertyIC(OutOfLineUpdateCache *ool, ParallelGetPropertyIC *ic);
     bool visitSetPropertyIC(OutOfLineUpdateCache *ool, SetPropertyIC *ic);
     bool visitGetElementIC(OutOfLineUpdateCache *ool, GetElementIC *ic);
     bool visitBindNameIC(OutOfLineUpdateCache *ool, BindNameIC *ic);
@@ -254,16 +255,18 @@ class CodeGenerator : public CodeGeneratorSpecific
     bool visitCallsiteCloneIC(OutOfLineUpdateCache *ool, CallsiteCloneIC *ic);
 
   private:
-    bool checkForParallelBailout();
+    bool checkForParallelBailout(LInstruction *lir);
     bool generateBranchV(const ValueOperand &value, Label *ifTrue, Label *ifFalse, FloatRegister fr);
 
-    bool emitParAllocateGCThing(const Register &objReg,
+    bool emitParAllocateGCThing(LInstruction *lir,
+                                const Register &objReg,
                                 const Register &threadContextReg,
                                 const Register &tempReg1,
                                 const Register &tempReg2,
                                 JSObject *templateObj);
 
-    bool emitParCallToUncompiledScript(Register calleeReg);
+    bool emitParCallToUncompiledScript(LInstruction *lir,
+                                       Register calleeReg);
 
     void emitLambdaInit(const Register &resultReg,
                         const Register &scopeChainReg,

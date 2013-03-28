@@ -141,11 +141,12 @@ nsAccessibilityService::~nsAccessibilityService()
 ////////////////////////////////////////////////////////////////////////////////
 // nsISupports
 
-NS_IMPL_ISUPPORTS_INHERITED3(nsAccessibilityService,
+NS_IMPL_ISUPPORTS_INHERITED4(nsAccessibilityService,
                              DocManager,
                              nsIAccessibilityService,
                              nsIAccessibleRetrieval,
-                             nsIObserver)
+                             nsIObserver,
+                             nsISelectionListener) // from SelectionManager
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsIObserver
@@ -398,6 +399,24 @@ nsAccessibilityService::UpdateImageMap(nsImageFrame* aImageFrame)
       // If image map was initialized after we created an accessible (that'll
       // be an image accessible) then recreate it.
       RecreateAccessible(presShell, aImageFrame->GetContent());
+    }
+  }
+}
+
+void
+nsAccessibilityService::UpdateLabelValue(nsIPresShell* aPresShell,
+                                         nsIContent* aLabelElm,
+                                         const nsString& aNewValue)
+{
+  DocAccessible* document = GetDocAccessible(aPresShell);
+  if (document) {
+    Accessible* accessible = document->GetAccessible(aLabelElm);
+    if (accessible) {
+      XULLabelAccessible* xulLabel = accessible->AsXULLabel();
+      NS_ASSERTION(xulLabel,
+                   "UpdateLabelValue was called for wrong accessible!");
+      if (xulLabel)
+        xulLabel->UpdateLabelValue(aNewValue);
     }
   }
 }
@@ -1006,6 +1025,8 @@ nsAccessibilityService::Shutdown()
   // Stop accessible document loader.
   DocManager::Shutdown();
 
+  SelectionManager::Shutdown();
+
   // Application is going to be closed, shutdown accessibility and mark
   // accessibility service as shutdown to prevent calls of its methods.
   // Don't null accessibility service static member at this point to be safe
@@ -1586,6 +1607,12 @@ namespace a11y {
 
 FocusManager*
 FocusMgr()
+{
+  return nsAccessibilityService::gAccessibilityService;
+}
+
+SelectionManager*
+SelectionMgr()
 {
   return nsAccessibilityService::gAccessibilityService;
 }

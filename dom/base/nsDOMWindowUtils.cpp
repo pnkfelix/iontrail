@@ -595,6 +595,26 @@ ToWidgetPoint(float aX, float aY, const nsPoint& aOffset,
                     NSToIntRound((aY*appPerCSS + aOffset.y)/appPerDev));
 }
 
+static inline int16_t
+GetButtonsFlagForButton(int32_t aButton)
+{
+  switch (aButton) {
+    case nsMouseEvent::eLeftButton:
+      return nsMouseEvent::eLeftButtonFlag;
+    case nsMouseEvent::eMiddleButton:
+      return nsMouseEvent::eMiddleButtonFlag;
+    case nsMouseEvent::eRightButton:
+      return nsMouseEvent::eRightButtonFlag;
+    case 4:
+      return nsMouseEvent::e4thButtonFlag;
+    case 5:
+      return nsMouseEvent::e5thButtonFlag;
+    default:
+      NS_ERROR("Button not known.");
+      return 0;
+  }
+}
+
 NS_IMETHODIMP
 nsDOMWindowUtils::SendMouseEventCommon(const nsAString& aType,
                                        float aX,
@@ -647,6 +667,7 @@ nsDOMWindowUtils::SendMouseEventCommon(const nsAString& aType,
                        nsMouseEvent::eContextMenuKey : nsMouseEvent::eNormal);
   event.modifiers = GetWidgetModifiers(aModifiers);
   event.button = aButton;
+  event.buttons = GetButtonsFlagForButton(aButton);
   event.widget = widget;
   event.pressure = aPressure;
   event.inputSource = aInputSourceArg;
@@ -1638,20 +1659,23 @@ nsDOMWindowUtils::DispatchDOMEventViaPresShell(nsIDOMNode* aTarget,
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
-  nsPresContext* presContext = GetPresContext();
-  NS_ENSURE_STATE(presContext);
-  nsCOMPtr<nsIPresShell> shell = presContext->GetPresShell();
-  NS_ENSURE_STATE(shell);
   NS_ENSURE_STATE(aEvent);
   aEvent->SetTrusted(aTrusted);
   nsEvent* internalEvent = aEvent->GetInternalNSEvent();
   NS_ENSURE_STATE(internalEvent);
   nsCOMPtr<nsIContent> content = do_QueryInterface(aTarget);
   NS_ENSURE_STATE(content);
+  nsCOMPtr<nsPIDOMWindow> window = do_QueryReferent(mWindow);
+  if (content->OwnerDoc()->GetWindow() != window) {
+    return NS_ERROR_DOM_HIERARCHY_REQUEST_ERR;
+  }
+  nsCOMPtr<nsIDocument> targetDoc = content->GetCurrentDoc();
+  NS_ENSURE_STATE(targetDoc);
+  nsRefPtr<nsIPresShell> targetShell = targetDoc->GetShell();
+  NS_ENSURE_STATE(targetShell);
 
   nsEventStatus status = nsEventStatus_eIgnore;
-  shell->HandleEventWithTarget(internalEvent, nullptr, content,
-                               &status);
+  targetShell->HandleEventWithTarget(internalEvent, nullptr, content, &status);
   *aRetVal = (status != nsEventStatus_eConsumeNoDefault);
   return NS_OK;
 }
@@ -2079,7 +2103,7 @@ nsDOMWindowUtils::GetParent(const JS::Value& aObject,
     return NS_ERROR_XPC_BAD_CONVERT_JS;
   }
 
-  js::Rooted<JSObject*> parent(aCx, JS_GetParent(JSVAL_TO_OBJECT(aObject)));
+  JS::Rooted<JSObject*> parent(aCx, JS_GetParent(JSVAL_TO_OBJECT(aObject)));
   *aParent = OBJECT_TO_JSVAL(parent);
 
   // Outerize if necessary.
@@ -2916,6 +2940,32 @@ nsDOMWindowUtils::SetScrollPositionClampingScrollPortSize(float aWidth, float aH
   return NS_OK;
 }
 
+NS_IMETHODIMP
+nsDOMWindowUtils::SetContentDocumentFixedPositionMargins(float aTop, float aRight,
+                                                         float aBottom, float aLeft)
+{
+  if (!nsContentUtils::IsCallerChrome()) {
+    return NS_ERROR_DOM_SECURITY_ERR;
+  }
+
+  if (!(aTop >= 0.0f && aRight >= 0.0f && aBottom >= 0.0f && aLeft >= 0.0f)) {
+    return NS_ERROR_ILLEGAL_VALUE;
+  }
+
+  nsIPresShell* presShell = GetPresShell();
+  if (!presShell) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsMargin margins(nsPresContext::CSSPixelsToAppUnits(aTop),
+                   nsPresContext::CSSPixelsToAppUnits(aRight),
+                   nsPresContext::CSSPixelsToAppUnits(aBottom),
+                   nsPresContext::CSSPixelsToAppUnits(aLeft));
+  presShell->SetContentDocumentFixedPositionMargins(margins);
+
+  return NS_OK;
+}
+
 nsresult
 nsDOMWindowUtils::RemoteFrameFullscreenChanged(nsIDOMElement* aFrameElement,
                                             const nsAString& aNewOrigin)
@@ -3011,8 +3061,9 @@ nsDOMWindowUtils::SelectAtPoint(float aX, float aY, uint32_t aSelectBehavior,
   }
 
   // Get the target frame at the client coordinates passed to us
-  nsCOMPtr<nsIWidget> widget = GetWidget();
-  nsIntPoint pt(aX, aY);
+  nsPoint offset;
+  nsCOMPtr<nsIWidget> widget = GetWidget(&offset);
+  nsIntPoint pt = ToWidgetPoint(aX, aY, offset, GetPresContext());
   nsPoint ptInRoot =
     nsLayoutUtils::GetEventCoordinatesRelativeTo(widget, pt, rootFrame);
   nsIFrame* targetFrame = nsLayoutUtils::GetFrameForPoint(rootFrame, ptInRoot);

@@ -22,7 +22,6 @@
 #include "jstypes.h"
 #include "jsutil.h"
 #include "jsprf.h"
-#include "jswrapper.h"
 #include "jsapi.h"
 #include "jsarray.h"
 #include "jsatom.h"
@@ -41,6 +40,7 @@
 #include "jstypedarray.h"
 #include "jstypedarrayinlines.h"
 #include "jsworkers.h"
+#include "jswrapper.h"
 #include "jsperf.h"
 
 #include "builtin/TestingFunctions.h"
@@ -209,15 +209,14 @@ class ToStringHelper
 {
   public:
     ToStringHelper(JSContext *aCx, jsval v, bool aThrow = false)
-      : cx(aCx)
+      : cx(aCx), mStr(cx, JS_ValueToString(cx, v))
     {
-        mStr = JS_ValueToString(cx, v);
         if (!aThrow && !mStr)
             ReportException(cx);
-        JS_AddNamedStringRoot(cx, &mStr, "Value ToString helper");
+        JS_AddNamedStringRoot(cx, mStr.address(), "Value ToString helper");
     }
     ~ToStringHelper() {
-        JS_RemoveStringRoot(cx, &mStr);
+        JS_RemoveStringRoot(cx, mStr.address());
     }
     bool threw() { return !mStr; }
     jsval getJSVal() { return STRING_TO_JSVAL(mStr); }
@@ -228,7 +227,7 @@ class ToStringHelper
     }
   private:
     JSContext *cx;
-    JSString *mStr;
+    RootedString mStr;  // Objects of this class are always stack-allocated.
     JSAutoByteString mBytes;
 };
 
@@ -357,8 +356,8 @@ ShellOperationCallback(JSContext *cx)
 
     bool result;
     if (!gTimeoutFunc.isNull()) {
-        jsval returnedValue;
-        if (!JS_CallFunctionValue(cx, NULL, gTimeoutFunc, 0, NULL, &returnedValue))
+        RootedValue returnedValue(cx);
+        if (!JS_CallFunctionValue(cx, NULL, gTimeoutFunc, 0, NULL, returnedValue.address()))
             return false;
         if (returnedValue.isBoolean())
             result = returnedValue.toBoolean();
@@ -601,7 +600,6 @@ static const struct JSOption {
     const char  *name;
     uint32_t    flag;
 } js_options[] = {
-    {"atline",          JSOPTION_ATLINE},
     {"methodjit",       JSOPTION_METHODJIT},
     {"methodjit_always",JSOPTION_METHODJIT_ALWAYS},
     {"strict",          JSOPTION_STRICT},
@@ -1316,12 +1314,12 @@ AssertEq(JSContext *cx, unsigned argc, jsval *vp)
     return true;
 }
 
-static UnrootedScript
+static RawScript
 ValueToScript(JSContext *cx, jsval v, JSFunction **funp = NULL)
 {
     RootedFunction fun(cx, JS_ValueToFunction(cx, v));
     if (!fun)
-        return UnrootedScript(NULL);
+        return NULL;
 
     RootedScript script(cx);
     JSFunction::maybeGetOrCreateScript(cx, fun, &script);
@@ -1357,7 +1355,7 @@ SetDebug(JSContext *cx, unsigned argc, jsval *vp)
     return ok;
 }
 
-static UnrootedScript
+static RawScript
 GetTopScript(JSContext *cx)
 {
     RootedScript script(cx);
@@ -1740,8 +1738,8 @@ TryNotes(JSContext *cx, HandleScript script, Sprinter *sp)
 }
 
 static bool
-DisassembleScript(JSContext *cx, HandleScript script, JSFunction *fun, bool lines, bool recursive,
-                  Sprinter *sp)
+DisassembleScript(JSContext *cx, HandleScript script, HandleFunction fun, bool lines,
+                  bool recursive, Sprinter *sp)
 {
     if (fun) {
         Sprint(sp, "flags:");
@@ -1910,7 +1908,7 @@ DisassFile(JSContext *cx, unsigned argc, jsval *vp)
     Sprinter sprinter(cx);
     if (!sprinter.init())
         return false;
-    bool ok = DisassembleScript(cx, script, NULL, p.lines, p.recursive, &sprinter);
+    bool ok = DisassembleScript(cx, script, NullPtr(), p.lines, p.recursive, &sprinter);
     if (ok)
         fprintf(stdout, "%s\n", sprinter.string());
     if (!ok)
@@ -2027,7 +2025,6 @@ DumpHeap(JSContext *cx, unsigned argc, jsval *vp)
     void *thingToIgnore;
     FILE *dumpFile;
     bool ok;
-    AssertCanGC();
 
     const char *fileName = NULL;
     JSAutoByteString fileNameBytes;
@@ -4577,7 +4574,7 @@ static JSClass *GetDomClass() {
 static JSBool
 dom_genericGetter(JSContext *cx, unsigned argc, JS::Value *vp)
 {
-    js::RootedObject obj(cx, JS_THIS_OBJECT(cx, vp));
+    RootedObject obj(cx, JS_THIS_OBJECT(cx, vp));
     if (!obj)
         return false;
 
@@ -4597,7 +4594,7 @@ dom_genericGetter(JSContext *cx, unsigned argc, JS::Value *vp)
 static JSBool
 dom_genericSetter(JSContext* cx, unsigned argc, JS::Value* vp)
 {
-    js::RootedObject obj(cx, JS_THIS_OBJECT(cx, vp));
+    RootedObject obj(cx, JS_THIS_OBJECT(cx, vp));
     if (!obj)
         return false;
 
@@ -4623,7 +4620,7 @@ dom_genericSetter(JSContext* cx, unsigned argc, JS::Value* vp)
 static JSBool
 dom_genericMethod(JSContext* cx, unsigned argc, JS::Value *vp)
 {
-    js::RootedObject obj(cx, JS_THIS_OBJECT(cx, vp));
+    RootedObject obj(cx, JS_THIS_OBJECT(cx, vp));
     if (!obj)
         return false;
 
@@ -5258,7 +5255,8 @@ main(int argc, char **argv, char **envp)
 
     JS_SetGCParameter(rt, JSGC_MAX_BYTES, 0xffffffff);
 #ifdef JSGC_GENERATIONAL
-    JS_SetGCParameter(rt, JSGC_ENABLE_GENERATIONAL, op.getBoolOption("ggc"));
+    if (!op.getBoolOption("ggc"))
+        JS::DisableGenerationalGC(rt);
 #endif
 
     JS_SetTrustedPrincipals(rt, &shellTrustedPrincipals);

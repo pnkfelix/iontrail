@@ -719,8 +719,18 @@ nsXREDirProvider::GetFilesInternal(const char* aProperty,
     rv = NS_NewArrayEnumerator(aResult, directories);
   }
   else if (!strcmp(aProperty, NS_APP_PLUGINS_DIR_LIST)) {
-    static const char *const kAppendPlugins[] = { "plugins", nullptr };
     nsCOMArray<nsIFile> directories;
+
+    if (mozilla::Preferences::GetBool("plugins.load_appdir_plugins", false)) {
+      nsCOMPtr<nsIFile> appdir;
+      rv = XRE_GetBinaryPath(gArgv[0], getter_AddRefs(appdir));
+      if (NS_SUCCEEDED(rv)) {
+        appdir->SetNativeLeafName(NS_LITERAL_CSTRING("plugins"));
+        directories.AppendObject(appdir);
+      }
+    }
+
+    static const char *const kAppendPlugins[] = { "plugins", nullptr };
 
     // The root dirserviceprovider does quite a bit for us: we're mainly
     // interested in xulapp and extension-provided plugins.
@@ -1138,6 +1148,10 @@ nsXREDirProvider::GetUserDataDirectoryHome(nsIFile** aFile, bool aLocal)
   const char* homeDir = getenv("HOME");
   if (!homeDir || !*homeDir)
     return NS_ERROR_FAILURE;
+
+#ifdef ANDROID /* We want (ProfD == ProfLD) on Android. */
+  aLocal = false;
+#endif
 
   if (aLocal) {
     // If $XDG_CACHE_HOME is defined use it, otherwise use $HOME/.cache.

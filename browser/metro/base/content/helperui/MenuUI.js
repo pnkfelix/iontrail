@@ -75,6 +75,13 @@ var AutofillMenuUI = {
 var ContextMenuUI = {
   _popupState: null,
   __menuPopup: null,
+  _defaultPositionOptions: {
+    forcePosition: true,
+    bottomAligned: true,
+    rightAligned: false,
+    centerHorizontally: true,
+    moveBelowToFit: true
+  },
 
   get _panel() { return document.getElementById("context-container"); },
   get _popup() { return document.getElementById("context-popup"); },
@@ -161,6 +168,10 @@ var ContextMenuUI = {
         continue;
 
       for (let i = 0; i < types.length; i++) {
+        // If one of the item's types has '!' before it, treat it as an exclusion rule. 
+        if (types[i].charAt(0) == '!' && contentTypes.indexOf(types[i].substring(1)) != -1) {
+          break;
+        }
         if (contentTypes.indexOf(types[i]) != -1) {
           // If this is the special search text item, we need to set its label dynamically.
           if (searchTextItem && !ContextCommands.searchTextSetup(command, this._popupState.string)) {
@@ -178,7 +189,11 @@ var ContextMenuUI = {
       return false;
     }
 
-    this._menuPopup.show(this._popupState);
+    this._menuPopup.show(Util.extend({}, this._defaultPositionOptions, {
+      xPos: aMessage.json.xPos,
+      yPos: aMessage.json.yPos,
+      source: aMessage.json.source
+    }));
     return true;
   },
 
@@ -375,9 +390,6 @@ MenuPopup.prototype = {
     let aX = aPositionOptions.xPos;
     let aY = aPositionOptions.yPos;
     let aSource = aPositionOptions.source;
-    let forcePosition = aPositionOptions.forcePosition || false;
-    let isRightAligned = aPositionOptions.rightAligned || false;
-    let isBottomAligned = aPositionOptions.bottomAligned || false;
 
     let width = this._popup.boxObject.width;
     let height = this._popup.boxObject.height;
@@ -386,12 +398,15 @@ MenuPopup.prototype = {
     let screenWidth = ContentAreaObserver.width;
     let screenHeight = ContentAreaObserver.height;
 
-    if (forcePosition) {
-      if (isRightAligned)
+    if (aPositionOptions.forcePosition) {
+      if (aPositionOptions.rightAligned)
         aX -= width;
 
-      if (isBottomAligned)
+      if (aPositionOptions.bottomAligned)
         aY -= height;
+
+      if (aPositionOptions.centerHorizontally)
+        aX -= halfWidth;
     } else {
       let leftHand = MetroUtils.handPreference == MetroUtils.handPreferenceLeft;
 
@@ -442,8 +457,12 @@ MenuPopup.prototype = {
     if (aX < 0)
       aX = 0;
 
-    if (aY < 0)
+    if (aY < 0 && aPositionOptions.moveBelowToFit) {
+      // show context menu below when it doesn't fit.
+      aY = aPositionOptions.yPos;
+    } else if (aY < 0) {
       aY = 0;
+    }
 
     this._panel.left = aX;
     this._panel.top = aY;

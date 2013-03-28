@@ -17,7 +17,6 @@
 #include "nsIObserver.h"
 #include "nsThreadUtils.h"
 
-#include "AndroidLayerViewWrapper.h"
 #include "AndroidJavaWrappers.h"
 
 #include "nsIMutableArray.h"
@@ -55,6 +54,8 @@ namespace base {
 class Thread;
 } // end namespace base
 
+typedef void* EGLSurface;
+
 namespace mozilla {
 
 namespace hal {
@@ -63,10 +64,10 @@ class NetworkInformation;
 } // namespace hal
 
 namespace dom {
-namespace sms {
+namespace mobilemessage {
 struct SmsFilterData;
 struct SmsSegmentInfoData;
-} // namespace sms
+} // namespace mobilemessage
 } // namespace dom
 
 namespace layers {
@@ -164,7 +165,7 @@ public:
 
     bool ProgressiveUpdateCallback(bool aHasPendingNewThebesContent, const gfx::Rect& aDisplayPort, float aDisplayResolution, bool aDrawingCritical, gfx::Rect& aViewport, float& aScaleX, float& aScaleY);
 
-    void AcknowledgeEventSync();
+    void AcknowledgeEvent();
 
     void EnableLocation(bool aEnable);
     void EnableLocationHighAccuracy(bool aEnable);
@@ -255,8 +256,8 @@ public:
     bool GetShowPasswordSetting();
 
     // Switch Java to composite with the Gecko Compositor thread
-    void RegisterCompositor(JNIEnv* env = NULL, bool resetting = false);
-    EGLSurface ProvideEGLSurface(bool waitUntilValid);
+    void RegisterCompositor(JNIEnv* env = NULL);
+    EGLSurface ProvideEGLSurface();
 
     bool GetStaticStringField(const char *classID, const char *field, nsAString &result, JNIEnv* env = nullptr);
 
@@ -313,11 +314,11 @@ public:
     void DisableBatteryNotifications();
     void GetCurrentBatteryInformation(hal::BatteryInformation* aBatteryInfo);
 
-    nsresult GetSegmentInfoForText(const nsAString& aText, dom::sms::SmsSegmentInfoData* aData);
+    nsresult GetSegmentInfoForText(const nsAString& aText, dom::mobilemessage::SmsSegmentInfoData* aData);
     void SendMessage(const nsAString& aNumber, const nsAString& aText, nsISmsRequest* aRequest);
     void GetMessage(int32_t aMessageId, nsISmsRequest* aRequest);
     void DeleteMessage(int32_t aMessageId, nsISmsRequest* aRequest);
-    void CreateMessageList(const dom::sms::SmsFilterData& aFilter, bool aReverse, nsISmsRequest* aRequest);
+    void CreateMessageList(const dom::mobilemessage::SmsFilterData& aFilter, bool aReverse, nsISmsRequest* aRequest);
     void GetNextMessageInList(int32_t aListId, nsISmsRequest* aRequest);
     void ClearMessageList(int32_t aListId);
     already_AddRefed<nsISmsRequest> DequeueSmsRequest(uint32_t aRequestId);
@@ -331,7 +332,8 @@ public:
     void SetFirstPaintViewport(const nsIntPoint& aOffset, float aZoom, const nsIntRect& aPageRect, const gfx::Rect& aCssPageRect);
     void SetPageRect(const gfx::Rect& aCssPageRect);
     void SyncViewportInfo(const nsIntRect& aDisplayPort, float aDisplayResolution, bool aLayersUpdated,
-                          nsIntPoint& aScrollOffset, float& aScaleX, float& aScaleY);
+                          nsIntPoint& aScrollOffset, float& aScaleX, float& aScaleY,
+                          gfx::Margin& aFixedLayerMargins);
 
     void AddPluginView(jobject view, const gfxRect& rect, bool isFullScreen);
     void RemovePluginView(jobject view, bool isFullScreen);
@@ -402,7 +404,7 @@ protected:
     jmethodID jNotifyIME;
     jmethodID jNotifyIMEEnabled;
     jmethodID jNotifyIMEChange;
-    jmethodID jAcknowledgeEventSync;
+    jmethodID jAcknowledgeEvent;
     jmethodID jEnableLocation;
     jmethodID jEnableLocationHighAccuracy;
     jmethodID jEnableSensor;
@@ -497,7 +499,9 @@ protected:
     jfieldID jSurfacePointerField;
 
     jclass jLayerView;
-    jmethodID jRegisterCompositorMethod;
+    jmethodID jProvideEGLSurfaceMethod;
+    jfieldID jEGLSurfacePointerField;
+    jobject mGLControllerObj;
 
     // some convinient types to have around
     jclass jStringClass;

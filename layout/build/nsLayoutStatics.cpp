@@ -112,7 +112,7 @@ using namespace mozilla::system;
 #include "mozilla/dom/time/DateCacheCleaner.h"
 #include "nsIMEStateManager.h"
 
-extern void NS_ShutdownChainItemPool();
+extern void NS_ShutdownEventTargetChainItemRecyclePool();
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -191,8 +191,6 @@ nsLayoutStatics::Initialize()
     NS_ERROR("Could not initialize nsXULContentUtils");
     return rv;
   }
-
-  inDOMView::InitAtoms();
 
 #endif
 
@@ -332,7 +330,6 @@ nsLayoutStatics::Shutdown()
 
   nsAttrValue::Shutdown();
   nsContentUtils::Shutdown();
-  nsNodeInfo::ClearCache();
   nsLayoutStylesheetCache::Shutdown();
   NS_NameSpaceManagerShutdown();
 
@@ -371,7 +368,7 @@ nsLayoutStatics::Shutdown()
 
   nsRegion::ShutdownStatic();
 
-  NS_ShutdownChainItemPool();
+  NS_ShutdownEventTargetChainItemRecyclePool();
 
   nsFrameList::Shutdown();
 

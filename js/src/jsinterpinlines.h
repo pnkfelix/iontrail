@@ -124,7 +124,6 @@ ComputeThis(JSContext *cx, AbstractFramePtr frame)
 static inline bool
 IsOptimizedArguments(AbstractFramePtr frame, Value *vp)
 {
-    AutoAssertNoGC nogc;
     if (vp->isMagic(JS_OPTIMIZED_ARGUMENTS) && frame.script()->needsArgsObj())
         *vp = ObjectValue(frame.argsObj());
     return vp->isMagic(JS_OPTIMIZED_ARGUMENTS);
@@ -154,7 +153,6 @@ GuardFunApplyArgumentsOptimization(JSContext *cx, AbstractFramePtr frame, Handle
 static inline bool
 GuardFunApplyArgumentsOptimization(JSContext *cx)
 {
-    AssertCanGC();
     FrameRegs &regs = cx->regs();
     CallArgs args = CallArgsFromSp(GET_ARGC(regs.pc), regs.sp);
     return GuardFunApplyArgumentsOptimization(cx, cx->fp(), args.calleev(), args.array(),
@@ -865,7 +863,6 @@ static JS_ALWAYS_INLINE bool
 GetElementOperation(JSContext *cx, JSOp op, MutableHandleValue lref, HandleValue rref,
                     MutableHandleValue res)
 {
-    AssertCanGC();
     JS_ASSERT(op == JSOP_GETELEM || op == JSOP_CALLELEM);
 
     uint32_t index;
@@ -1121,7 +1118,9 @@ class FastInvokeGuard
     RootedFunction fun_;
     RootedScript script_;
 #ifdef JS_ION
-    ion::IonContext ictx_;
+    // Constructing an IonContext is pretty expensive due to the TLS access,
+    // so only do this if we have to.
+    mozilla::Maybe<ion::IonContext> ictx_;
     bool useIon_;
 #endif
 
@@ -1130,7 +1129,6 @@ class FastInvokeGuard
       : fun_(cx)
       , script_(cx)
 #ifdef JS_ION
-      , ictx_(cx, cx->compartment, NULL)
       , useIon_(ion::IsEnabled(cx))
 #endif
     {
@@ -1155,6 +1153,8 @@ class FastInvokeGuard
     bool invoke(JSContext *cx) {
 #ifdef JS_ION
         if (useIon_ && fun_) {
+            if (ictx_.empty())
+                ictx_.construct(cx, cx->compartment, (js::ion::TempAllocator *)NULL);
             JS_ASSERT(fun_->nonLazyScript() == script_);
 
             ion::MethodStatus status = ion::CanEnterUsingFastInvoke(cx, script_, args_.length());

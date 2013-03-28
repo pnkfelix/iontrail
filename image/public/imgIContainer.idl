@@ -28,6 +28,7 @@ class nsIFrame;
 
 namespace mozilla {
 class TimeStamp;
+class SVGImageContext;
 }
 
 %}
@@ -46,6 +47,7 @@ native nsSize(nsSize);
 [ptr] native ImageContainer(mozilla::layers::ImageContainer);
 [ptr] native LayerManager(mozilla::layers::LayerManager);
 [ref] native TimeStamp(mozilla::TimeStamp);
+[ptr] native SVGImageContext(mozilla::SVGImageContext);
 
 
 /**
@@ -56,7 +58,7 @@ native nsSize(nsSize);
  *
  * Internally, imgIContainer also manages animation of images.
  */
-[scriptable, builtinclass, uuid(a9a6835f-ca7e-4c80-8892-962c959fcd27)]
+[scriptable, builtinclass, uuid(01c4f92f-f883-4837-a127-d8f30920e374)]
 interface imgIContainer : nsISupports
 {
   /**
@@ -152,7 +154,9 @@ interface imgIContainer : nsISupports
 
   /**
    * Get a surface for the given frame. This may be a platform-native,
-   * optimized surface, so you cannot inspect its pixel data.
+   * optimized surface, so you cannot inspect its pixel data. If you
+   * need that, use gfxASurface::GetAsReadableARGB32ImageSurface or
+   * gfxASurface::CopyToARGB32ImageSurface.
    *
    * @param aWhichFrame Frame specifier of the FRAME_* variety.
    * @param aFlags Flags of the FLAG_* variety
@@ -175,16 +179,6 @@ interface imgIContainer : nsISupports
   [noscript] ImageContainer getImageContainer(in LayerManager aManager);
 
   /**
-   * Create and return a new copy of the given frame that you can write to
-   * and otherwise inspect the pixels of.
-   *
-   * @param aWhichFrame Frame specifier of the FRAME_* variety.
-   * @param aFlags Flags of the FLAG_* variety
-   */
-  [noscript] gfxImageSurface copyFrame(in uint32_t aWhichFrame,
-                                       in uint32_t aFlags);
-
-  /**
    * Create a new imgContainer that contains only a single frame, which itself
    * contains a subregion of the given frame.
    *
@@ -198,7 +192,7 @@ interface imgIContainer : nsISupports
                                         in uint32_t aFlags);
 
   /**
-   * Draw the current frame on to the context specified.
+   * Draw a frame onto the context specified.
    *
    * @param aContext The Thebes context to draw the image to.
    * @param aFilter The filter to be used if we're scaling the image.
@@ -217,6 +211,10 @@ interface imgIContainer : nsISupports
    *          might be restricted by aSubimage -- but we still need the full
    *          image's viewport-size in order for SVG images with the "viewBox"
    *          attribute to position their content correctly.)
+   * @param aSVGContext If non-null, SVG-related rendering context such as
+   *                    overridden attributes on the image document's root <svg>
+   *                    node. Ignored for raster images.
+   * @param aWhichFrame Frame specifier of the FRAME_* variety.
    * @param aFlags Flags of the FLAG_* variety
    */
   [noscript] void draw(in gfxContext aContext,
@@ -225,17 +223,9 @@ interface imgIContainer : nsISupports
                        [const] in gfxRect aFill,
                        [const] in nsIntRect aSubimage,
                        [const] in nsIntSize aViewportSize,
+                       [const] in SVGImageContext aSVGContext,
+                       in uint32_t aWhichFrame,
                        in uint32_t aFlags);
-
-  /**
-   * If this image is TYPE_VECTOR, i.e. is really an embedded SVG document,
-   * this method returns a pointer to the root nsIFrame of that document. If
-   * not (or if the root nsIFrame isn't available for some reason), this method
-   * returns nullptr.
-   *
-   * "notxpcom" for convenience, since we have no need for nsresult return-val.
-   */
-  [notxpcom] nsIFrame GetRootLayoutFrame();
 
   /*
    * Ensures that an image is decoding. Calling this function guarantees that

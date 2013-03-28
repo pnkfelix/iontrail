@@ -134,6 +134,7 @@ class IonCode : public gc::Cell
     static void readBarrier(IonCode *code);
     static void writeBarrierPre(IonCode *code);
     static void writeBarrierPost(IonCode *code, void *addr);
+    static inline ThingRootKind rootKind() { return THING_ROOT_ION_CODE; }
 };
 
 class SnapshotWriter;
@@ -228,6 +229,12 @@ struct IonScript
     uint32_t callTargetList_;
     uint32_t callTargetEntries_;
 
+    // Dispatch table for ICs, if caches for this IonScript are dispatch
+    // instead of repatch. If dispatch is on, there are as many entries as
+    // there are caches, else there are 0.
+    uint32_t cacheDispatchTable_;
+    uint32_t cacheDispatchEntries_;
+
     // Number of references from invalidation records.
     size_t refcount_;
 
@@ -274,7 +281,10 @@ struct IonScript
         return (JSScript **) &bottomBuffer()[scriptList_];
     }
     JSScript **callTargetList() {
-        return (JSScript **)(reinterpret_cast<const uint8_t *>(this) + callTargetList_);
+        return (JSScript **) &bottomBuffer()[callTargetList_];
+    }
+    uint8_t **cacheDispatchTable() {
+        return (uint8_t **) &bottomBuffer()[cacheDispatchTable_];
     }
 
   private:
@@ -288,7 +298,7 @@ struct IonScript
                           size_t snapshotsSize, size_t snapshotEntries,
                           size_t constants, size_t safepointIndexEntries, size_t osiIndexEntries,
                           size_t cacheEntries, size_t safepointsSize, size_t runtimeSize,
-                          size_t scriptEntries, size_t callTargetEntries);
+                          size_t scriptEntries, size_t callTargetEntries, bool cachesUseDispatch);
     static void Trace(JSTracer *trc, IonScript *script);
     static void Destroy(FreeOp *fop, IonScript *script);
 
@@ -374,7 +384,7 @@ struct IonScript
     size_t safepointsSize() const {
         return safepointsSize_;
     }
-    UnrootedScript getScript(size_t i) const {
+    RawScript getScript(size_t i) const {
         JS_ASSERT(i < scriptEntries_);
         return scriptList()[i];
     }
@@ -420,18 +430,31 @@ struct IonScript
     size_t numCaches() const {
         return cacheEntries_;
     }
+    uint8_t **getCacheDispatchEntry(uint32_t index) {
+        JS_ASSERT(index < cacheDispatchEntries_);
+        return &cacheDispatchTable()[index];
+    }
+    uint8_t **maybeGetCacheDispatchEntry(uint32_t index) {
+        // If caches are not dispatch style, there are 0 entries in the
+        // dispatch table.
+        if (cacheDispatchEntries_ > 0)
+            return getCacheDispatchEntry(index);
+        return NULL;
+    }
     size_t runtimeSize() const {
         return runtimeSize_;
     }
     void toggleBarriers(bool enabled);
     void purgeCaches(JSCompartment *c);
+    void destroyCaches();
     void copySnapshots(const SnapshotWriter *writer);
     void copyBailoutTable(const SnapshotOffset *table);
     void copyConstants(const HeapValue *vp);
     void copySafepointIndices(const SafepointIndex *firstSafepointIndex, MacroAssembler &masm);
     void copyOsiIndices(const OsiIndex *firstOsiIndex, MacroAssembler &masm);
     void copyRuntimeData(const uint8_t *data);
-    void copyCacheEntries(const uint32_t *caches, MacroAssembler &masm);
+    void copyCacheEntries(const uint32_t *caches, CodeOffsetLabel *dispatchLabels,
+                          MacroAssembler &masm);
     void copySafepoints(const SafepointWriter *writer);
     void copyScriptEntries(JSScript **scripts);
     void copyCallTargetEntries(JSScript **callTargets);
@@ -666,4 +689,3 @@ IsMarked(const ion::VMFunction *)
 } // namespace js
 
 #endif // jsion_coderef_h__
-

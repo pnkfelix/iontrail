@@ -93,7 +93,7 @@ public:
     }
 
     nsCOMPtr<nsIDOMEvent> event;
-    if (NS_SUCCEEDED(nsEventDispatcher::CreateEvent(mPresContext, nullptr,
+    if (NS_SUCCEEDED(nsEventDispatcher::CreateEvent(mMenu, mPresContext, nullptr,
                                                     NS_LITERAL_STRING("Events"),
                                                     getter_AddRefs(event)))) {
       event->InitEvent(domEventToFire, true, true);
@@ -1281,7 +1281,9 @@ nsMenuFrame::RemoveFrame(ChildListID     aListID,
                          nsIFrame*       aOldFrame)
 {
   nsFrameList* popupList = GetPopupList();
-  if (popupList && popupList->DestroyFrameIfPresent(aOldFrame)) {
+  if (popupList && popupList->FirstChild() == aOldFrame) {
+    popupList->RemoveFirstChild();
+    aOldFrame->Destroy();
     DestroyPopupList();
     PresContext()->PresShell()->
       FrameNeedsReflow(this, nsIPresShell::eTreeChange,

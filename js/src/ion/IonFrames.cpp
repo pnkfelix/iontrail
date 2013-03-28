@@ -23,8 +23,6 @@
 #include "Safepoints.h"
 #include "VMFunctions.h"
 
-#include "vm/ParallelDo.h"
-
 using namespace js;
 using namespace js::ion;
 
@@ -56,15 +54,13 @@ IonFrameIterator::checkInvalidation() const
 bool
 IonFrameIterator::checkInvalidation(IonScript **ionScriptOut) const
 {
-    AutoAssertNoGC nogc;
-
     uint8_t *returnAddr = returnAddressToFp();
     RawScript script = this->script();
     // N.B. the current IonScript is not the same as the frame's
     // IonScript if the frame has since been invalidated.
     IonScript *currentIonScript;
     bool hasIonScript;
-    if (isParFunctionFrame()) {
+    if (isParallelFunctionFrame()) {
         currentIonScript = script->parallelIon;
         hasIonScript = script->hasParallelIonScript();
     } else {
@@ -94,11 +90,11 @@ JSFunction *
 IonFrameIterator::callee() const
 {
     if (isScripted()) {
-        JS_ASSERT(isFunctionFrame() || isParFunctionFrame());
+        JS_ASSERT(isFunctionFrame() || isParallelFunctionFrame());
         if (isFunctionFrame())
             return CalleeTokenToFunction(calleeToken());
         else
-            return CalleeTokenToParFunction(calleeToken());
+            return CalleeTokenToParallelFunction(calleeToken());
     }
 
     JS_ASSERT(isNative());
@@ -108,7 +104,7 @@ IonFrameIterator::callee() const
 JSFunction *
 IonFrameIterator::maybeCallee() const
 {
-    if ((isScripted() && (isFunctionFrame() || isParFunctionFrame())) || isNative())
+    if ((isScripted() && (isFunctionFrame() || isParallelFunctionFrame())) || isNative())
         return callee();
     return NULL;
 }
@@ -152,9 +148,9 @@ IonFrameIterator::isFunctionFrame() const
 }
 
 bool
-IonFrameIterator::isParFunctionFrame() const
+IonFrameIterator::isParallelFunctionFrame() const
 {
-    return GetCalleeTokenTag(calleeToken()) == CalleeToken_ParFunction;
+    return GetCalleeTokenTag(calleeToken()) == CalleeToken_ParallelFunction;
 }
 
 bool
@@ -175,10 +171,9 @@ IonFrameIterator::isEntryJSFrame() const
     return true;
 }
 
-UnrootedScript
+RawScript
 IonFrameIterator::script() const
 {
-    AutoAssertNoGC nogc;
     JS_ASSERT(isScripted());
     RawScript script = ScriptFromCalleeToken(calleeToken());
     JS_ASSERT(script);
@@ -269,7 +264,6 @@ IonFrameIterator::machineState() const
 static void
 CloseLiveIterator(JSContext *cx, const InlineFrameIterator &frame, uint32_t localSlot)
 {
-    AssertCanGC();
     SnapshotIterator si = frame.snapshotIterator();
 
     // Skip stack slots until we reach the iterator object.
@@ -291,7 +285,6 @@ CloseLiveIterator(JSContext *cx, const InlineFrameIterator &frame, uint32_t loca
 static void
 CloseLiveIterators(JSContext *cx, const InlineFrameIterator &frame)
 {
-    AssertCanGC();
     RootedScript script(cx, frame.script());
     jsbytecode *pc = frame.pc();
 
@@ -322,7 +315,6 @@ CloseLiveIterators(JSContext *cx, const InlineFrameIterator &frame)
 void
 ion::HandleException(ResumeFromException *rfe)
 {
-    AssertCanGC();
     JSContext *cx = GetIonContext()->cx;
 
     IonSpew(IonSpew_Invalidate, "handling exception");
@@ -343,7 +335,6 @@ ion::HandleException(ResumeFromException *rfe)
                 // When profiling, each frame popped needs a notification that
                 // the function has exited, so invoke the probe that a function
                 // is exiting.
-                AutoAssertNoGC nogc;
                 RawScript script = frames.script();
                 Probes::exitScript(cx, script, script->function(), NULL);
                 if (!frames.more())
@@ -370,15 +361,23 @@ ion::HandleException(ResumeFromException *rfe)
 }
 
 void
-ion::HandleParException(ResumeFromException *rfe)
+ion::HandleParallelFailure(ResumeFromException *rfe)
 {
     ForkJoinSlice *slice = ForkJoinSlice::Current();
     IonFrameIterator iter(slice->perThreadData->ionTop);
-    
+
     while (!iter.isEntry()) {
         parallel::Spew(parallel::SpewBailouts, "Bailing from VM reentry");
-        if (!slice->abortedScript && iter.isScripted())
-            slice->abortedScript = iter.script();
+        if (iter.isScripted()) {
+            slice->bailoutRecord->setCause(ParallelBailoutFailedIC, iter.script(), NULL);
+            break;
+        }
+        ++iter;
+    }
+
+    while (!iter.isEntry()) {
+        if (iter.isScripted())
+            PropagateParallelAbort(iter.script());
         ++iter;
     }
 
@@ -466,7 +465,7 @@ MarkCalleeToken(JSTracer *trc, CalleeToken token)
       }
       case CalleeToken_Script:
       {
-        UnrootedScript script = CalleeTokenToScript(token);
+        RawScript script = CalleeTokenToScript(token);
         MarkScriptRoot(trc, &script, "ion-entry");
         JS_ASSERT(script == CalleeTokenToScript(token));
         break;
@@ -926,7 +925,7 @@ IonFrameIterator::ionScript() const
       case CalleeToken_Function:
       case CalleeToken_Script:
         return script()->ionScript();
-      case CalleeToken_ParFunction:
+      case CalleeToken_ParallelFunction:
         return script()->parallelIonScript();
       default:
         JS_NOT_REACHED("unknown callee token type");
@@ -985,7 +984,6 @@ InlineFrameIterator::InlineFrameIterator(JSContext *cx, const InlineFrameIterato
 void
 InlineFrameIterator::findNextFrame()
 {
-    AutoAssertNoGC nogc;
     JS_ASSERT(more());
 
     si_ = start_;
@@ -1233,7 +1231,6 @@ struct DumpOp {
 void
 InlineFrameIterator::dump() const
 {
-    AutoAssertNoGC nogc;
     if (more())
         fprintf(stderr, " JS frame (inlined)\n");
     else
