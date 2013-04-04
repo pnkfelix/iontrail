@@ -1270,6 +1270,8 @@ function ParallelMatrixDebtInitialize(token, shape, targetBuffer, targetOffset) 
 
 function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) {
 
+  mode && mode.print && mode.print("ParallelMatrixConstructFromGrainFunctionMode");
+
   if (!mode) mode = func;
   if (!mode) mode = grain;
 
@@ -1285,6 +1287,8 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
     grain = [];
   }
 
+  mode && mode.print && mode.print({shape:shape,grain:grain,func:func,mode:mode});
+
   if (func === undefined) {
     func = function fill_with_undef () { return undefined; };
   }
@@ -1295,9 +1299,13 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
   var frame;
   var sdims = shape.length;
 
+  mode && mode.print && mode.print(["matrix cxn",{shape:shape, debt:global.ParallelMatrixDebt}]);
+
   if (shape instanceof global.ParallelMatrixDebt) {
+    mode && mode.print && mode.print("init buffer via token");
+
     if (shape.discharged)
-      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " previously discharged: "+shape).toSource();
+      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " previously discharged: "+shape.toSource());
     if (!shape.active)
       ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " inactive debt: "+shape.toSource());
 
@@ -1305,6 +1313,7 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
       len *= shape.get(i);
     }
     var debt = shape;
+
     buffer = debt.buffer;
     offset = debt.offset;
     var frame_len = sdims - grain.length;
@@ -1313,6 +1322,7 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
       frame[i] = shape.get(i);
     }
   } else {
+    mode && mode.print && mode.print("init buffer via fresh");
     for(var i = 0; i < shape.length; i++) {
       len *= shape[i];
     }
@@ -1367,6 +1377,8 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
       // of the matrix, not submatrices; thus there is no reason
       // to use the debt-token protocol.
 
+      mode && mode.print && mode.print("computing leaf elems");
+
       for (var i = indexStart; i < indexEnd; i++) {
         UnsafeSetElement(buffer, i, func.apply(null, frame_indices));
         StepIndices(frame, frame_indices);
@@ -1378,6 +1390,8 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
       // body has not been written to work with the token.
 
       // In this case, just allocate new arrays and copy them in.
+
+      mode && mode.print && mode.print("submatrix fresh alloc");
 
       for (var i = indexStart; i < indexEnd; i+=grainLen) {
         var subarray = func.apply(null, frame_indices);
@@ -1408,9 +1422,14 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
       // reuse the tokens that have been preallocated for us
       // by our caller.
 
+      mode && mode.print && mode.print("submatrix token reuse");
+
       var broker;
       if (!(shape instanceof global.ParallelMatrixDebt)) {
         // Case 1: Outermost matrix construction.
+
+        mode && mode.print && mode.print("submatrix token outer");
+
         var maxDepth = shape.length;
         // NOTE: It may seem silly to be using numSlices here,
         // depending on whether the code that follows actually does a
@@ -1435,6 +1454,9 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
         broker = chains[0];
       } else {
         // Case 2: Nested submatrix construction.
+
+        mode && mode.print && mode.print("submatrix token inner");
+
         broker = shape.next;
 
         // FIXME: This should never happen.  Kill the code if I can
@@ -1467,20 +1489,22 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
 
         } else {
           if (subarray.constructor !== global.ParallelMatrix)
-            ThrowError(JSMSG_WRONG_VALUE,
-                       "must return matrix constructed via debt token.");
+            ThrowError(JSMSG_PAR_ARRAY_BAD_ARG,
+                       ": submatrix argument not ParallelMatrix");
           else if (!broker.discharged)
             ThrowError(JSMSG_PAR_ARRAY_BAD_ARG,
-                       "unsatisfied debt");
+                       ": unsatisfied debt");
           else // final case: (broker.payer != subarray)
             ThrowError(JSMSG_PAR_ARRAY_BAD_ARG,
-                       "returned matrix different from that used to pay debt.");
+                       ": submatrix not via proper debt token");
         }
 
         StepIndices(frame, frame_indices);
       }
     }
   }
+  mode && mode.print && mode.print("matrix cxn complete");
+  mode && mode.print && mode.print("");
 }
 
 /**
