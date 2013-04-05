@@ -13,21 +13,22 @@ if (benchmarking) {
   load(libdir + "util.js");
 }
 
-function kernel_core(x,y) {
-  return x*1000 + y;
+function kernel_core(x,y,k) {
+  return x*1000000 + y*1000 + k;
 }
 
-var W = 500;
-var H = 5000;
+var W = 10;
+var H = 10;
+var K = 10;
 
-function kernel_fresh(x) {
+function kernel_fresh(x, y) {
   // print("kernel_fresh");
-  return new ParallelMatrix([H], function (y) kernel_core(x,y), mode);
+  return new ParallelMatrix([K], function (k) kernel_core(x,y,k), mode);
 }
 
-function kernel_token(x, tok) {
+function kernel_token(x, y, tok) {
   // print("kernel_token");
-  return new ParallelMatrix(tok, function (y) kernel_core(x,y), mode);
+  return new ParallelMatrix(tok, function (k) kernel_core(x,y,k), mode);
 }
 
 function myprint(x) {
@@ -43,14 +44,14 @@ function myprint(x) {
                              return x;
                            }
                          },
-                         4));
+                         0));
   }
 }
 var seq_mode = {mode:"seq"
-                 //, print:myprint
+                 , print:myprint
                };
 var par_mode = {mode:"par"
-                 //, print:myprint
+                 , print:myprint
                };
 
 var mode;
@@ -58,25 +59,25 @@ var mode;
 function computeSeqFresh() {
   // print("computeSeqFresh");
   mode = seq_mode;
-  return new ParallelMatrix([W,H], [H], kernel_fresh, mode);
+  return new ParallelMatrix([W,H,K], [K], kernel_fresh, mode);
 }
 
 function computeSeqToken() {
   // print("computeSeqToken");
   mode = seq_mode;
-  return new ParallelMatrix([W,H], [H], kernel_token, mode);
+  return new ParallelMatrix([W,H,K], [K], kernel_token, mode);
 }
 
 function computeParFresh() {
   // print("computeParFresh");
   mode = par_mode;
-  return new ParallelMatrix([W,H], [H], kernel_fresh, mode);
+  return new ParallelMatrix([W,H,K], [K], kernel_fresh, mode);
 }
 
 function computeParToken() {
   // print("computeParToken");
   mode = par_mode;
-  return new ParallelMatrix([W,H], [H], kernel_token, mode);
+  return new ParallelMatrix([W,H,K], [K], kernel_token, mode);
 }
 
 benchmark("MATRIX-SEQ-FRESH-VS-TOKEN", 1, DEFAULT_MEASURE,

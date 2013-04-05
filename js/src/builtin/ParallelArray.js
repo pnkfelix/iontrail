@@ -70,6 +70,37 @@ function ComputeAllSliceBounds(numItems, numSlices) {
   return info;
 }
 
+function ComputeMatrixIndicesAt(i, frame) {
+  var info = [];
+  for (var j=0; j < frame.length; j++) {
+    var b = frame[j];
+    var k = i % b;
+    i = (i - k) / b;
+    info.push(k);
+  }
+  return info;
+}
+
+function ComputeMatrixSliceBounds(frame, numItems, numSlices) {
+  var info = [];
+  var frame_indices = ComputeIndices(frame, 0);
+  for (var i = 0; i < numSlices; i++) {
+    var [start, end] = ComputeSliceBounds(numItems, i, numSlices);
+
+    var sliceIndex = i;
+    var sliceWidth = (numItems / numSlices) | 0;
+    var startIndex = sliceWidth * sliceIndex;
+    var endIndex = sliceIndex === numSlices - 1 ? numItems : sliceWidth * (sliceIndex + 1);
+    info.push([numItems, numSlices, sliceIndex, sliceWidth, startIndex, endIndex]);
+
+    info.push("argh");
+    info.push([start,end]);
+    info.push(ComputeMatrixIndicesAt(start, frame));
+    info.push(ComputeMatrixIndicesAt(end, frame));
+  }
+  return info;
+}
+
 /**
  * Compute the partial products in reverse order.
  * e.g., if the shape is [A,B,C,D], then the
@@ -1357,6 +1388,20 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
     grain_len *= shape_amt;
   }
 
+  mode && mode.print && mode.print({frame:frame});
+
+  // We want to slice the work across all of the frame.
+  var chunks = ComputeNumChunks(frame_len*grain_len);
+  var numSlices = ForkJoinSlices();
+  var info = ComputeMatrixSliceBounds(frame, chunks, numSlices);
+
+  if (grain_len > 1)
+    mode && mode.print && mode.print({frame_len:frame_len,
+                                      frame:frame,
+                                      chunks:chunks,
+                                      numSlices:numSlices,
+                                      info:info});
+
   fillN(offset, offset+len, grain_len);
 
   this.buffer = buffer;
@@ -1443,11 +1488,12 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
         var numTokens = numSlices * maxDepth;
         var chains = new Array(numSlices);
         for (var i = 0; i < numSlices; i++) {
-          var a = new Array(maxDepth);
           var c = null;
+          var s = null;
           for (var j = 0; j < maxDepth; j++) {
             c = NewParallelMatrixDebt(ParallelMatrixDebtConstruct,
-                                      grain, buffer, indexStart, c);
+                                      grain, buffer, indexStart,
+                                      c);
           }
           chains[i] = c;
         }
