@@ -17,8 +17,8 @@ function kernel_core(x,y) {
   return x*1000 + y;
 }
 
-var W = 5000;
-var H = 50;
+var W = 500;
+var H = 5000;
 
 function kernel_fresh(x) {
   // print("kernel_fresh");
