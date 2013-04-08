@@ -1173,25 +1173,85 @@ function ParallelArrayToString() {
   return result;
 }
 
+function is_value_type(descriptor) {
+  if (typeof descriptor === "string") {
+    if (descriptor === "uint8" ||
+        descriptor === "uint8clamped" ||
+        descriptor === "uint16" ||
+        descriptor === "uint32" ||
+        descriptor === "int8" ||
+        descriptor === "int16" ||
+        descriptor === "int32" ||
+        descriptor === "float32" ||
+        descriptor === "float64" ||
+        descriptor === "any")
+    {
+      return true;
+    }
+    else
+    {
+      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, ' invalid type specification "'+descriptor+'"');
+    }
+  }
+  else
+  {
+    // Other cases (e.g. for Data Type objects) could go here
+  }
+
+  return false;
+}
+
+function value_type_to_buffer_allocator(descriptor) {
+  function make_univ_buffer(length)         { return NewDenseArray(length); }
+  function make_uint8_buffer(length)        { return new Uint8Array(new ArrayBuffer(length)); }
+  function make_uint8clamped_buffer(length) { return new Uint8ClampedArray(new ArrayBuffer(length)); }
+  function make_uint16_buffer(length)       { return new Uint16Array(new ArrayBuffer(length*2)); }
+  function make_uint32_buffer(length)       { return new Uint32Array(new ArrayBuffer(length*4)); }
+  function make_int8_buffer(length)         { return new Int8Array(new ArrayBuffer(length)); }
+  function make_int16_buffer(length)        { return new Int16Array(new ArrayBuffer(length*2)); }
+  function make_int32_buffer(length)        { return new Int32Array(new ArrayBuffer(length*4)); }
+  function make_flo32_buffer(length)        { return new Float32Array(new ArrayBuffer(length*4)); }
+  function make_flo64_buffer(length)        { return new Float64Array(new ArrayBuffer(length*8)); }
+
+  var lookup = {
+    uint8:   make_uint8_buffer,  uint8clamped: make_uint8clamped_buffer,
+    uint16:  make_uint16_buffer, uint32:       make_uint32_buffer,
+    int8:    make_int8_buffer,   int16:        make_int16_buffer,        int32: make_int32_buffer,
+    float32: make_flo32_buffer,  float64:      make_flo64_buffer,        any: make_univ_buffer
+  };
+
+  return lookup[descriptor];
+}
+
+
 function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
   // (shape, grain, func, mode)
 
   var mode = arg3 || arg2 || arg1;
   var frame = arg0 || [0];
 
+  var valtype;
   var grain;
   var func;
 
   if (arg1 === undefined) {
     grain = [];
-  } else if (typeof(arg1) === "function") {
+  } else if (typeof arg1 === "function") {
     grain = [];
     func = arg1;
   } else {
     grain = arg1;
     func = arg2;
   }
+
+  if (is_value_type(grain[grain.length - 1])) {
+    valtype = grain.pop();
+  } else {
+    valtype = "any"; // this might be expressible as "ObjectPointer" in binary data spec
+  }
+
   var shape = frame.concat(grain);
+  var buffer_maker = value_type_to_buffer_allocator(valtype);
 
   if (func === undefined) {
     func = function fill_with_undef () { return undefined; };
