@@ -1172,36 +1172,6 @@ function ParallelArrayToString() {
   result += open + String(this.get(l-1)) + close;
   return result;
 }
-function ParallelMatrixDebtGet(i) { return this.shape[i]; }
-function ParallelMatrixDebtConstruct(shape, targetBuffer, targetOffset) {
-
-  if (targetOffset === undefined)
-    ThrowError(JSMSG_MORE_ARGS_NEEDED, "ParallelMatrixDebt", 2, "s");
-  if (!shape || !(shape instanceof global.Array))
-    ThrowError(JSMSG_WRONG_VALUE, "shape array", (shape));
-  if (!targetBuffer || !(targetBuffer instanceof global.Array))
-    ThrowError(JSMSG_WRONG_VALUE, "buffer array", (targetBuffer));
-  if (Number(targetOffset) != targetOffset)
-    ThrowError(JSMSG_WRONG_VALUE, "integer offset", (targetOffset));
-  var debt_len = 1;
-  for (var i = 0; i < shape.length; i++) {
-    debt_len *= shape[i];
-    this[i] = shape[i];
-  }
-  if (targetOffset < 0)
-    ThrowError(JSMSG_WRONG_VALUE, "nonnegative offset", (targetOffset));
-  if (targetOffset+debt_len > targetBuffer.length)
-    ThrowError(JSMSG_WRONG_VALUE, "offset in range", (targetOffset));
-
-  this.shape = shape;
-  this.buffer = targetBuffer;
-  this.offset = targetOffset;
-  this.get = ParallelMatrixDebtGet;
-  this.length = shape.length;
-  this.active = false;
-  this.discharged = false;
-  this.payer = null;
-}
 
 function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) {
 
@@ -1230,32 +1200,13 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
   var frame;
   var sdims = shape.length;
 
-  if (shape instanceof global.ParallelMatrixDebt) {
-    if (shape.discharged)
-      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " previously discharged: "+shape).toSource();
-    if (!shape.active)
-      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " inactive debt: "+shape.toSource());
-
-    for(var i = 0; i < shape.length; i++) {
-      len *= shape.get(i);
-    }
-    var debt = shape;
-    buffer = debt.buffer;
-    offset = debt.offset;
-    var frame_len = sdims - grain.length;
-    frame = new Array(frame_len);
-    for (var i = 0; i < frame_len; i++) {
-      frame[i] = shape.get(i);
-    }
-  } else {
-    for(var i = 0; i < shape.length; i++) {
-      len *= shape[i];
-    }
-    buffer = NewDenseArray(len);
-    offset = 0;
-
-    frame = shape.slice(0, sdims - grain.length);
+  for(var i = 0; i < shape.length; i++) {
+    len *= shape[i];
   }
+  buffer = NewDenseArray(len);
+  offset = 0;
+
+  frame = shape.slice(0, sdims - grain.length);
 
   var getFunc;
   switch(shape.length) {
@@ -1289,11 +1240,6 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
   this.shape = shape;
   this.get = getFunc;
 
-  if (shape instanceof global.ParallelMatrixDebt) {
-    shape.discharged = true;
-    shape.payer = this;
-  }
-
   function SetElem(context, buffer, i, val) {
     if (i < 0)
       ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "neg idx "+i+" "+context);
@@ -1310,13 +1256,9 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
         SetElem("fillN_1", buffer, i, func.apply(null, frame_indices));
         StepIndices(frame, frame_indices);
       }
-    } else if (func.length <= frame_indices.length) {
+    } else {
 
-      // If the callback has not been written to take debt token
-      // as an explicit argument, then we assume the function's
-      // body has not been written to work with the token.
-
-      // In this case, just allocate new arrays and copy them in.
+      // allocate new arrays and copy in computed subarrays.
 
       for (var i = indexStart; i < indexEnd; i+=grainLen) {
         var subarray = func.apply(null, frame_indices);
@@ -1332,45 +1274,6 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
         for (var j = 0; j < grainLen; j++) {
           UnsafeSetElement(buffer, i+j, subbuffer[offset+j]);
         }
-        StepIndices(frame, frame_indices);
-      }
-
-    } else {
-      // The func has been written to take more arguments than indices
-      // for the current matrix-frame; this implies that the caller
-      // will use the debt-token to constuct submatrices.
-
-      for (var i = indexStart; i < indexEnd; i+=grainLen) {
-        var broker = NewParallelMatrixDebt(ParallelMatrixDebtConstruct, grain, buffer, i);
-        frame_indices.push(broker);
-        broker.active = true;
-        var subarray = func.apply(null, frame_indices);
-        broker.active = false;
-        frame_indices.pop();
-
-        // FIXME 1: what is right way to detect input is of right type?
-        // FIXME 2: Check that the shape matches too (but that might be
-        //          overridden by use of threaded debt-brokers)
-        if (subarray.constructor === global.ParallelMatrix &&
-            broker.discharged &&
-            broker.payer == subarray) {
-
-          // The subarray already initialized the buffer and successfully
-          // followed the debt-toekn protocol, returning the constructed
-          // matrix.  We are done!
-
-        } else {
-          if (subarray.constructor !== global.ParallelMatrix)
-            ThrowError(JSMSG_WRONG_VALUE,
-                       "must return matrix constructed via debt token.");
-          else if (!broker.discharged)
-            ThrowError(JSMSG_PAR_ARRAY_BAD_ARG,
-                       "unsatisfied debt");
-          else // final case: (broker.payer != subarray)
-            ThrowError(JSMSG_PAR_ARRAY_BAD_ARG,
-                       "returned matrix different from that used to pay debt.");
-        }
-
         StepIndices(frame, frame_indices);
       }
     }

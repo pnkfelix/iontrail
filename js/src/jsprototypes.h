@@ -58,6 +58,5 @@
     macro(ParallelArray,         36,     js_InitParallelArrayClass) \
     macro(Intl,                  37,     js_InitIntlClass) \
     macro(ParallelMatrix,        38,     js_InitParallelMatrixClass) \
-    macro(ParallelMatrixDebt,    39,     js_InitParallelMatrixDebtClass) \
 
 #endif /* jsprototypes_h___ */

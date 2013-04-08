@@ -235,22 +235,6 @@ function testScan(jsarray, func, cmpFunction) {
   }, cmpFunction);
 }
 
-ParallelMatrixDebt.prototype.toSource =
-  function toSource() {
-    var ret="({escrow [";
-    for (var i = 0; i < this.length; i++) {
-      ret += this.get(i);
-      if (i+1 < this.length)
-        ret += ", ";
-    }
-    ret+="]";
-    ret+=" offset:"+this.offset;
-    ret+=" active:"+this.active;
-    ret+=" discharged:"+this.discharged;
-    ret+="})";
-    return ret;
-  };
-
 function viewToSource2d(view, width, height, payload) {
   var i=0;
   var ret = "[";

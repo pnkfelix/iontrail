@@ -270,9 +270,6 @@ js_InitParallelArrayClass(JSContext *cx, js::HandleObject obj)
 // ParallelMatrixObject
 //
 
-/*static*/
-const uint32_t ParallelMatrixDebtObject::NumFixedSlots = 2;
-
 FixedHeapPtr<PropertyName> ParallelMatrixObject::ctorNames[NumCtors];
 
 JSFunctionSpec ParallelMatrixObject::methods[] = {
@@ -321,35 +318,6 @@ Class ParallelMatrixObject::class_ = {
     JS_ConvertStub
 };
 
-JSFunctionSpec ParallelMatrixDebtObject::methods[] = {
-    { "get",      JSOP_NULLWRAPPER, 1, 0, "ParallelMatrixDebtGet" },
-    JS_FS_END
-};
-
-Class ParallelMatrixDebtObject::protoClass = {
-    "ParallelMatrixDebt",
-    JSCLASS_HAS_CACHED_PROTO(JSProto_ParallelMatrixDebt),
-    JS_PropertyStub,         // addProperty
-    JS_PropertyStub,         // delProperty
-    JS_PropertyStub,         // getProperty
-    JS_StrictPropertyStub,   // setProperty
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub
-};
-
-Class ParallelMatrixDebtObject::class_ = {
-    "ParallelMatrixDebt",
-    JSCLASS_HAS_CACHED_PROTO(JSProto_ParallelMatrixDebt),
-    JS_PropertyStub,         // addProperty
-    JS_PropertyStub,         // delProperty
-    JS_PropertyStub,         // getProperty
-    JS_StrictPropertyStub,   // setProperty
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub
-};
-
 /*static*/ bool
 ParallelMatrixObject::initProps(JSContext *cx, HandleObject obj)
 {
@@ -368,38 +336,8 @@ ParallelMatrixObject::initProps(JSContext *cx, HandleObject obj)
     return true;
 }
 
-/*static*/ bool
-ParallelMatrixDebtObject::initProps(JSContext *cx, HandleObject obj)
-{
-    RootedValue undef(cx, UndefinedValue());
-    RootedValue zero(cx, Int32Value(0));
-
-    if (!JSObject::setProperty(cx, obj, obj, cx->names().buffer, &undef, true))
-        return false;
-    if (!JSObject::setProperty(cx, obj, obj, cx->names().offset, &zero, true))
-        return false;
-    if (!JSObject::setProperty(cx, obj, obj, cx->names().shape, &undef, true))
-        return false;
-    if (!JSObject::setProperty(cx, obj, obj, cx->names().get, &undef, true))
-        return false;
-    if (!JSObject::setProperty(cx, obj, obj, cx->names().length, &undef, true))
-        return false;
-
-    return true;
-}
-
 /*static*/ JSBool
 ParallelMatrixObject::construct(JSContext *cx, unsigned argc, Value *vp)
-{
-    RootedFunction ctor(cx, getConstructor(cx, argc));
-    if (!ctor)
-        return false;
-    CallArgs args = CallArgsFromVp(argc, vp);
-    return constructHelper(cx, &ctor, args);
-}
-
-/*static*/ JSBool
-ParallelMatrixDebtObject::construct(JSContext *cx, unsigned argc, Value *vp)
 {
     RootedFunction ctor(cx, getConstructor(cx, argc));
     if (!ctor)
@@ -419,35 +357,8 @@ ParallelMatrixObject::getConstructor(JSContext *cx, unsigned argc)
     return ctorValue.toObject().toFunction();
 }
 
-/* static */ JSFunction *
-ParallelMatrixDebtObject::getConstructor(JSContext *cx, unsigned argc)
-{
-    JSFlatString *name = js_NewStringCopyZ<NoGC>(cx, "ParallelMatrixDebtConstruct");
-    RootedPropertyName ctorName(cx, name->toPropertyName(cx));
-    RootedValue ctorValue(cx);
-    if (!cx->global()->getIntrinsicValue(cx, ctorName, &ctorValue))
-        return NULL;
-    JS_ASSERT(ctorValue.toObject().isFunction());
-    return ctorValue.toObject().toFunction();
-}
-
 /*static*/ JSObject *
 ParallelMatrixObject::newInstance(JSContext *cx)
-{
-    gc::AllocKind kind = gc::GetGCObjectKind(NumFixedSlots);
-    RootedObject result(cx, NewBuiltinClassInstance(cx, &class_, kind));
-    if (!result)
-        return NULL;
-
-    // Add in the basic PM properties now with default values:
-    if (!initProps(cx, result))
-        return NULL;
-
-    return result;
-}
-
-/*static*/ JSObject *
-ParallelMatrixDebtObject::newInstance(JSContext *cx)
 {
     gc::AllocKind kind = gc::GetGCObjectKind(NumFixedSlots);
     RootedObject result(cx, NewBuiltinClassInstance(cx, &class_, kind));
@@ -517,30 +428,6 @@ ParallelMatrixObject::constructHelper(JSContext *cx, MutableHandleFunction ctor,
     return true;
 }
 
-/*static*/ JSBool
-ParallelMatrixDebtObject::constructHelper(JSContext *cx, MutableHandleFunction ctor, CallArgs &args0)
-{
-    RootedObject result(cx, newInstance(cx));
-    if (!result)
-        return false;
-
-    InvokeArgsGuard args;
-    if (!cx->stack.pushInvokeArgs(cx, args0.length(), &args))
-        return false;
-
-    args.setCallee(ObjectValue(*ctor));
-    args.setThis(ObjectValue(*result));
-
-    for (uint32_t i = 0; i < args0.length(); i++)
-        args[i] = args0[i];
-
-    if (!Invoke(cx, args))
-        return false;
-
-    args0.rval().setObject(*result);
-    return true;
-}
-
 JSObject *
 ParallelMatrixObject::initClass(JSContext *cx, HandleObject obj)
 {
@@ -578,37 +465,7 @@ ParallelMatrixObject::initClass(JSContext *cx, HandleObject obj)
 }
 
 JSObject *
-ParallelMatrixDebtObject::initClass(JSContext *cx, HandleObject obj)
-{
-    JS_ASSERT(obj->isNative());
-
-    Rooted<GlobalObject *> global(cx, &obj->asGlobal());
-    RootedObject proto(cx, global->createBlankPrototype(cx, &protoClass));
-    if (!proto)
-        return NULL;
-
-    JSProtoKey key = JSProto_ParallelMatrixDebt;
-    RootedFunction ctor(cx, global->createConstructor(cx, construct,
-                                                      cx->names().ParallelMatrixDebt, 0));
-    if (!ctor ||
-        !LinkConstructorAndPrototype(cx, ctor, proto) ||
-        !DefinePropertiesAndBrand(cx, proto, NULL, methods) ||
-        !DefineConstructorAndPrototype(cx, global, key, ctor, proto))
-    {
-        return NULL;
-    }
-
-    return proto;
-}
-
-JSObject *
 js_InitParallelMatrixClass(JSContext *cx, js::HandleObject obj)
 {
     return ParallelMatrixObject::initClass(cx, obj);
-}
-
-JSObject *
-js_InitParallelMatrixDebtClass(JSContext *cx, js::HandleObject obj)
-{
-    return ParallelMatrixDebtObject::initClass(cx, obj);
 }
