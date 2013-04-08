@@ -1173,22 +1173,25 @@ function ParallelArrayToString() {
   return result;
 }
 
-function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) {
+function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
+  // (shape, grain, func, mode)
 
-  if (!mode) mode = func;
-  if (!mode) mode = grain;
+  var mode = arg3 || arg2 || arg1;
+  var frame = arg0 || [0];
 
-  if (shape === undefined) {
-    shape = [0];
-  }
+  var grain;
+  var func;
 
-  if (grain === undefined) {
+  if (arg1 === undefined) {
     grain = [];
-  } else if (typeof(grain) === "function") {
-    mode = func;
-    func = grain;
+  } else if (typeof(arg1) === "function") {
     grain = [];
+    func = arg1;
+  } else {
+    grain = arg1;
+    func = arg2;
   }
+  var shape = frame.concat(grain);
 
   if (func === undefined) {
     func = function fill_with_undef () { return undefined; };
@@ -1197,7 +1200,6 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
   var len = 1;
   var offset;
   var buffer;
-  var frame;
   var sdims = shape.length;
 
   for(var i = 0; i < shape.length; i++) {
@@ -1205,8 +1207,6 @@ function ParallelMatrixConstructFromGrainFunctionMode(shape, grain, func, mode) 
   }
   buffer = NewDenseArray(len);
   offset = 0;
-
-  frame = shape.slice(0, sdims - grain.length);
 
   var getFunc;
   switch(shape.length) {
