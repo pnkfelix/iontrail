@@ -1351,6 +1351,55 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
   }
 }
 
+function matrixToSource2d(matrix, dim0, dim1) {
+}
+
+function ParallelMatrixToString() {
+  var self = this;
+  var slen = self.shape.length;
+  if (slen == 1) {
+    return "[" + this.buffer.join(",") + "]";
+  }
+
+  var w = self.shape[0];
+  var h = self.shape[1];
+  var p = false;
+  if (slen > 2) {
+    p = 1;
+    for (var i=2; i < slen; i++) {
+      p *= self.shape[i];
+    }
+  }
+  var matrix = self;
+  var dim0 = w;
+  var dim1 = h;
+
+  var payload = false;
+  var ret = "[";
+  var matrixNeedsNewline = false;
+  for (var row=0; row < dim0; row++) {
+    if (matrixNeedsNewline)
+      ret += ",\n ";
+    ret += "[";
+    var rowNeedsComma = false;
+    for (var x=0; x < dim1; x++) {
+      if (rowNeedsComma)
+        ret += ", ";
+      var val = matrix.get(row, x);
+      if (IsParallelArray(val)) {
+        ret += "<"+val+">";
+      } else if (val !== undefined) {
+        ret += val;
+      }
+      rowNeedsComma = true;
+    }
+    ret += "]";
+    matrixNeedsNewline = true;
+  }
+  ret += "]";
+  return ret;
+}
+
 /**
  * Internal debugging tool: checks that the given `mode` permits
  * sequential execution
