@@ -1201,6 +1201,21 @@ function is_value_type(descriptor) {
   return false;
 }
 
+function submatrix_matches_expectation(expect_shape, expect_valtype, actual_shape, actual_valtype)
+{
+  if (expect_shape.length !== actual_shape.length)
+    return false;
+  if (expect_valtype !== actual_valtype)
+    return false;
+  var len = expect_shape.length;
+  for (var i = 0; i < len; i++) {
+    if (expect_shape[i] !== actual_shape[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function value_type_to_buffer_allocator(descriptor) {
   function make_univ_buffer(length)         { return NewDenseArray(length); }
   function make_uint8_buffer(length)        { return new Uint8Array(new ArrayBuffer(length)); }
@@ -1291,64 +1306,69 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
 
   var frame_len = 1;
   var frame_dims = shape.length - grain.length;
-  for(var i = 0; i < frame_dims; i++) {
+  for(i = 0; i < frame_dims; i++) {
     frame_len *= shape[i];
   }
   var grain_len = 1;
-  for(var i = frame_dims; i < shape.length; i++) {
+  for(i = frame_dims; i < shape.length; i++) {
     var shape_amt = shape[i];
     if (i == shape.length - 1 && typeof(shape_amt) !== "number")
       shape_amt = 1;
     grain_len *= shape_amt;
   }
 
-  fillN(offset, offset+len, grain_len);
+  // fillN(offset, offset+len, grain_len);
+  var indexStart = offset;
+  var indexEnd = offset+len;
+  var grainLen = grain_len;
+
+  var frame_indices = ComputeIndices(frame, 0);
+  if (grainLen == 1) {
+    for (i = indexStart; i < indexEnd; i++) {
+      var val = func.apply(null, frame_indices);
+      UnsafeSetElement(buffer, i, val);
+      StepIndices(frame, frame_indices);
+    }
+  } else {
+
+    // allocate new arrays and copy in computed subarrays.
+
+    for (i = indexStart; i < indexEnd; i+=grainLen) {
+      var subarray = func.apply(null, frame_indices);
+      var suboffset;
+      var subbuffer;
+      if (std_Array_isArray(subarray)) {
+        subbuffer = subarray;
+        suboffset = 0;
+      } else if (IsParallelArray(subarray) || IsParallelMatrix(subarray)) {
+        var subvaltype;
+        if (IsParallelArray(subarray)) {
+           subvaltype = "any";
+        } else {
+           subvaltype = subarray.valtype;
+        }
+        if (!submatrix_matches_expectation(grain, valtype, subarray.shape, subvaltype)) {
+          ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " mismatched submatrix returned"+
+                                              " with shape: ["+subarray.shape+","+subvaltype+"];"+
+                                              " expected submatrix with shape: ["+grain+","+valtype+"]");
+        }
+        subbuffer = subarray.buffer;
+        suboffset = subarray.offset;
+      } else {
+        ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " non-submatrix returned: "+subarray+" expected submatrix with shape: ["+grain+"]");
+      }
+      for (var j = 0; j < grainLen; j++) {
+        UnsafeSetElement(buffer, i+j, subbuffer[suboffset+j]);
+      }
+      StepIndices(frame, frame_indices);
+    }
+  }
 
   this.buffer = buffer;
   this.offset = offset;
   this.shape = shape;
+  this.valtype = valtype;
   this.get = getFunc;
-
-  function SetElem(context, buffer, i, val) {
-    if (i < 0)
-      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " neg idx "+i+" "+context);
-    if (i >= buffer.length)
-      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " big idx "+i+" "+context);
-
-    UnsafeSetElement(buffer, i, val);
-  }
-
-  function fillN(indexStart, indexEnd, grainLen) {
-    var frame_indices = ComputeIndices(frame, 0);
-    if (grainLen == 1) {
-      for (var i = indexStart; i < indexEnd; i++) {
-        SetElem("fillN_1", buffer, i, func.apply(null, frame_indices));
-        StepIndices(frame, frame_indices);
-      }
-    } else {
-
-      // allocate new arrays and copy in computed subarrays.
-
-      for (var i = indexStart; i < indexEnd; i+=grainLen) {
-        var subarray = func.apply(null, frame_indices);
-        var offset;
-        var subbuffer;
-        if (std_Array_isArray(subarray)) {
-          subbuffer = subarray;
-          offset = 0;
-        } else if (IsParallelArray(subarray) || IsParallelMatrix(subarray)) {
-          subbuffer = subarray.buffer;
-          offset = subarray.offset;
-        } else {
-          ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " non-submatrix returned: "+subarray+" expected submatrix with shape: ["+grain+"]");
-        }
-        for (var j = 0; j < grainLen; j++) {
-          UnsafeSetElement(buffer, i+j, subbuffer[offset+j]);
-        }
-        StepIndices(frame, frame_indices);
-      }
-    }
-  }
 }
 
 function matrixToSource2d(matrix, dim0, dim1) {
