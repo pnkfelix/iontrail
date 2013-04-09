@@ -1322,45 +1322,90 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
   var indexEnd = offset+len;
   var grainLen = grain_len;
 
-  var frame_indices = ComputeIndices(frame, 0);
+  var computefunc;
+  var isLeaf = (grainLen == 1);
+  switch (shape.length) {
+  case 1:
+    computefunc = isLeaf ? fill1_leaf : fill1_subm;
+    break;
+  default:
+    computefunc = isLeaf ? fillN_leaf : fillN_subm;
+    break;
+  }
+
   if (grainLen == 1) {
+    fillN_leaf(indexStart, indexEnd);
+  } else {
+    fillN_subm(indexStart, indexEnd);
+  }
+
+  function fill1_leaf(indexStart, indexEnd) {
+    for (var i = indexStart; i < indexEnd; i++)
+      UnsafeSetElement(buffer, i, func(i));
+  }
+
+  function fill1_subm(indexStart, indexEnd) {
+    for (var i = indexStart; i < indexEnd; i++) {
+      var subarray = func(i);
+      var [subbuffer, suboffset] =
+        IdentifySubbufferAndSuboffset(subarray);
+      CopyFromSubbuffer(buffer, i, subbuffer, suboffset);
+    }
+  }
+
+  function fillN_leaf(indexStart, indexEnd) {
+    var frame_indices = ComputeIndices(frame, indexStart);
     for (i = indexStart; i < indexEnd; i++) {
       var val = func.apply(null, frame_indices);
       UnsafeSetElement(buffer, i, val);
       StepIndices(frame, frame_indices);
     }
-  } else {
+  }
 
+  function fillN_subm(indexStart, indexEnd) {
     // allocate new arrays and copy in computed subarrays.
+    var frame_indices = ComputeIndices(frame, indexStart);
 
     for (i = indexStart; i < indexEnd; i+=grainLen) {
       var subarray = func.apply(null, frame_indices);
-      var suboffset;
-      var subbuffer;
-      if (std_Array_isArray(subarray)) {
-        subbuffer = subarray;
-        suboffset = 0;
-      } else if (IsParallelArray(subarray) || IsParallelMatrix(subarray)) {
-        var subvaltype;
-        if (IsParallelArray(subarray)) {
-           subvaltype = "any";
-        } else {
-           subvaltype = subarray.valtype;
-        }
-        if (!submatrix_matches_expectation(grain, valtype, subarray.shape, subvaltype)) {
-          ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " mismatched submatrix returned"+
-                                              " with shape: ["+subarray.shape+","+subvaltype+"];"+
-                                              " expected submatrix with shape: ["+grain+","+valtype+"]");
-        }
-        subbuffer = subarray.buffer;
-        suboffset = subarray.offset;
-      } else {
-        ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " non-submatrix returned: "+subarray+" expected submatrix with shape: ["+grain+"]");
-      }
-      for (var j = 0; j < grainLen; j++) {
-        UnsafeSetElement(buffer, i+j, subbuffer[suboffset+j]);
-      }
+      var [subbuffer, suboffset] =
+        IdentifySubbufferAndSuboffset(subarray);
+      CopyFromSubbuffer(buffer, i, subbuffer, suboffset);
       StepIndices(frame, frame_indices);
+    }
+  }
+
+  function IdentifySubbufferAndSuboffset(subarray) {
+    var suboffset;
+    var subbuffer;
+
+    if (std_Array_isArray(subarray)) {
+      subbuffer = subarray;
+      suboffset = 0;
+    } else if (IsParallelArray(subarray) || IsParallelMatrix(subarray)) {
+      var subvaltype;
+      if (IsParallelArray(subarray)) {
+         subvaltype = "any";
+      } else {
+         subvaltype = subarray.valtype;
+      }
+      if (!submatrix_matches_expectation(grain, valtype, subarray.shape, subvaltype)) {
+        ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " mismatched submatrix returned"+
+                                            " with shape: ["+subarray.shape+","+subvaltype+"];"+
+                                            " expected submatrix with shape: ["+grain+","+valtype+"]");
+      }
+      subbuffer = subarray.buffer;
+      suboffset = subarray.offset;
+    } else {
+      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " non-submatrix returned: "+subarray+" expected submatrix with shape: ["+grain+"]");
+    }
+
+    return [subbuffer, suboffset];
+  }
+
+  function CopyFromSubbuffer(buffer, bufoffset, subbuffer, suboffset) {
+    for (var j = 0; j < grainLen; j++) {
+      UnsafeSetElement(buffer, bufoffset+j, subbuffer[suboffset+j]);
     }
   }
 
