@@ -1089,32 +1089,6 @@ class MNewParallelArray : public MNullaryInstruction
     }
 };
 
-class MNewParallelMatrixDebt : public MNullaryInstruction
-{
-    CompilerRootObject templateObject_;
-
-    MNewParallelMatrixDebt(JSObject *templateObject)
-      : templateObject_(templateObject)
-    {
-        setResultType(MIRType_Object);
-    }
-
-  public:
-    INSTRUCTION_HEADER(NewParallelMatrixDebt);
-
-    static MNewParallelMatrixDebt *New(JSObject *templateObject) {
-        return new MNewParallelMatrixDebt(templateObject);
-    }
-
-    AliasSet getAliasSet() const {
-        return AliasSet::None();
-    }
-
-    JSObject *templateObject() const {
-        return templateObject_;
-    }
-};
-
 class MNewArray : public MNullaryInstruction
 {
   public:

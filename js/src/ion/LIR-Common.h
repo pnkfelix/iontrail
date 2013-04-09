@@ -259,16 +259,6 @@ class LNewParallelArray : public LInstructionHelper<1, 0, 0>
     }
 };
 
-class LNewParallelMatrixDebt : public LInstructionHelper<1, 0, 0>
-{
-  public:
-    LIR_HEADER(NewParallelMatrixDebt);
-
-    MNewParallelMatrixDebt *mir() const {
-        return mir_->toNewParallelMatrixDebt();
-    }
-};
-
 class LNewArray : public LInstructionHelper<1, 0, 0>
 {
   public:

@@ -95,8 +95,6 @@ IonBuilder::inlineNativeCall(CallInfo &callInfo, JSNative native)
         return inlineForceSequentialOrParallelJSActive(callInfo);
     if (native == intrinsic_NewParallelArray)
         return inlineNewParallelArray(callInfo);
-//    if (native == intrinsic_NewParallelMatrixDebt)
-//        return inlineNewParallelMatrixDebt(callInfo);
     if (native == ParallelArrayObject::construct)
         return inlineParallelArray(callInfo);
     if (native == intrinsic_NewDenseArray)
