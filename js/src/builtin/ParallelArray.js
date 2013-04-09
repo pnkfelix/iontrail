@@ -1190,7 +1190,7 @@ function is_value_type(descriptor) {
     }
     else
     {
-      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, ' invalid type specification "'+descriptor+'"');
+      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, ' invalid data type specification "'+descriptor+'"');
     }
   }
   else
@@ -1230,6 +1230,10 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
   var mode = arg3 || arg2 || arg1;
   var frame = arg0 || [0];
 
+  if (!std_Array_isArray(frame)) {
+    ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, ": frame argument "+frame+" is not an array of dimensions");
+  }
+
   var valtype;
   var grain;
   var func;
@@ -1242,6 +1246,11 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
   } else {
     grain = arg1;
     func = arg2;
+  }
+
+  if (is_value_type(frame[frame.length - 1])) {
+    var desc = frame[frame.length - 1];
+    ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, ' data type specification ("'+desc+'") should only occur in grain argument');
   }
 
   if (is_value_type(grain[grain.length - 1])) {
@@ -1265,7 +1274,7 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
   for(var i = 0; i < shape.length; i++) {
     len *= shape[i];
   }
-  buffer = NewDenseArray(len);
+  buffer = buffer_maker(len);
   offset = 0;
 
   var getFunc;
@@ -1302,9 +1311,9 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
 
   function SetElem(context, buffer, i, val) {
     if (i < 0)
-      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "neg idx "+i+" "+context);
+      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " neg idx "+i+" "+context);
     if (i >= buffer.length)
-      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "big idx "+i+" "+context);
+      ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " big idx "+i+" "+context);
 
     UnsafeSetElement(buffer, i, val);
   }
@@ -1327,9 +1336,11 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
         if (std_Array_isArray(subarray)) {
           subbuffer = subarray;
           offset = 0;
-        } else {
+        } else if (IsParallelArray(subarray) || IsParallelMatrix(subarray)) {
           subbuffer = subarray.buffer;
           offset = subarray.offset;
+        } else {
+          ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, " non-submatrix returned: "+subarray+" expected submatrix with shape: ["+grain+"]");
         }
         for (var j = 0; j < grainLen; j++) {
           UnsafeSetElement(buffer, i+j, subbuffer[offset+j]);
