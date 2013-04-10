@@ -1353,6 +1353,70 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
     }
   }
 
+  function fill2_leaf(indexStart, indexEnd) {
+    var x = (indexStart / yDimension) | 0;
+    var y = indexStart - x*yDimension;
+    for (var i = indexStart; i < indexEnd; i++) {
+      UnsafeSetElement(buffer, i, func(x, y));
+      if (++y == yDimension) {
+        y = 0;
+        ++x;
+      }
+    }
+  }
+
+  function fill2_subm(indexStart, indexEnd) {
+    var x = (indexStart / yDimension) | 0;
+    var y = indexStart - x*yDimension;
+    for (var i = indexStart; i < indexEnd; i++) {
+      var subarray = func(x, y);
+      var [subbuffer, suboffset] =
+        IdentifySubbufferAndSuboffset(subarray);
+      CopyFromSubbuffer(buffer, i, subbuffer, suboffset);
+      if (++y == yDimension) {
+        y = 0;
+        ++x;
+      }
+    }
+  }
+
+  function fill3_leaf(indexStart, indexEnd) {
+    var x = (indexStart / (yDimension*zDimension)) | 0;
+    var r = indexStart - x*yDimension*zDimension;
+    var y = (r / zDimension) | 0;
+    var z = r - y*zDimension;
+    for (var i = indexStart; i < indexEnd; i++) {
+      UnsafeSetElement(buffer, i, func(x, y, z));
+      if (++z == zDimension) {
+        z = 0;
+        if (++y == yDimension) {
+          y = 0;
+          ++x;
+        }
+      }
+    }
+  }
+
+  function fill3_subm(indexStart, indexEnd) {
+    var x = (indexStart / (yDimension*zDimension)) | 0;
+    var r = indexStart - x*yDimension*zDimension;
+    var y = (r / zDimension) | 0;
+    var z = r - y*zDimension;
+    for (var i = indexStart; i < indexEnd; i++) {
+      var subarray = func(x, y, z);
+      var [subbuffer, suboffset] =
+        IdentifySubbufferAndSuboffset(subarray);
+      CopyFromSubbuffer(buffer, i, subbuffer, suboffset);
+      if (++z == zDimension) {
+        z = 0;
+        if (++y == yDimension) {
+          y = 0;
+          ++x;
+        }
+      }
+    }
+  }
+
   function fillN_leaf(indexStart, indexEnd) {
     var frame_indices = ComputeIndices(frame, indexStart);
     for (i = indexStart; i < indexEnd; i++) {
