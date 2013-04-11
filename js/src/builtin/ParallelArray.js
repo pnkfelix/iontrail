@@ -1242,7 +1242,6 @@ function value_type_to_buffer_allocator(descriptor) {
 function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
   // (shape, grain, func, mode)
 
-  var mode = arg3 || arg2 || arg1;
   var frame = arg0 || [0];
 
   if (!std_Array_isArray(frame)) {
@@ -1252,15 +1251,18 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
   var valtype;
   var grain;
   var func;
+  var mode;
 
   if (arg1 === undefined) {
     grain = [];
   } else if (typeof arg1 === "function") {
     grain = [];
     func = arg1;
+    mode = arg2;
   } else {
     grain = arg1;
     func = arg2;
+    mode = arg3;
   }
 
   if (is_value_type(frame[frame.length - 1])) {
@@ -1324,32 +1326,82 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
 
   var computefunc;
   var isLeaf = (grainLen == 1);
-  switch (shape.length) {
+  switch (frame.length) {
   case 1:
     computefunc = isLeaf ? fill1_leaf : fill1_subm;
     break;
+/*
+  case 2:
+    computefunc = isLeaf ? fill2_leaf : fill2_subm;
+    break;
+  case 3:
+    computefunc = isLeaf ? fill3_leaf : fill3_subm;
+    break;
+*/
   default:
     computefunc = isLeaf ? fillN_leaf : fillN_subm;
     break;
   }
 
-  if (grainLen == 1) {
-    fillN_leaf(indexStart, indexEnd);
-  } else {
-    fillN_subm(indexStart, indexEnd);
+  parallel: for(;;) { // see ParallelArrayBuild() to explain why for(;;) etc
+    if (ShouldForceSequential())
+      break parallel;
+    if (!TRY_PARALLEL(mode))
+      break parallel;
+    if (computefunc === fillN)
+      break parallel;
+
+    var chunks = ComputeNumChunks(frame_len);
+    var numSlices = ParallelSlices();
+    var info = ComputeAllSliceBounds(chunks, numSlices);
+    ParallelDo(constructSlice, CheckParallel(mode));
+    setup_fields_in_this(this);
+    return;
+  }
+
+  // Sequential fallback:
+  CHECK_SEQUENTIAL(mode);
+  computefunc(0, frame_len);
+  setup_fields_in_this(this);
+  return;
+
+  function constructSlice(sliceId, numSlices, warmup) {
+
+    var chunkPos = info[SLICE_POS(sliceId)];
+    var chunkEnd = info[SLICE_END(sliceId)];
+
+    if (warmup && chunkEnd > chunkPos)
+      chunkEnd = chunkPos + 1;
+
+    while (chunkPos < chunkEnd) {
+      var indexStart = chunkPos << CHUNK_SHIFT;
+      var indexEnd = std_Math_min(indexStart + CHUNK_SIZE, frame_len);
+      computefunc(indexStart, indexEnd);
+      UnsafeSetElement(info, SLICE_POS(sliceId), ++chunkPos);
+    }
+  }
+
+  function setup_fields_in_this(self) {
+    self.buffer = buffer;
+    self.offset = offset;
+    self.shape = shape;
+    self.valtype = valtype;
+    self.get = getFunc;
   }
 
   function fill1_leaf(indexStart, indexEnd) {
-    for (var i = indexStart; i < indexEnd; i++)
-      UnsafeSetElement(buffer, i, func(i));
+    for (var i = indexStart; i < indexEnd; i++) {
+      UnsafeSetElement(buffer, i, func(i)); 
+    }
   }
 
   function fill1_subm(indexStart, indexEnd) {
-    for (var i = indexStart; i < indexEnd; i++) {
+    var bufoffset = indexStart;
+    for (var i = indexStart; i < indexEnd; i++, bufoffset += grainLen) {
       var subarray = func(i);
       var [subbuffer, suboffset] =
         IdentifySubbufferAndSuboffset(subarray);
-      CopyFromSubbuffer(buffer, i, subbuffer, suboffset);
+      CopyFromSubbuffer(buffer, bufoffset, subbuffer, suboffset);
     }
   }
 
@@ -1366,13 +1418,14 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
   }
 
   function fill2_subm(indexStart, indexEnd) {
+    var bufoffset = indexStart;
     var x = (indexStart / yDimension) | 0;
     var y = indexStart - x*yDimension;
-    for (var i = indexStart; i < indexEnd; i++) {
+    for (var i = indexStart; i < indexEnd; i++, bufoffset += grainLen) {
       var subarray = func(x, y);
       var [subbuffer, suboffset] =
         IdentifySubbufferAndSuboffset(subarray);
-      CopyFromSubbuffer(buffer, i, subbuffer, suboffset);
+      CopyFromSubbuffer(buffer, bufoffset, subbuffer, suboffset);
       if (++y == yDimension) {
         y = 0;
         ++x;
@@ -1398,15 +1451,16 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
   }
 
   function fill3_subm(indexStart, indexEnd) {
+    var bufoffset = indexStart;
     var x = (indexStart / (yDimension*zDimension)) | 0;
     var r = indexStart - x*yDimension*zDimension;
     var y = (r / zDimension) | 0;
     var z = r - y*zDimension;
-    for (var i = indexStart; i < indexEnd; i++) {
+    for (var i = indexStart; i < indexEnd; i++, bufoffset += grainLen) {
       var subarray = func(x, y, z);
       var [subbuffer, suboffset] =
         IdentifySubbufferAndSuboffset(subarray);
-      CopyFromSubbuffer(buffer, i, subbuffer, suboffset);
+      CopyFromSubbuffer(buffer, bufoffset, subbuffer, suboffset);
       if (++z == zDimension) {
         z = 0;
         if (++y == yDimension) {
@@ -1427,14 +1481,17 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
   }
 
   function fillN_subm(indexStart, indexEnd) {
+    var bufoffset = indexStart;
+
     // allocate new arrays and copy in computed subarrays.
     var frame_indices = ComputeIndices(frame, indexStart);
 
-    for (i = indexStart; i < indexEnd; i+=grainLen) {
+    // FIXME: Something seems off about handling of i, indexStart, bufoffset...
+    for (i = indexStart; i < indexEnd; i++, bufoffset += grainLen) {
       var subarray = func.apply(null, frame_indices);
       var [subbuffer, suboffset] =
         IdentifySubbufferAndSuboffset(subarray);
-      CopyFromSubbuffer(buffer, i, subbuffer, suboffset);
+      CopyFromSubbuffer(buffer, bufoffset, subbuffer, suboffset);
       StepIndices(frame, frame_indices);
     }
   }
@@ -1473,11 +1530,6 @@ function ParallelMatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
     }
   }
 
-  this.buffer = buffer;
-  this.offset = offset;
-  this.shape = shape;
-  this.valtype = valtype;
-  this.get = getFunc;
 }
 
 function matrixToSource2d(matrix, dim0, dim1) {
