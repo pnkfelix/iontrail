@@ -226,7 +226,31 @@ ion::ParCallToUncompiledScript(JSFunction *func)
     JS_ASSERT(InParallelSection());
 
 #ifdef DEBUG
-    RawScript script = func->nonLazyScript();
-    Spew(SpewBailouts, "Call to uncompiled script: %p:%s:%d", script, script->filename(), script->lineno);
+    if (func->hasScript()) {
+        RawScript script = func->nonLazyScript();
+        Spew(SpewBailouts, "Call to uncompiled script: %p:%s:%d",
+             script, script->filename(), script->lineno);
+    } else if (func->isBoundFunction()) {
+        int maxDepth = 5;
+        int depth = 0;
+        JSFunction *target = func->getBoundFunctionTarget()->toFunction();
+        while (depth < maxDepth) {
+            if (target->hasScript()) {
+                break;
+            } else if (target->isBoundFunction()) {
+                target = target->getBoundFunctionTarget()->toFunction();
+            }
+            depth--;
+        }
+        if (target->hasScript()) {
+            RawScript script = target->nonLazyScript();
+            Spew(SpewBailouts, "Call to bound function leading (depth: %d) to script: %p:%s:%d",
+                 depth, script, script->filename(), script->lineno);
+        } else {
+            Spew(SpewBailouts, "Call to bound function (excessive depth: %d)", depth);
+        }
+    } else {
+        Spew(SpewBailouts, "Call to strange function.");
+    }
 #endif
 }
