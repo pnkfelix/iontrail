@@ -1746,8 +1746,8 @@ function ParallelMatrixToString() {
  * sequential execution
  */
 function AssertSequentialIsOK(mode) {
-  if (mode && mode.mode !== "seq" && ParallelTestsShouldPass())
-    ThrowError(JSMSG_WRONG_VALUE, "par", "seq");
+  if (mode && mode.mode && mode.mode !== "seq" && ParallelTestsShouldPass())
+    ThrowError(JSMSG_WRONG_VALUE, "parallel execution", "sequential was forced");
 }
 
 /**
