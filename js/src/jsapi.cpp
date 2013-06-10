@@ -1227,7 +1227,7 @@ StopRequest(JSContext *cx)
     if (rt->requestDepth != 1) {
         rt->requestDepth--;
     } else {
-        rt->conservativeGC.updateForRequestEnd();
+        rt->mainThread.conservativeGC.updateForRequestEnd();
         rt->requestDepth = 0;
 
         if (rt->activityCallback)

@@ -519,6 +519,8 @@ class PerThreadData : public js::PerThreadDataFriendFields
         return asmJSActivationStack_;
     }
 
+    js::ConservativeGCData conservativeGC;
+
     /*
      * When this flag is non-zero, any attempt to GC will be skipped. It is used
      * to suppress GC when reporting an OOM (see js_ReportOutOfMemory) and in
@@ -1255,8 +1257,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     DtoaState           *dtoaState;
 
     js::DateTimeInfo    dateTimeInfo;
-
-    js::ConservativeGCData conservativeGC;
 
     /* Pool of maps used during parse/emit. */
     js::frontend::ParseMapPool parseMapPool;

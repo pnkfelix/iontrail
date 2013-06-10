@@ -962,7 +962,7 @@ js_InitGC(JSRuntime *rt, uint32_t maxbytes)
 static void
 RecordNativeStackTopForGC(JSRuntime *rt)
 {
-    ConservativeGCData *cgcd = &rt->conservativeGC;
+    ConservativeGCData *cgcd = &rt->mainThread.conservativeGC;
 
 #ifdef JS_THREADSAFE
     /* Record the stack top here only if we are called from a request. */
