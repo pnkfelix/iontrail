@@ -191,6 +191,10 @@ struct ConservativeGCData
     JS_NEVER_INLINE void recordStackTop();
 
 #ifdef JS_THREADSAFE
+    void clearStackExtent() {
+        nativeStackTop = NULL;
+    }
+
     void updateForRequestEnd() {
         nativeStackTop = NULL;
     }
@@ -456,6 +460,15 @@ class PerThreadData : public js::PerThreadDataFriendFields
 
   public:
     /*
+     * Pointer to the next PerThreadData in a list made up of the main
+     * thread and all of the worker threads in parallel sections.  The
+     * head of the list is the |mainThread| in the shared JSRuntime*.
+     * The list is managed and accessed solely by the main thread.
+     */
+    PerThreadData *next_;
+    PerThreadData *prev_;
+
+    /*
      * We save all conservative scanned roots in this vector so that
      * conservative scanning can be "replayed" deterministically. In DEBUG mode,
      * this allows us to run a non-incremental GC after every incremental GC to
@@ -527,6 +540,8 @@ class PerThreadData : public js::PerThreadDataFriendFields
     bool currentlyRunningInJit() const {
         return activation_->isJit();
     }
+
+    js::ConservativeGCData conservativeGC;
 
     /*
      * When this flag is non-zero, any attempt to GC will be skipped. It is used
@@ -641,9 +656,12 @@ struct JSRuntime : public JS::shadow::Runtime,
     js::PerThreadData   mainThread;
 
     /*
-     * If non-zero, we were been asked to call the operation callback as soon
-     * as possible.
+     * NULL or Per-thread data for non-main threads created by
+     * currently executing ForkJoin.  Solely accessed and maintained
+     * by the mainThread (i.e. not protected by any locks).
      */
+    js::Vector<js::PerThreadData*, 16> *threads;
+
     volatile int32_t    interrupt;
 
 #ifdef JS_THREADSAFE
@@ -822,11 +840,8 @@ struct JSRuntime : public JS::shadow::Runtime,
     /* Gets current default locale. String remains owned by context. */
     const char *getDefaultLocale();
 
-    /* Base address of the native stack for the current thread. */
-    uintptr_t           nativeStackBase;
-
     /* The native stack size limit that runtime should not exceed. */
-    size_t              nativeStackQuota;
+    size_t nativeStackQuota;
 
     /*
      * Frames currently running in js::Interpret. See InterpreterFrames for
@@ -1179,6 +1194,9 @@ struct JSRuntime : public JS::shadow::Runtime,
     /* Always preserve JIT code during GCs, for testing. */
     bool                alwaysPreserveCode;
 
+    /* Preserve JIT code during GCs while in ParallelDo. */
+    bool                preserveCodeDueToParallelDo;
+
     /* Had an out-of-memory error which did not populate an exception. */
     bool                hadOutOfMemory;
 
@@ -1263,8 +1281,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     DtoaState           *dtoaState;
 
     js::DateTimeInfo    dateTimeInfo;
-
-    js::ConservativeGCData conservativeGC;
 
     /* Pool of maps used during parse/emit. */
     js::frontend::ParseMapPool parseMapPool;

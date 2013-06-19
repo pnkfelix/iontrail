@@ -249,7 +249,7 @@ JS::CheckStackRoots(JSContext *cx)
     JS_ASSERT(cgcd->hasStackToScan());
     uintptr_t *stackMin, *stackEnd;
     stackMin = cgcd->nativeStackTop + 1;
-    stackEnd = reinterpret_cast<uintptr_t *>(rt->nativeStackBase);
+    stackEnd = reinterpret_cast<uintptr_t *>(rt->mainThread.nativeStackBase);
     JS_ASSERT(stackMin <= stackEnd);
 
     // Gather up all of the rooters

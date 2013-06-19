@@ -1889,6 +1889,13 @@ ActivationIterator::ActivationIterator(JSRuntime *rt)
     settle();
 }
 
+ActivationIterator::ActivationIterator(PerThreadData *thread)
+  : jitTop_(thread->ionTop),
+    activation_(thread->activation_)
+{
+    settle();
+}
+
 ActivationIterator &
 ActivationIterator::operator++()
 {
