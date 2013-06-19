@@ -711,6 +711,8 @@ JitSupportsFloatingPoint()
 PerThreadData::PerThreadData(JSRuntime *runtime)
   : PerThreadDataFriendFields(),
     runtime_(runtime),
+    next_(NULL),
+    prev_(NULL),
     ionTop(NULL),
     ionJSContext(NULL),
     ionStackLimit(0),
@@ -721,6 +723,7 @@ PerThreadData::PerThreadData(JSRuntime *runtime)
 
 JSRuntime::JSRuntime(JSUseHelperThreads useHelperThreads)
   : mainThread(this),
+    threads(NULL),
     interrupt(0),
 #ifdef JS_THREADSAFE
     operationCallbackLock(NULL),
@@ -742,7 +745,6 @@ JSRuntime::JSRuntime(JSUseHelperThreads useHelperThreads)
     bumpAlloc_(NULL),
     ionRuntime_(NULL),
     selfHostingGlobal_(NULL),
-    nativeStackBase(0),
     nativeStackQuota(0),
     interpreterFrames(NULL),
     cxCallback(NULL),
@@ -852,6 +854,7 @@ JSRuntime::JSRuntime(JSUseHelperThreads useHelperThreads)
     spsProfiler(thisFromCtor()),
     profilingScripts(false),
     alwaysPreserveCode(false),
+    shouldPreserveCodeDueToParallelDo(false),
     hadOutOfMemory(false),
     data(NULL),
     gcLock(NULL),
@@ -977,7 +980,7 @@ JSRuntime::init(uint32_t maxbytes)
     if (!evalCache.init())
         return false;
 
-    nativeStackBase = GetNativeStackBase();
+    mainThread.nativeStackBase = GetNativeStackBase();
 
     jitSupportsFloatingPoint = JitSupportsFloatingPoint();
     return true;
@@ -1063,7 +1066,7 @@ JSRuntime::setOwnerThread()
     JS_ASSERT(js::TlsPerThreadData.get() == NULL);
     ownerThread_ = PR_GetCurrentThread();
     js::TlsPerThreadData.set(&mainThread);
-    nativeStackBase = GetNativeStackBase();
+    mainThread.nativeStackBase = GetNativeStackBase();
     if (nativeStackQuota)
         JS_SetNativeStackQuota(this, nativeStackQuota);
 #ifdef XP_MACOSX
@@ -1079,7 +1082,7 @@ JSRuntime::clearOwnerThread()
     JS_ASSERT(js_NewRuntimeWasCalled);
     ownerThread_ = (void *)0xc1ea12;  /* "clear" */
     js::TlsPerThreadData.set(NULL);
-    nativeStackBase = 0;
+    mainThread.nativeStackBase = 0;
 #if JS_STACK_GROWTH_DIRECTION > 0
     mainThread.nativeStackLimit = UINTPTR_MAX;
 #else
@@ -1218,7 +1221,7 @@ StopRequest(JSContext *cx)
     if (rt->requestDepth != 1) {
         rt->requestDepth--;
     } else {
-        rt->conservativeGC.updateForRequestEnd();
+        rt->mainThread.conservativeGC.updateForRequestEnd();
         rt->requestDepth = 0;
 
         if (rt->activityCallback)
@@ -2978,22 +2981,22 @@ JS_PUBLIC_API(void)
 JS_SetNativeStackQuota(JSRuntime *rt, size_t stackSize)
 {
     rt->nativeStackQuota = stackSize;
-    if (!rt->nativeStackBase)
+    if (!rt->mainThread.nativeStackBase)
         return;
 
 #if JS_STACK_GROWTH_DIRECTION > 0
     if (stackSize == 0) {
         rt->mainThread.nativeStackLimit = UINTPTR_MAX;
     } else {
-        JS_ASSERT(rt->nativeStackBase <= size_t(-1) - stackSize);
-        rt->mainThread.nativeStackLimit = rt->nativeStackBase + stackSize - 1;
+        JS_ASSERT(rt->mainThread.nativeStackBase <= size_t(-1) - stackSize);
+        rt->mainThread.nativeStackLimit = rt->mainThread.nativeStackBase + stackSize - 1;
     }
 #else
     if (stackSize == 0) {
         rt->mainThread.nativeStackLimit = 0;
     } else {
-        JS_ASSERT(rt->nativeStackBase >= stackSize);
-        rt->mainThread.nativeStackLimit = rt->nativeStackBase - (stackSize - 1);
+        JS_ASSERT(rt->mainThread.nativeStackBase >= stackSize);
+        rt->mainThread.nativeStackLimit = rt->mainThread.nativeStackBase - (stackSize - 1);
     }
 #endif
 

@@ -181,9 +181,21 @@
 // upon entering a parallel section to ensure that any concurrent
 // marking or incremental GC has completed.
 //
-// In the future, it should be possible to lift the restriction that
-// we must block until inc. GC has completed and also to permit GC
-// during parallel exeution. But we're not there yet.
+// If the GC *is* triggered during parallel execution, it will
+// redirect to the current ForkJoinSlice() and invoke requestGC() (or
+// requestZoneGC).  This will set a flag on the shared state
+// (gcRequested_) and then cause an interrupt.  Once the interrupt
+// occurs, we observe the `gcRequested_` flag and force a
+// *rendezvous*, which brings all threads to a halt (a.k.a. "stop the
+// world"). Once the rendezvous is complete, the main thread proceeds
+// and the other threads are suspended. The main thread will register
+// the additional stacks of the other worker threads, then retrigger
+// the GC and let the operation callback run normally (in some more
+// complex cases, the main thread will opt to abort the parallel
+// section instead, and service the operation callback from a
+// standard, sequential context). Once the op callback is complete,
+// the rendezvous ends and all threads proceed normally. (This logic
+// is implemented primarily in `ForkJoinShared::check()`).
 //
 // Current Limitations:
 //
@@ -220,12 +232,11 @@ struct IonLIRTraceData {
 };
 #endif
 
-// Parallel operations in general can have one of three states.  They may
-// succeed, fail, or "bail", where bail indicates that the code encountered an
-// unexpected condition and should be re-run sequentially.
-// Different subcategories of the "bail" state are encoded as variants of
-// TP_RETRY_*.
-enum ParallelResult { TP_SUCCESS, TP_RETRY_SEQUENTIALLY, TP_RETRY_AFTER_GC, TP_FATAL };
+// Parallel operations in general can have one of three states.  They
+// may succeed, fail, or "retry" (aka "bail"), where retry indicates
+// that the code encountered an unexpected condition and should be
+// re-run sequentially.
+enum ParallelResult { TP_SUCCESS, TP_RETRY_SEQUENTIALLY, TP_FATAL };
 
 ///////////////////////////////////////////////////////////////////////////
 // Bailout tracking
@@ -310,6 +321,7 @@ class ForkJoinSlice : public ThreadSafeContext
     ForkJoinSlice(PerThreadData *perThreadData, uint32_t sliceId, uint32_t numSlices,
                   Allocator *allocator, ForkJoinShared *shared,
                   ParallelBailoutRecord *bailoutRecord);
+    ~ForkJoinSlice();
 
     // True if this is the main thread, false if it is one of the parallel workers.
     bool isMainThread() const;
@@ -317,13 +329,12 @@ class ForkJoinSlice : public ThreadSafeContext
     // When the code would normally trigger a GC, we don't trigger it
     // immediately but instead record that request here.  This will
     // cause |ExecuteForkJoinOp()| to invoke |TriggerGC()| or
-    // |TriggerCompartmentGC()| as appropriate once the parallel
-    // section is complete. This is done because those routines do
-    // various preparations that are not thread-safe, and because the
-    // full set of arenas is not available until the end of the
-    // parallel section.
+    // |TriggerZoneGC()| as appropriate once the par. sec. is
+    // complete. This is done because those routines do various
+    // preparations that are not thread-safe, and because the full set
+    // of arenas is not available until the end of the par. sec.
     void requestGC(JS::gcreason::Reason reason);
-    void requestZoneGC(JS::Zone *zone, JS::gcreason::Reason reason);
+    void requestZoneGC(JS::Zone *compartment, JS::gcreason::Reason reason);
 
     // During the parallel phase, this method should be invoked
     // periodically, for example on every backedge, similar to the
@@ -350,6 +361,7 @@ class ForkJoinSlice : public ThreadSafeContext
 
     // Check the current state of parallel execution.
     static inline ForkJoinSlice *Current();
+    bool InWorldStoppedForGCSection();
 
     // Initializes the thread-local state.
     static bool InitializeTLS();
@@ -357,6 +369,9 @@ class ForkJoinSlice : public ThreadSafeContext
   private:
     friend class AutoRendezvous;
     friend class AutoSetForkJoinSlice;
+    friend class AutoMarkWorldStoppedForGC;
+
+    bool checkOutOfLine();
 
 #if defined(JS_THREADSAFE) && defined(JS_ION)
     // Initialized by InitializeTLS()
@@ -410,7 +425,7 @@ InParallelSection()
 {
 #ifdef JS_THREADSAFE
     ForkJoinSlice *current = ForkJoinSlice::Current();
-    return current != NULL;
+    return current != NULL && !current->InWorldStoppedForGCSection();
 #else
     return false;
 #endif

@@ -268,7 +268,7 @@ MarkRangeConservatively(JSTracer *trc, const uintptr_t *begin, const uintptr_t *
 
 #ifndef JSGC_USE_EXACT_ROOTING
 static void
-MarkRangeConservativelyAndSkipIon(JSTracer *trc, JSRuntime *rt, const uintptr_t *begin, const uintptr_t *end)
+MarkRangeConservativelyAndSkipIon(JSTracer *trc, JSRuntime *rt, const uintptr_t *begin, const uintptr_t *end, js::ion::JitActivationIterator &iter)
 {
     const uintptr_t *i = begin;
 
@@ -276,7 +276,7 @@ MarkRangeConservativelyAndSkipIon(JSTracer *trc, JSRuntime *rt, const uintptr_t 
     // Walk only regions in between JIT activations. Note that non-volatile
     // registers are spilled to the stack before the entry frame, ensuring
     // that the conservative scanner will still see them.
-    for (ion::JitActivationIterator iter(rt); !iter.done(); ++iter) {
+    for ( ; !iter.done(); ++iter) {
         uintptr_t *jitMin, *jitEnd;
         iter.jitStackRange(jitMin, jitEnd);
 
@@ -290,14 +290,14 @@ MarkRangeConservativelyAndSkipIon(JSTracer *trc, JSRuntime *rt, const uintptr_t 
 }
 
 static JS_NEVER_INLINE void
-MarkConservativeStackRoots(JSTracer *trc, bool useSavedRoots)
+MarkConservativeStackRoots(JSTracer *trc, PerThreadData *thread, bool useSavedRoots)
 {
     JSRuntime *rt = trc->runtime;
 
 #ifdef DEBUG
     if (useSavedRoots) {
-        for (PerThreadData::SavedGCRoot *root = rt->mainThread.gcSavedRoots.begin();
-             root != rt->mainThread.gcSavedRoots.end();
+        for (PerThreadData::SavedGCRoot *root = thread->gcSavedRoots.begin();
+             root != thread->gcSavedRoots.end();
              root++)
         {
             JS_SET_TRACING_NAME(trc, "cstack");
@@ -307,30 +307,47 @@ MarkConservativeStackRoots(JSTracer *trc, bool useSavedRoots)
     }
 
     if (rt->gcIncrementalState == MARK_ROOTS)
-        rt->mainThread.gcSavedRoots.clearAndFree();
+        thread->gcSavedRoots.clearAndFree();
 #endif
 
-    ConservativeGCData *cgcd = &rt->conservativeGC;
+    ConservativeGCData *cgcd = &thread->conservativeGC;
     if (!cgcd->hasStackToScan()) {
 #ifdef JS_THREADSAFE
-        JS_ASSERT(!rt->requestDepth);
+        // non-main threads can have empty stacks regardless of requestDepth
+        JS_ASSERT(!rt->requestDepth || thread != &rt->mainThread);
 #endif
         return;
     }
 
     uintptr_t *stackMin, *stackEnd;
 #if JS_STACK_GROWTH_DIRECTION > 0
-    stackMin = rt->nativeStackBase;
+    stackMin = thread.nativeStackBase;
     stackEnd = cgcd->nativeStackTop;
 #else
     stackMin = cgcd->nativeStackTop + 1;
-    stackEnd = reinterpret_cast<uintptr_t *>(rt->nativeStackBase);
+    stackEnd = reinterpret_cast<uintptr_t *>(thread->nativeStackBase);
 #endif
 
     JS_ASSERT(stackMin <= stackEnd);
-    MarkRangeConservativelyAndSkipIon(trc, rt, stackMin, stackEnd);
+
+    ion::JitActivationIterator iter(thread);
+    MarkRangeConservativelyAndSkipIon(trc, rt, stackMin, stackEnd, iter);
     MarkRangeConservatively(trc, cgcd->registerSnapshot.words,
                             ArrayEnd(cgcd->registerSnapshot.words));
+}
+
+static JS_NEVER_INLINE void
+MarkConservativeStackRoots(JSTracer *trc, bool useSavedRoots)
+{
+    JSRuntime *rt = trc->runtime;
+    // Mark stack extents from this main thread and (paused) non-main threads.
+    MarkConservativeStackRoots(trc, &rt->mainThread, useSavedRoots);
+    if (rt->threads) {
+        for (int i=0, len=rt->threads->length(); i < len; i++) {
+            PerThreadData *th = (*rt->threads)[i];
+            MarkConservativeStackRoots(trc, th, useSavedRoots);
+        }
+    }
 }
 
 #endif /* JSGC_USE_EXACT_ROOTING */

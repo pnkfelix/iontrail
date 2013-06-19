@@ -969,7 +969,7 @@ js_InitGC(JSRuntime *rt, uint32_t maxbytes)
 static void
 RecordNativeStackTopForGC(JSRuntime *rt)
 {
-    ConservativeGCData *cgcd = &rt->conservativeGC;
+    ConservativeGCData *cgcd = &rt->mainThread.conservativeGC;
 
 #ifdef JS_THREADSAFE
     /* Record the stack top here only if we are called from a request. */
@@ -2580,8 +2580,10 @@ ShouldPreserveJITCode(JSCompartment *comp, int64_t currentTime)
 {
     if (comp->rt->gcShouldCleanUpEverything || !comp->zone()->types.inferenceEnabled)
         return false;
-
     if (comp->rt->alwaysPreserveCode)
+        return true;
+    // XXX ignoring shouldPreserveCodeDueToParallelDo for testing
+    if (false && comp->rt->shouldPreserveCodeDueToParallelDo)
         return true;
     if (comp->lastAnimationTime + PRMJ_USEC_PER_SEC >= currentTime &&
         comp->lastCodeRelease + (PRMJ_USEC_PER_SEC * 300) >= currentTime)

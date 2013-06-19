@@ -598,7 +598,7 @@ JSCompartment::purge()
 bool
 JSCompartment::hasScriptsOnStack()
 {
-    for (ActivationIterator iter(rt); !iter.done(); ++iter) {
+    for (ActivationIterator iter(&rt->mainThread); !iter.done(); ++iter) {
         if (iter.activation()->compartment() == this)
             return true;
     }
@@ -847,10 +847,4 @@ JSCompartment::sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf, size_t *c
 #else
     *baselineStubsOptimized = 0;
 #endif
-}
-
-void
-JSCompartment::adoptWorkerAllocator(Allocator *workerAllocator)
-{
-    zone()->allocator.arenas.adoptArenas(rt, &workerAllocator->arenas);
 }

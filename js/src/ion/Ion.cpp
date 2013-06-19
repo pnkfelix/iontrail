@@ -2094,6 +2094,19 @@ InvalidateActivation(FreeOp *fop, uint8_t *ionTop, bool invalidateAll)
     IonSpew(IonSpew_Invalidate, "END invalidating activation");
 }
 
+static void
+InvalidateThreadActivations(FreeOp *fop, Zone *zone, PerThreadData *thread)
+{
+    for (JitActivationIterator iter(thread); !iter.done(); ++iter) {
+        if (iter.activation()->compartment()->zone() == zone) {
+            IonContext ictx(zone->rt);
+            AutoFlushCache afc("InvalidateAll", zone->rt->ionRuntime());
+            IonSpew(IonSpew_Invalidate, "Invalidating all frames for GC");
+            InvalidateActivation(fop, iter.jitTop(), true);
+        }
+    }
+}
+
 void
 ion::InvalidateAll(FreeOp *fop, Zone *zone)
 {
@@ -2104,14 +2117,10 @@ ion::InvalidateAll(FreeOp *fop, Zone *zone)
         FinishAllOffThreadCompilations(comp->ionCompartment());
     }
 
-    for (JitActivationIterator iter(fop->runtime()); !iter.done(); ++iter) {
-        if (iter.activation()->compartment()->zone() == zone) {
-            IonContext ictx(zone->rt);
-            AutoFlushCache afc("InvalidateAll", zone->rt->ionRuntime());
-            IonSpew(IonSpew_Invalidate, "Invalidating all frames for GC");
-            InvalidateActivation(fop, iter.jitTop(), true);
-        }
-    }
+    InvalidateThreadActivations(fop, zone, &fop->runtime()->mainThread);
+    if (js::Vector<js::PerThreadData*, 16> *threads = fop->runtime()->threads)
+        for (js::PerThreadData** p = threads->begin(); p < threads->end(); p++)
+            InvalidateThreadActivations(fop, zone, *p);
 }
 
 
@@ -2236,7 +2245,7 @@ ion::Invalidate(JSContext *cx, JSScript *script, bool resetUses)
 static void
 FinishInvalidationOf(FreeOp *fop, JSScript *script, IonScript *ionScript, bool parallel)
 {
-    // If this script has Ion code on the stack, invalidation() will return
+    // If this script has Ion code on the stack, invalidated() will return
     // true. In this case we have to wait until destroying it.
     if (!ionScript->invalidated()) {
         types::TypeCompartment &types = script->compartment()->types;
