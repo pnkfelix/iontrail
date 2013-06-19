@@ -1620,6 +1620,7 @@ class ActivationIterator
 
   public:
     explicit ActivationIterator(JSRuntime *rt);
+    explicit ActivationIterator(PerThreadData *thread);
 
     ActivationIterator &operator++();
 
@@ -1670,6 +1671,12 @@ class JitActivationIterator : public ActivationIterator
   public:
     explicit JitActivationIterator(JSRuntime *rt)
       : ActivationIterator(rt)
+    {
+        settle();
+    }
+
+    explicit JitActivationIterator(PerThreadData *thread)
+      : ActivationIterator(thread)
     {
         settle();
     }

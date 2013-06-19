@@ -362,6 +362,9 @@ struct PerThreadDataFriendFields
     SkipRoot *skipGCRooters;
 #endif
 
+    /* Base address of the native stack for the current thread. */
+    uintptr_t nativeStackBase;
+
     /* Limit pointer for checking native stack consumption. */
     uintptr_t nativeStackLimit;
 
