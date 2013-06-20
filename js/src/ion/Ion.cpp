@@ -855,6 +855,15 @@ IonScript::Destroy(FreeOp *fop, IonScript *script)
 {
     script->destroyCaches();
     script->detachDependentAsmJSModules(fop);
+
+    // scribbling
+    if (true) {
+        uint8_t *bytes = script->runtimeData();
+        for (int i=0, len = script->runtimeSize(); i < len; i++) {
+            bytes[i] = 0xcc;
+        }
+    }
+
     fop->free_(script);
 }
 
@@ -2083,7 +2092,8 @@ ion::InvalidateAll(FreeOp *fop, Zone *zone)
     }
 
     InvalidateThreadActivations(fop, zone, &fop->runtime()->mainThread);
-    if (js::Vector<js::PerThreadData*, 16> *threads = fop->runtime()->threads)
+    // XXX skipping ion-invalidation of ForkJoin threads for testing
+    if (false) if (js::Vector<js::PerThreadData*, 16> *threads = fop->runtime()->threads)
         for (js::PerThreadData** p = threads->begin(); p < threads->end(); p++)
             InvalidateThreadActivations(fop, zone, *p);
 }

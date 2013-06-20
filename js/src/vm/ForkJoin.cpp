@@ -1616,6 +1616,9 @@ ForkJoinShared::check(ForkJoinSlice &slice)
         AutoMarkWorldStoppedForGC autoMarkSTWFlag(slice);
         slice.perThreadData->conservativeGC.recordStackTop();
 
+        // Install new IonContext so that GC code can access cx_.
+        IonContext ictx(cx_, NULL);
+
         // (2).  Note that because we are in a STW section, calls to
         // js::TriggerGC() etc will not re-invoke
         // ForkJoinSlice::requestGC().
@@ -1909,7 +1912,6 @@ js::ParallelBailoutRecord::setCause(ParallelBailoutCause cause,
                                     jsbytecode *currentPc)
 {
     JS_ASSERT_IF(outermostScript, currentScript);
-    JS_ASSERT_IF(outermostScript, outermostScript->hasParallelIonScript());
     JS_ASSERT_IF(currentScript, outermostScript);
     JS_ASSERT_IF(!currentScript, !currentPc);
 

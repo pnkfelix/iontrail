@@ -847,7 +847,8 @@ ion::MarkActiveBaselineScripts(Zone *zone)
         return;
 
     // If baseline is disabled, there are no baseline scripts on the stack.
-    JSContext *cx = GetIonContext()->cx;
+    IonContext *icx = GetIonContext();
+    JSContext *cx = icx->cx;
     if (!ion::IsBaselineEnabled(cx))
         return;
 

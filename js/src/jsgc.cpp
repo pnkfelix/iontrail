@@ -2589,9 +2589,9 @@ ShouldPreserveJITCode(JSCompartment *comp, int64_t currentTime)
         return false;
     if (comp->rt->alwaysPreserveCode)
         return true;
-    // XXX ignoring shouldPreserveCodeDueToParallelDo for testing
-    if (false && comp->rt->shouldPreserveCodeDueToParallelDo)
-        return true;
+    // XXX inverting shouldPreserveCodeDueToParallelDo for testing
+    if (comp->rt->shouldPreserveCodeDueToParallelDo)
+        return false;
     if (comp->lastAnimationTime + PRMJ_USEC_PER_SEC >= currentTime &&
         comp->lastCodeRelease + (PRMJ_USEC_PER_SEC * 300) >= currentTime)
     {
