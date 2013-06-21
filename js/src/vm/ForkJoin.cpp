@@ -1580,8 +1580,10 @@ ForkJoinShared::check(ForkJoinSlice &slice)
 {
     JS_ASSERT(cx_->runtime()->interrupt);
 
-    if (abort_)
+    if (abort_) {
+        Spew(SpewOps, "returning false from ForkJoinShared::check abort_ set");
         return false;
+    }
 
     if (slice.isMainThread()) {
         // We are the main thread: therefore we must
@@ -1608,6 +1610,7 @@ ForkJoinShared::check(ForkJoinSlice &slice)
             // `ForkJoinShared::execute()`
             setAbortFlag(false);
             slice.bailoutRecord->setCause(ParallelBailoutHeapBusy, NULL, NULL, NULL);
+            Spew(SpewOps, "returning false from ForkJoinShared::check heap busy cannot GC");
             return false;
         }
 
@@ -1635,14 +1638,17 @@ ForkJoinShared::check(ForkJoinSlice &slice)
         if (!js_InvokeOperationCallback(cx_)) {
             slice.bailoutRecord->setCause(ParallelBailoutInterrupt, NULL, NULL, NULL);
             setAbortFlag(true);
+            Spew(SpewOps, "returning false from ForkJoinShared::check callback ret false");
             return false;
         }
 
         // The GC can invalidate code even though we asked it not to do so.
-        if (!cx_->zone()->isPreservingCode())
+        if (!cx_->zone()->isPreservingCode()) {
+            setAbortFlag(true);
+            Spew(SpewOps, "returning false from ForkJoinShared::check discarded code");
             return false;
+        }
 
-        return true;
     } else if (rendezvous_) {
         slice.perThreadData->conservativeGC.recordStackTop();
         joinRendezvous(slice);
@@ -1654,9 +1660,11 @@ ForkJoinShared::check(ForkJoinSlice &slice)
         // flag is set, we just abort the parallel computation.
         slice.bailoutRecord->setCause(ParallelBailoutInterrupt, NULL, NULL, NULL);
         setAbortFlag(false);
+        Spew(SpewOps, "returning false from ForkJoinShared::check main thread exited");
         return false;
     }
 
+    Spew(SpewOps, "returning true from ForkJoinShared::check");
     return true;
 }
 

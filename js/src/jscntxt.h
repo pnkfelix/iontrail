@@ -460,15 +460,6 @@ class PerThreadData : public js::PerThreadDataFriendFields
 
   public:
     /*
-     * Pointer to the next PerThreadData in a list made up of the main
-     * thread and all of the worker threads in parallel sections.  The
-     * head of the list is the |mainThread| in the shared JSRuntime*.
-     * The list is managed and accessed solely by the main thread.
-     */
-    PerThreadData *next_;
-    PerThreadData *prev_;
-
-    /*
      * We save all conservative scanned roots in this vector so that
      * conservative scanning can be "replayed" deterministically. In DEBUG mode,
      * this allows us to run a non-incremental GC after every incremental GC to

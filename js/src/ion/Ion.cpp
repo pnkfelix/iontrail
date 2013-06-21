@@ -861,6 +861,9 @@ IonScript::Destroy(FreeOp *fop, IonScript *script)
         uint8_t *bytes;
         IonCode *method = script->method();
         bytes = method->raw();
+
+        IonSpew(IonSpew_Invalidate, "Scribbling over IonScript %p with method %p raw %p", (void *) script, (void *) method, bytes);
+
         for (int i=0, len = method->instructionsSize(); i < len; i++) {
             bytes[i] = 0xcc;
         }
@@ -1949,7 +1952,7 @@ ion::FastInvoke(JSContext *cx, HandleFunction fun, CallArgs &args)
     return result.isMagic() ? IonExec_Error : IonExec_Ok;
 }
 
-static void InvalidateScript(FreeOp *fop, IonFrameIterator const& it, Zone *zone, IonScript *ionScript)
+static void InvalidateFrame(FreeOp *fop, IonFrameIterator const& it, Zone *zone, IonScript *ionScript)
 {
         // Purge ICs before we mark this script as invalidated. This will
         // prevent lastJump_ from appearing to be a bogus pointer, just
@@ -2057,25 +2060,34 @@ InvalidateActivation(FreeOp *fop, uint8_t *ionTop, bool invalidateAll)
         }
 #endif
 
-        if (!it.isOptimizedJS())
+        if (!it.isOptimizedJS()) {
+            IonSpew(IonSpew_Invalidate, "skip frame %p: no optimized JS", it.fp());
             continue;
+        }
 
         // See if the frame has already been invalidated.
-        if (it.checkInvalidation())
+        if (it.checkInvalidation()) {
+            IonSpew(IonSpew_Invalidate, "skip frame %p: already invalidated", it.fp());
             continue;
+        }
 
         JSScript *script = it.script();
 
         if (script->hasIonScript() && (invalidateAll ||
                                        script->ionScript()->invalidated())) {
             IonSpew(IonSpew_Invalidate, "Invalidate std ionScript");
-            InvalidateScript(fop, it, script->zone(), script->ionScript());
+            InvalidateFrame(fop, it, script->zone(), script->ionScript());
         }
 
-        if (script->hasParallelIonScript() && (invalidateAll ||
+        // We only invalidate the activation stack of the main thread,
+        // not the Parallel JS (PJS) threads.  The method code for PJS
+        // threads is kept alive by the ForkJoin code long enough for
+        // it to unwind itself if a GC decides to collect the JIT
+        // method code.
+        if (false && script->hasParallelIonScript() && (invalidateAll ||
                                                script->parallelIonScript()->invalidated())) {
             IonSpew(IonSpew_Invalidate, "Invalidate par ionScript");
-            InvalidateScript(fop, it, script->zone(), script->parallelIonScript());
+            InvalidateFrame(fop, it, script->zone(), script->parallelIonScript());
         }
     }
 
@@ -2086,6 +2098,8 @@ static void
 InvalidateThreadActivations(FreeOp *fop, Zone *zone, PerThreadData *thread)
 {
     for (JitActivationIterator iter(thread); !iter.done(); ++iter) {
+        IonSpew(IonSpew_Invalidate, "frame %p has zone: %p vs zone: %p",
+                iter.jitTop(), iter.activation()->compartment()->zone(), zone);
         if (iter.activation()->compartment()->zone() == zone) {
             IonContext ictx(zone->rt);
             AutoFlushCache afc("InvalidateAll", zone->rt->ionRuntime());
@@ -2105,14 +2119,28 @@ ion::InvalidateAll(FreeOp *fop, Zone *zone)
         FinishAllOffThreadCompilations(comp->ionCompartment());
     }
 
-    InvalidateThreadActivations(fop, zone, &fop->runtime()->mainThread);
-    // XXX skipping ion-invalidation of ForkJoin threads for testing
-    if (js::Vector<js::PerThreadData*, 16> *threads = fop->runtime()->threads)
+    js::PerThreadData *thread;
+
+        // We only invalidate the activation stack of the main thread,
+        // not the Parallel JS (PJS) threads.  The method code for PJS
+        // threads is kept alive by the ForkJoin code long enough for
+        // it to unwind itself if a GC decides to collect the JIT
+        // method code.
+
+    // XXX consider temporarily skipping invalidation of ForkJoin
+    // threads for justifying necessity of this block.
+    if (false) if (js::Vector<js::PerThreadData*, 16> *threads = fop->runtime()->threads)
         for (js::PerThreadData** p = threads->begin(); p < threads->end(); p++) {
-            IonSpew(IonSpew_Invalidate, "Invalidating ForkJoin thread %p",
-                    (void *) *p);
+            thread = *p;
+            IonSpew(IonSpew_Invalidate, "Invalidating ForkJoin thread %p [base,top]: [%p,%p]",
+                    (void *) thread, thread->nativeStackBase, thread->conservativeGC.nativeStackTop);
             InvalidateThreadActivations(fop, zone, *p);
         }
+
+    thread = &fop->runtime()->mainThread;
+    IonSpew(IonSpew_Invalidate, "Invalidating main thread %p [base,top]: [%p,%p]",
+            (void *) thread, thread->nativeStackBase, thread->conservativeGC.nativeStackTop);
+    InvalidateThreadActivations(fop, zone, &fop->runtime()->mainThread);
 }
 
 
