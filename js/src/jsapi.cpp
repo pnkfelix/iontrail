@@ -711,8 +711,6 @@ JitSupportsFloatingPoint()
 PerThreadData::PerThreadData(JSRuntime *runtime)
   : PerThreadDataFriendFields(),
     runtime_(runtime),
-    next_(NULL),
-    prev_(NULL),
     ionTop(NULL),
     ionJSContext(NULL),
     ionStackLimit(0),
