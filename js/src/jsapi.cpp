@@ -852,7 +852,6 @@ JSRuntime::JSRuntime(JSUseHelperThreads useHelperThreads)
     spsProfiler(thisFromCtor()),
     profilingScripts(false),
     alwaysPreserveCode(false),
-    shouldPreserveCodeDueToParallelDo(false),
     hadOutOfMemory(false),
     data(NULL),
     gcLock(NULL),

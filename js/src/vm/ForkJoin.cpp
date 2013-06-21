@@ -469,8 +469,6 @@ class AutoMarkWorldStoppedForGC
     {
         threadCx.shared->worldStoppedForGC_ = true;
         threadCx.shared->cx_->mainThread().suppressGC--;
-        JS_ASSERT(!threadCx.shared->cx_->runtime()->shouldPreserveCodeDueToParallelDo);
-        threadCx.shared->cx_->runtime()->shouldPreserveCodeDueToParallelDo = true;
         threadCx.shared->cx_->compartment()->ionCompartment()->setMustPreserveCodeDueToParallelDo(true);
         JS_ASSERT(!threadCx.shared->cx_->runtime()->threads);
         threadCx.shared->cx_->runtime()->threads = &threadCx.shared->perThreadData_;
@@ -480,7 +478,6 @@ class AutoMarkWorldStoppedForGC
     {
         threadCx.shared->worldStoppedForGC_ = false;
         threadCx.shared->cx_->mainThread().suppressGC++;
-        threadCx.shared->cx_->runtime()->shouldPreserveCodeDueToParallelDo = false;
         threadCx.shared->cx_->compartment()->ionCompartment()->setMustPreserveCodeDueToParallelDo(false);
         threadCx.shared->cx_->runtime()->threads = NULL;
     }
@@ -1589,10 +1586,8 @@ ForkJoinShared::check(ForkJoinSlice &slice)
 {
     JS_ASSERT(cx_->runtime()->interrupt);
 
-    if (abort_) {
-        Spew(SpewOps, "returning false from ForkJoinShared::check abort_ set");
+    if (abort_)
         return false;
-    }
 
     if (slice.isMainThread()) {
         // We are the main thread: therefore we must
@@ -1619,60 +1614,40 @@ ForkJoinShared::check(ForkJoinSlice &slice)
             // `ForkJoinShared::execute()`
             setAbortFlag(false);
             slice.bailoutRecord->setCause(ParallelBailoutHeapBusy, NULL, NULL, NULL);
-            Spew(SpewOps, "returning false from ForkJoinShared::check heap busy cannot GC");
             return false;
         }
 
         JS_ASSERT(cx_->zone()->types.inferenceEnabled);
-        JS_ASSERT_IF(gcZone_, gcZone_->types.inferenceEnabled);
 
         // (1). Initialize the rendezvous and record stack extents.
         AutoRendezvous autoRendezvous(slice);
 
-        {
-            JS_ASSERT(cx_->zone()->types.inferenceEnabled);
-            JS_ASSERT_IF(gcZone_, gcZone_->types.inferenceEnabled);
+        // autoMarkSTWFlag scoped to cover GC and OperationCallback
+        // invocations to maintain the flags that keeps PJS working
+        // across the callback in case it causes its own GC.
+        AutoMarkWorldStoppedForGC autoMarkSTWFlag(slice);
+        slice.perThreadData->conservativeGC.recordStackTop();
 
-            // autoMarkSTWFlag is scoped *just* to the extent of the GC,
-            // and not the OperationCallback below.
-            AutoMarkWorldStoppedForGC autoMarkSTWFlag(slice);
-            slice.perThreadData->conservativeGC.recordStackTop();
+        JS_ASSERT(cx_->zone()->types.inferenceEnabled);
 
-            // Install new IonContext so that GC code can access cx_.
-            IonContext ictx(cx_, NULL);
+        // (2).  Note that because we are in a STW section, calls to
+        // js::TriggerGC() etc will not re-invoke
+        // ForkJoinSlice::requestGC().
+        triggerGCIfRequested();
 
-            JS_ASSERT(cx_->zone()->types.inferenceEnabled);
-            JS_ASSERT_IF(gcZone_, gcZone_->types.inferenceEnabled);
-
-
-            // (2).  Note that because we are in a STW section, calls to
-            // js::TriggerGC() etc will not re-invoke
-            // ForkJoinSlice::requestGC().
-            triggerGCIfRequested();
-
-            printf("cx_: %p ->zone: %p ->types.inferenceEnabled: %d\n",
-                   cx_, cx_->zone(), cx_->zone()->types.inferenceEnabled);
-
-            // (2b) Run the GC if it is required.  This would occur as
-            // part of js_InvokeOperationCallback(), but we want to avoid
-            // an incremental GC.
-            if (rt->gcIsNeeded) {
-                GC(rt, GC_NORMAL, gcReason_);
-            }
+        // (2b) Run the GC if it is required.  This would occur as
+        // part of js_InvokeOperationCallback(), but we want to avoid
+        // an incremental GC.
+        if (rt->gcIsNeeded) {
+            GC(rt, GC_NORMAL, gcReason_);
+            // Ensure that GC did not invalidate code.
+            JS_ASSERT(cx_->zone()->isPreservingCode());
         }
 
         // (3). Invoke the callback and abort if it returns false.
         if (!js_InvokeOperationCallback(cx_)) {
             slice.bailoutRecord->setCause(ParallelBailoutInterrupt, NULL, NULL, NULL);
             setAbortFlag(true);
-            Spew(SpewOps, "returning false from ForkJoinShared::check callback ret false");
-            return false;
-        }
-
-        // The GC can invalidate code even though we asked it not to do so.
-        if (!cx_->zone()->isPreservingCode()) {
-            setAbortFlag(true);
-            Spew(SpewOps, "returning false from ForkJoinShared::check discarded code");
             return false;
         }
 
@@ -1687,11 +1662,9 @@ ForkJoinShared::check(ForkJoinSlice &slice)
         // flag is set, we just abort the parallel computation.
         slice.bailoutRecord->setCause(ParallelBailoutInterrupt, NULL, NULL, NULL);
         setAbortFlag(false);
-        Spew(SpewOps, "returning false from ForkJoinShared::check main thread exited");
         return false;
     }
 
-    Spew(SpewOps, "returning true from ForkJoinShared::check");
     return true;
 }
 
