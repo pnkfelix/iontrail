@@ -296,7 +296,8 @@ IonCompartment::IonCompartment(IonRuntime *rt)
   : rt(rt),
     stubCodes_(NULL),
     baselineCallReturnAddr_(NULL),
-    stringConcatStub_(NULL)
+    stringConcatStub_(NULL),
+    mustPreserveCodeDueToParallelDo_(false)
 {
 }
 
@@ -2122,10 +2123,10 @@ ion::InvalidateAll(FreeOp *fop, Zone *zone)
     js::PerThreadData *thread;
 
         // We only invalidate the activation stack of the main thread,
-        // not the Parallel JS (PJS) threads.  The method code for PJS
-        // threads is kept alive by the ForkJoin code long enough for
-        // it to unwind itself if a GC decides to collect the JIT
-        // method code.
+        // not the Parallel JS (PJS) threads.  If a GC decides to
+        // collect the JIT method code, the method code for PJS
+        // threads must be kept alive by the ForkJoin code long enough
+        // for it to unwind itself
 
     // XXX consider temporarily skipping invalidation of ForkJoin
     // threads for justifying necessity of this block.
