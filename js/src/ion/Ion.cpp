@@ -860,7 +860,14 @@ IonScript::Destroy(FreeOp *fop, IonScript *script)
 
     // scribbling
     if (true) {
-        uint8_t *bytes = script->runtimeData();
+        uint8_t *bytes;
+        IonCode *method = script->method();
+        bytes = method->raw();
+        for (int i=0, len = method->instructionsSize(); i < len; i++) {
+            bytes[i] = 0xcc;
+        }
+
+        bytes = script->runtimeData();
         for (int i=0, len = script->runtimeSize(); i < len; i++) {
             bytes[i] = 0xcc;
         }
@@ -1977,6 +1984,67 @@ ion::FastInvoke(JSContext *cx, HandleFunction fun, CallArgs &args)
     return result.isMagic() ? IonExec_Error : IonExec_Ok;
 }
 
+static void InvalidateScript(FreeOp *fop, IonFrameIterator const& it, Zone *zone, IonScript *ionScript)
+{
+        // Purge ICs before we mark this script as invalidated. This will
+        // prevent lastJump_ from appearing to be a bogus pointer, just
+        // in case anyone tries to read it.
+        ionScript->purgeCaches(zone);
+
+        // This frame needs to be invalidated. We do the following:
+        //
+        // 1. Increment the reference counter to keep the ionScript alive
+        //    for the invalidation bailout or for the exception handler.
+        // 2. Determine safepoint that corresponds to the current call.
+        // 3. From safepoint, get distance to the OSI-patchable offset.
+        // 4. From the IonScript, determine the distance between the
+        //    call-patchable offset and the invalidation epilogue.
+        // 5. Patch the OSI point with a call-relative to the
+        //    invalidation epilogue.
+        //
+        // The code generator ensures that there's enough space for us
+        // to patch in a call-relative operation at each invalidation
+        // point.
+        //
+        // Note: you can't simplify this mechanism to "just patch the
+        // instruction immediately after the call" because things may
+        // need to move into a well-defined register state (using move
+        // instructions after the call) in to capture an appropriate
+        // snapshot after the call occurs.
+
+        ionScript->incref();
+
+        const SafepointIndex *si = ionScript->getSafepointIndex(it.returnAddressToFp());
+        IonCode *ionCode = ionScript->method();
+
+        if (zone->needsBarrier()) {
+            // We're about to remove edges from the JSScript to gcthings
+            // embedded in the IonCode. Perform one final trace of the
+            // IonCode for the incremental GC, as it must know about
+            // those edges.
+            ionCode->trace(zone->barrierTracer());
+        }
+        ionCode->setInvalidated();
+
+        // Write the delta (from the return address offset to the
+        // IonScript pointer embedded into the invalidation epilogue)
+        // where the safepointed call instruction used to be. We rely on
+        // the call sequence causing the safepoint being >= the size of
+        // a uint32, which is checked during safepoint index
+        // construction.
+        CodeLocationLabel dataLabelToMunge(it.returnAddressToFp());
+        ptrdiff_t delta = ionScript->invalidateEpilogueDataOffset() -
+                          (it.returnAddressToFp() - ionCode->raw());
+        Assembler::patchWrite_Imm32(dataLabelToMunge, Imm32(delta));
+
+        CodeLocationLabel osiPatchPoint = SafepointReader::InvalidationPatchPoint(ionScript, si);
+        CodeLocationLabel invalidateEpilogue(ionCode, ionScript->invalidateEpilogueOffset());
+
+        IonSpew(IonSpew_Invalidate, "   ! Invalidate ionScript %p (ref %u) -> patching osipoint %p",
+                ionScript, ionScript->refcount(), (void *) osiPatchPoint.raw());
+        Assembler::patchWrite_NearCall(osiPatchPoint, invalidateEpilogue);
+}
+
 static void
 InvalidateActivation(FreeOp *fop, uint8_t *ionTop, bool invalidateAll)
 {
@@ -2032,72 +2100,18 @@ InvalidateActivation(FreeOp *fop, uint8_t *ionTop, bool invalidateAll)
             continue;
 
         JSScript *script = it.script();
-        if (!script->hasIonScript())
-            continue;
 
-        if (!invalidateAll && !script->ionScript()->invalidated())
-            continue;
-
-        IonScript *ionScript = script->ionScript();
-
-        // Purge ICs before we mark this script as invalidated. This will
-        // prevent lastJump_ from appearing to be a bogus pointer, just
-        // in case anyone tries to read it.
-        ionScript->purgeCaches(script->zone());
-
-        // This frame needs to be invalidated. We do the following:
-        //
-        // 1. Increment the reference counter to keep the ionScript alive
-        //    for the invalidation bailout or for the exception handler.
-        // 2. Determine safepoint that corresponds to the current call.
-        // 3. From safepoint, get distance to the OSI-patchable offset.
-        // 4. From the IonScript, determine the distance between the
-        //    call-patchable offset and the invalidation epilogue.
-        // 5. Patch the OSI point with a call-relative to the
-        //    invalidation epilogue.
-        //
-        // The code generator ensures that there's enough space for us
-        // to patch in a call-relative operation at each invalidation
-        // point.
-        //
-        // Note: you can't simplify this mechanism to "just patch the
-        // instruction immediately after the call" because things may
-        // need to move into a well-defined register state (using move
-        // instructions after the call) in to capture an appropriate
-        // snapshot after the call occurs.
-
-        ionScript->incref();
-
-        const SafepointIndex *si = ionScript->getSafepointIndex(it.returnAddressToFp());
-        IonCode *ionCode = ionScript->method();
-
-        JS::Zone *zone = script->zone();
-        if (zone->needsBarrier()) {
-            // We're about to remove edges from the JSScript to gcthings
-            // embedded in the IonCode. Perform one final trace of the
-            // IonCode for the incremental GC, as it must know about
-            // those edges.
-            ionCode->trace(zone->barrierTracer());
+        if (script->hasIonScript() && (invalidateAll ||
+                                       script->ionScript()->invalidated())) {
+            IonSpew(IonSpew_Invalidate, "Invalidate std ionScript");
+            InvalidateScript(fop, it, script->zone(), script->ionScript());
         }
-        ionCode->setInvalidated();
 
-        // Write the delta (from the return address offset to the
-        // IonScript pointer embedded into the invalidation epilogue)
-        // where the safepointed call instruction used to be. We rely on
-        // the call sequence causing the safepoint being >= the size of
-        // a uint32, which is checked during safepoint index
-        // construction.
-        CodeLocationLabel dataLabelToMunge(it.returnAddressToFp());
-        ptrdiff_t delta = ionScript->invalidateEpilogueDataOffset() -
-                          (it.returnAddressToFp() - ionCode->raw());
-        Assembler::patchWrite_Imm32(dataLabelToMunge, Imm32(delta));
-
-        CodeLocationLabel osiPatchPoint = SafepointReader::InvalidationPatchPoint(ionScript, si);
-        CodeLocationLabel invalidateEpilogue(ionCode, ionScript->invalidateEpilogueOffset());
-
-        IonSpew(IonSpew_Invalidate, "   ! Invalidate ionScript %p (ref %u) -> patching osipoint %p",
-                ionScript, ionScript->refcount(), (void *) osiPatchPoint.raw());
-        Assembler::patchWrite_NearCall(osiPatchPoint, invalidateEpilogue);
+        if (script->hasParallelIonScript() && (invalidateAll ||
+                                               script->parallelIonScript()->invalidated())) {
+            IonSpew(IonSpew_Invalidate, "Invalidate par ionScript");
+            InvalidateScript(fop, it, script->zone(), script->parallelIonScript());
+        }
     }
 
     IonSpew(IonSpew_Invalidate, "END invalidating activation");
@@ -2128,9 +2142,12 @@ ion::InvalidateAll(FreeOp *fop, Zone *zone)
 
     InvalidateThreadActivations(fop, zone, &fop->runtime()->mainThread);
     // XXX skipping ion-invalidation of ForkJoin threads for testing
-    if (false) if (js::Vector<js::PerThreadData*, 16> *threads = fop->runtime()->threads)
-        for (js::PerThreadData** p = threads->begin(); p < threads->end(); p++)
+    if (js::Vector<js::PerThreadData*, 16> *threads = fop->runtime()->threads)
+        for (js::PerThreadData** p = threads->begin(); p < threads->end(); p++) {
+            IonSpew(IonSpew_Invalidate, "Invalidating ForkJoin thread %p",
+                    (void *) *p);
             InvalidateThreadActivations(fop, zone, *p);
+        }
 }
 
 
