@@ -229,9 +229,19 @@ class IonCompartment
     // compartment alive.
     ReadBarriered<IonCode> stringConcatStub_;
 
+    bool mustPreserveCodeDueToParallelDo_;
+
     IonCode *generateStringConcatStub(JSContext *cx);
 
   public:
+    void setMustPreserveCodeDueToParallelDo(bool val) {
+        mustPreserveCodeDueToParallelDo_ = val;
+    }
+
+    bool mustPreserveCodeDuringGC() {
+        return mustPreserveCodeDueToParallelDo_;
+    }
+
     IonCode *getVMWrapper(const VMFunction &f);
 
     OffThreadCompilationVector &finishedOffThreadCompilations() {

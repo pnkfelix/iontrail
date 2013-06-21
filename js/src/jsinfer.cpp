@@ -2728,6 +2728,8 @@ TypeZone::nukeTypes(FreeOp *fop)
         }
     }
 
+    InferSpew(ISpewOps, "nukeTypes, zone: %p", zone());
+
     inferenceEnabled = false;
 
 #ifdef JS_ION

@@ -471,6 +471,7 @@ class AutoMarkWorldStoppedForGC
         threadCx.shared->cx_->mainThread().suppressGC--;
         JS_ASSERT(!threadCx.shared->cx_->runtime()->shouldPreserveCodeDueToParallelDo);
         threadCx.shared->cx_->runtime()->shouldPreserveCodeDueToParallelDo = true;
+        threadCx.shared->cx_->compartment()->ionCompartment()->setMustPreserveCodeDueToParallelDo(true);
         JS_ASSERT(!threadCx.shared->cx_->runtime()->threads);
         threadCx.shared->cx_->runtime()->threads = &threadCx.shared->perThreadData_;
     }
@@ -480,6 +481,7 @@ class AutoMarkWorldStoppedForGC
         threadCx.shared->worldStoppedForGC_ = false;
         threadCx.shared->cx_->mainThread().suppressGC++;
         threadCx.shared->cx_->runtime()->shouldPreserveCodeDueToParallelDo = false;
+        threadCx.shared->cx_->compartment()->ionCompartment()->setMustPreserveCodeDueToParallelDo(false);
         threadCx.shared->cx_->runtime()->threads = NULL;
     }
 
@@ -1621,24 +1623,42 @@ ForkJoinShared::check(ForkJoinSlice &slice)
             return false;
         }
 
-        // (1). Initiaize the rendezvous and record stack extents.
+        JS_ASSERT(cx_->zone()->types.inferenceEnabled);
+        JS_ASSERT_IF(gcZone_, gcZone_->types.inferenceEnabled);
+
+        // (1). Initialize the rendezvous and record stack extents.
         AutoRendezvous autoRendezvous(slice);
-        AutoMarkWorldStoppedForGC autoMarkSTWFlag(slice);
-        slice.perThreadData->conservativeGC.recordStackTop();
 
-        // Install new IonContext so that GC code can access cx_.
-        IonContext ictx(cx_, NULL);
+        {
+            JS_ASSERT(cx_->zone()->types.inferenceEnabled);
+            JS_ASSERT_IF(gcZone_, gcZone_->types.inferenceEnabled);
 
-        // (2).  Note that because we are in a STW section, calls to
-        // js::TriggerGC() etc will not re-invoke
-        // ForkJoinSlice::requestGC().
-        triggerGCIfRequested();
+            // autoMarkSTWFlag is scoped *just* to the extent of the GC,
+            // and not the OperationCallback below.
+            AutoMarkWorldStoppedForGC autoMarkSTWFlag(slice);
+            slice.perThreadData->conservativeGC.recordStackTop();
 
-        // (2b) Run the GC if it is required.  This would occur as
-        // part of js_InvokeOperationCallback(), but we want to avoid
-        // an incremental GC.
-        if (rt->gcIsNeeded) {
-            GC(rt, GC_NORMAL, gcReason_);
+            // Install new IonContext so that GC code can access cx_.
+            IonContext ictx(cx_, NULL);
+
+            JS_ASSERT(cx_->zone()->types.inferenceEnabled);
+            JS_ASSERT_IF(gcZone_, gcZone_->types.inferenceEnabled);
+
+
+            // (2).  Note that because we are in a STW section, calls to
+            // js::TriggerGC() etc will not re-invoke
+            // ForkJoinSlice::requestGC().
+            triggerGCIfRequested();
+
+            printf("cx_: %p ->zone: %p ->types.inferenceEnabled: %d\n",
+                   cx_, cx_->zone(), cx_->zone()->types.inferenceEnabled);
+
+            // (2b) Run the GC if it is required.  This would occur as
+            // part of js_InvokeOperationCallback(), but we want to avoid
+            // an incremental GC.
+            if (rt->gcIsNeeded) {
+                GC(rt, GC_NORMAL, gcReason_);
+            }
         }
 
         // (3). Invoke the callback and abort if it returns false.

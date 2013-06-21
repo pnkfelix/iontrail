@@ -2578,13 +2578,17 @@ PurgeRuntime(JSRuntime *rt)
 static bool
 ShouldPreserveJITCode(JSCompartment *comp, int64_t currentTime)
 {
+#ifdef JS_ION
+    if (comp->ionCompartment() && comp->ionCompartment()->mustPreserveCodeDuringGC())
+    {
+        JS_ASSERT(comp->zone()->types.inferenceEnabled);
+        return true;
+    }
+#endif
     if (comp->rt->gcShouldCleanUpEverything || !comp->zone()->types.inferenceEnabled)
         return false;
     if (comp->rt->alwaysPreserveCode)
         return true;
-    // XXX inverting shouldPreserveCodeDueToParallelDo for testing
-    if (comp->rt->shouldPreserveCodeDueToParallelDo)
-        return false;
     if (comp->lastAnimationTime + PRMJ_USEC_PER_SEC >= currentTime &&
         comp->lastCodeRelease + (PRMJ_USEC_PER_SEC * 300) >= currentTime)
     {
