@@ -832,7 +832,7 @@ struct JSRuntime : public JS::shadow::Runtime,
     const char *getDefaultLocale();
 
     /* The native stack size limit that runtime should not exceed. */
-    size_t nativeStackQuota;
+    size_t              nativeStackQuota;
 
     /*
      * Frames currently running in js::Interpret. See InterpreterFrames for
@@ -1184,9 +1184,6 @@ struct JSRuntime : public JS::shadow::Runtime,
 
     /* Always preserve JIT code during GCs, for testing. */
     bool                alwaysPreserveCode;
-
-    /* Heuristic: preserve JIT code during GCs while in ParallelDo. */
-    bool                shouldPreserveCodeDueToParallelDo;
 
     /* Had an out-of-memory error which did not populate an exception. */
     bool                hadOutOfMemory;

@@ -2594,6 +2594,7 @@ ShouldPreserveJITCode(JSCompartment *comp, int64_t currentTime)
 #endif
     if (comp->rt->gcShouldCleanUpEverything || !comp->zone()->types.inferenceEnabled)
         return false;
+
     if (comp->rt->alwaysPreserveCode)
         return true;
     if (comp->lastAnimationTime + PRMJ_USEC_PER_SEC >= currentTime &&
