@@ -1563,7 +1563,7 @@ ForkJoinShared::executePortion(PerThreadData *perThread,
 
     RootedObject fun(perThread, fun_);
     JS_ASSERT(fun->is<JSFunction>()); 
-    RootedFunction callee(perThread, fun->as<JSFunction>()); // XXX why did FSK have cx_ here
+    RootedFunction callee(perThread, &fun->as<JSFunction>()); // XXX why did FSK have cx_ here
 
     if (!callee->nonLazyScript()->hasParallelIonScript()) {
         // Sometimes, particularly with GCZeal, the parallel ion
