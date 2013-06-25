@@ -182,10 +182,10 @@
 // marking or incremental GC has completed.
 //
 // If the GC *is* triggered during parallel execution, it will
-// redirect to the current ForkJoinSlice() and invoke requestGC() (or
-// requestZoneGC).  This will set a flag on the shared state
-// (gcRequested_) and then cause an interrupt.  Once the interrupt
-// occurs, we observe the `gcRequested_` flag and force a
+// redirect to the current |ForkJoinSlice()| and invoke |requestGC()|
+// (or |requestZoneGC|).  This will set a flag on the shared state
+// (|gcRequested_|) and then cause an interrupt.  Once the interrupt
+// occurs, we observe the |gcRequested_| flag and force a
 // *rendezvous*, which brings all threads to a halt (a.k.a. "stop the
 // world"). Once the rendezvous is complete, the main thread proceeds
 // and the other threads are suspended. The main thread will register
@@ -193,9 +193,10 @@
 // the GC and let the operation callback run normally (in some more
 // complex cases, the main thread will opt to abort the parallel
 // section instead, and service the operation callback from a
-// standard, sequential context). Once the op callback is complete,
-// the rendezvous ends and all threads proceed normally. (This logic
-// is implemented primarily in `ForkJoinShared::check()`).
+// standard, sequential context). Once the operation callback is
+// complete, the rendezvous ends and all threads proceed
+// normally. (This logic is implemented primarily in
+// |ForkJoinShared::check()|).
 //
 // Current Limitations:
 //
@@ -329,12 +330,13 @@ class ForkJoinSlice : public ThreadSafeContext
     // When the code would normally trigger a GC, we don't trigger it
     // immediately but instead record that request here.  This will
     // cause |ExecuteForkJoinOp()| to invoke |TriggerGC()| or
-    // |TriggerZoneGC()| as appropriate once the par. sec. is
-    // complete. This is done because those routines do various
-    // preparations that are not thread-safe, and because the full set
-    // of arenas is not available until the end of the par. sec.
+    // |TriggerZoneGC()| as appropriate once the world is stopped or
+    // the parallel section is complete. This indirection is necessary
+    // because those routines do various preparations that are not
+    // thread-safe.  (Note also that the full set of arenas is not
+    // available until the end of the parallel section.)
     void requestGC(JS::gcreason::Reason reason);
-    void requestZoneGC(JS::Zone *compartment, JS::gcreason::Reason reason);
+    void requestZoneGC(JS::Zone *zone, JS::gcreason::Reason reason);
 
     // During the parallel phase, this method should be invoked
     // periodically, for example on every backedge, similar to the
@@ -361,7 +363,7 @@ class ForkJoinSlice : public ThreadSafeContext
 
     // Check the current state of parallel execution.
     static inline ForkJoinSlice *Current();
-    bool InWorldStoppedForGCSection();
+    bool isWorldStoppedForGC();
 
     // Initializes the thread-local state.
     static bool InitializeTLS();
@@ -425,7 +427,7 @@ InParallelSection()
 {
 #ifdef JS_THREADSAFE
     ForkJoinSlice *current = ForkJoinSlice::Current();
-    return current != NULL && !current->InWorldStoppedForGCSection();
+    return current != NULL && !current->isWorldStoppedForGC();
 #else
     return false;
 #endif
