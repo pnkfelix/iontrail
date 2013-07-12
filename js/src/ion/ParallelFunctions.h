@@ -48,6 +48,13 @@ ParallelResult ParConcatStrings(ForkJoinSlice *slice, HandleString left, HandleS
 ParallelResult ParIntToString(ForkJoinSlice *slice, int i, MutableHandleString out);
 ParallelResult ParDoubleToString(ForkJoinSlice *slice, double d, MutableHandleString out);
 
+// String related parallel functions. These tend to call existing VM functions
+// that take a ThreadSafeContext.
+ParallelResult ParConcatStrings(ForkJoinSlice *slice, HandleString left, HandleString right,
+                                MutableHandleString out);
+ParallelResult ParIntToString(ForkJoinSlice *slice, int i, MutableHandleString out);
+ParallelResult ParDoubleToString(ForkJoinSlice *slice, double d, MutableHandleString out);
+
 // These parallel operations fail if they would be required to convert
 // to a string etc etc.
 ParallelResult ParStrictlyEqual(ForkJoinSlice *slice, MutableHandleValue v1, MutableHandleValue v2, JSBool *);
