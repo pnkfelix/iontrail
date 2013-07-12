@@ -1383,6 +1383,12 @@ IsIdempotentAndHasSingletonHolder(IonCache &cache, HandleObject holder, HandleSh
 }
 
 static bool
+IsArrayLength(JSRuntime *rt, JSObject *obj, PropertyName *name)
+{
+    return obj->isArray() && rt->atomState.length == name;
+}
+
+static bool
 TryAttachNativeGetPropStub(JSContext *cx, IonScript *ion,
                            GetPropertyIC &cache, HandleObject obj,
                            HandlePropertyName name,
@@ -2174,6 +2180,16 @@ GetElementIC::canAttachGetProp(JSObject *obj, const Value &idval, jsid id)
             !JSID_TO_ATOM(id)->isIndex(&dummy));
 }
 
+/* static */ bool
+GetElementIC::canAttachGetProp(JSObject *obj, const Value &idval, jsid id)
+{
+    uint32_t dummy;
+    return (obj->isNative() &&
+            idval.isString() &&
+            JSID_IS_ATOM(id) &&
+            !JSID_TO_ATOM(id)->isIndex(&dummy));
+}
+
 bool
 GetElementIC::attachGetProp(JSContext *cx, IonScript *ion, HandleObject obj,
                             const Value &idval, HandlePropertyName name)
@@ -2861,6 +2877,124 @@ ParallelGetElementIC::update(ForkJoinSlice *slice, size_t cacheIndex, HandleObje
                 attachedStub = true;
             }
         }
+    }
+
+    return TP_SUCCESS;
+}
+
+bool
+ParallelGetElementIC::attachReadSlot(LockedJSContext &cx, IonScript *ion, JSObject *obj,
+                                     const Value &idval, PropertyName *name, JSObject *holder,
+                                     Shape *shape)
+{
+    MacroAssembler masm(cx);
+    DispatchStubPrepender attacher(*this);
+
+    // Guard on the index value.
+    Label failures;
+    ValueOperand val = index().reg().valueReg();
+    masm.branchTestValue(Assembler::NotEqual, val, idval, &failures);
+
+    GenerateReadSlot(cx, masm, attacher, obj, name, holder, shape, object(), output(),
+                     &failures);
+
+    return linkAndAttachStub(cx, masm, attacher, ion, "parallel getelem reading");
+}
+
+bool
+ParallelGetElementIC::attachDenseElement(LockedJSContext &cx, IonScript *ion, JSObject *obj,
+                                         const Value &idval)
+{
+    MacroAssembler masm(cx);
+    DispatchStubPrepender attacher(*this);
+    if (!GenerateDenseElement(cx, masm, attacher, obj, idval, object(), index(), output()))
+        return false;
+
+    return linkAndAttachStub(cx, masm, attacher, ion, "parallel dense array");
+}
+
+bool
+ParallelGetElementIC::attachTypedArrayElement(LockedJSContext &cx, IonScript *ion, JSObject *obj,
+                                              const Value &idval)
+{
+    MacroAssembler masm(cx);
+    DispatchStubPrepender attacher(*this);
+    GenerateTypedArrayElement(cx, masm, attacher, obj, idval, object(), index(), output());
+    return linkAndAttachStub(cx, masm, attacher, ion, "parallel typed array");
+}
+
+ParallelResult
+ParallelGetElementIC::update(ForkJoinSlice *slice, size_t cacheIndex, HandleObject obj,
+                             HandleValue idval, MutableHandleValue vp)
+{
+    AutoFlushCache afc("ParallelGetElementCache");
+    PerThreadData *pt = slice->perThreadData;
+
+    const SafepointIndex *safepointIndex;
+    void *returnAddr;
+    RootedScript topScript(pt, GetTopIonJSScript(pt, &safepointIndex, &returnAddr));
+    IonScript *ion = topScript->parallelIonScript();
+
+    ParallelGetElementIC &cache = ion->getCache(cacheIndex).toParallelGetElement();
+
+    RootedScript script(pt);
+    jsbytecode *pc;
+    cache.getScriptedLocation(&script, &pc);
+
+    // Try to get the element early, as the pure path doesn't need a lock. If
+    // we can't do it purely, bail out of parallel execution.
+    if (!GetObjectElementOperationPure(obj, idval, vp.address()))
+        return TP_RETRY_SEQUENTIALLY;
+
+    // Avoid unnecessary locking if cannot attach stubs and idempotent.
+    if (cache.idempotent() && !cache.canAttachStub())
+        return TP_SUCCESS;
+    {
+        LockedJSContext cx(slice);
+
+        bool attachedStub = false;
+        if (cache.canAttachStub()) {
+            bool alreadyStubbed;
+            if (!cache.hasOrAddStubbedShape(cx, obj->lastProperty(), &alreadyStubbed))
+                return TP_FATAL;
+            if (alreadyStubbed)
+                return TP_SUCCESS;
+
+            jsid id;
+            if (!ValueToIdPure(idval, &id))
+                return TP_FATAL;
+
+            if (cache.monitoredResult() &&
+                GetElementIC::canAttachGetProp(obj, idval, id))
+            {
+                RootedShape shape(cx);
+                RootedObject holder(cx);
+                PropertyName *name = JSID_TO_ATOM(id)->asPropertyName();
+                if (ParallelGetPropertyIC::canAttachReadSlot(cx, cache, cache.output(), obj,
+                                                             name, &holder, &shape))
+                {
+                    if (!cache.attachReadSlot(cx, ion, obj, idval, name, holder, shape))
+                        return TP_FATAL;
+                    attachedStub = true;
+                }
+            }
+            if (!attachedStub &&
+                GetElementIC::canAttachDenseElement(obj, idval))
+            {
+                if (!cache.attachDenseElement(cx, ion, obj, idval))
+                    return TP_FATAL;
+                attachedStub = true;
+            }
+            if (!attachedStub &&
+                GetElementIC::canAttachTypedArrayElement(obj, idval, cache.output()))
+            {
+                if (!cache.attachTypedArrayElement(cx, ion, obj, idval))
+                    return TP_FATAL;
+                attachedStub = true;
+            }
+        }
+
+        types::TypeScript::Monitor(cx, script, pc, vp);
     }
 
     return TP_SUCCESS;

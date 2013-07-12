@@ -22,6 +22,7 @@ bool ParCheckOverRecursed(ForkJoinSlice *slice);
 bool ParCheckInterrupt(ForkJoinSlice *context);
 
 void ParDumpValue(Value *v);
+ParallelResult ParSpew(ForkJoinSlice *slice, HandleString str);
 
 // We pass the arguments to ParPush in a structure because, in code
 // gen, it is convenient to store them on the stack to avoid
@@ -40,6 +41,13 @@ JSObject* ParPush(ParPushArgs *args);
 // failure or else `array`, which is convenient during code
 // generation.
 JSObject *ParExtendArray(ForkJoinSlice *slice, JSObject *array, uint32_t length);
+
+// String related parallel functions. These tend to call existing VM functions
+// that take a ThreadSafeContext.
+ParallelResult ParConcatStrings(ForkJoinSlice *slice, HandleString left, HandleString right,
+                                MutableHandleString out);
+ParallelResult ParIntToString(ForkJoinSlice *slice, int i, MutableHandleString out);
+ParallelResult ParDoubleToString(ForkJoinSlice *slice, double d, MutableHandleString out);
 
 // String related parallel functions. These tend to call existing VM functions
 // that take a ThreadSafeContext.

@@ -22,6 +22,7 @@
     _(TableSwitchV)                 \
     _(Goto)                         \
     _(NewParallelArray)             \
+    _(NewMatrix)                    \
     _(NewArray)                     \
     _(NewObject)                    \
     _(NewSlots)                     \
@@ -141,6 +142,7 @@
     _(GuardClass)                   \
     _(ParWriteGuard)                \
     _(ParDump)                      \
+    _(ParSpew)                      \
     _(TypeBarrier)                  \
     _(MonitorTypes)                 \
     _(PostWriteBarrierO)            \

@@ -164,6 +164,13 @@ LIRGenerator::visitNewParallelArray(MNewParallelArray *ins)
 }
 
 bool
+LIRGenerator::visitNewMatrix(MNewMatrix *ins)
+{
+    LNewMatrix *lir = new LNewMatrix();
+    return define(lir, ins) && assignSafepoint(lir, ins);
+}
+
+bool
 LIRGenerator::visitNewArray(MNewArray *ins)
 {
     LNewArray *lir = new LNewArray();
@@ -1343,6 +1350,28 @@ LIRGenerator::visitParConcat(MParConcat *ins)
 }
 
 bool
+LIRGenerator::visitParConcat(MParConcat *ins)
+{
+    MDefinition *parSlice = ins->parSlice();
+    MDefinition *lhs = ins->lhs();
+    MDefinition *rhs = ins->rhs();
+
+    JS_ASSERT(lhs->type() == MIRType_String);
+    JS_ASSERT(rhs->type() == MIRType_String);
+    JS_ASSERT(ins->type() == MIRType_String);
+
+    LParConcat *lir = new LParConcat(useFixed(parSlice, CallTempReg5),
+                                     useFixed(lhs, CallTempReg0),
+                                     useFixed(rhs, CallTempReg1),
+                                     tempFixed(CallTempReg2),
+                                     tempFixed(CallTempReg3),
+                                     tempFixed(CallTempReg4));
+    if (!defineFixed(lir, ins, LAllocation(AnyRegister(CallTempReg6))))
+        return false;
+    return assignSafepoint(lir, ins);
+}
+
+bool
 LIRGenerator::visitCharCodeAt(MCharCodeAt *ins)
 {
     MDefinition *str = ins->getOperand(0);
@@ -1714,6 +1743,13 @@ LIRGenerator::visitParDump(MParDump *ins)
     LParDump *lir = new LParDump();
     useBoxFixed(lir, LParDump::Value, ins->value(), CallTempReg0, CallTempReg1);
     return add(lir);
+}
+
+bool
+LIRGenerator::visitParSpew(MParSpew *ins)
+{
+    LParSpew *lir = new LParSpew(useFixed(ins->string(), CallTempReg0));
+    return add(lir) && assignSafepoint(lir, ins);
 }
 
 bool
@@ -2661,6 +2697,18 @@ LIRGenerator::visitIsCallable(MIsCallable *ins)
     JS_ASSERT(ins->object()->type() == MIRType_Object);
     JS_ASSERT(ins->type() == MIRType_Boolean);
     return define(new LIsCallable(useRegister(ins->object())), ins);
+}
+
+bool
+LIRGenerator::visitHaveSameClass(MHaveSameClass *ins)
+{
+    MDefinition *lhs = ins->lhs();
+    MDefinition *rhs = ins->rhs();
+
+    JS_ASSERT(lhs->type() == MIRType_Object);
+    JS_ASSERT(rhs->type() == MIRType_Object);
+
+    return define(new LHaveSameClass(useRegister(lhs), useRegister(rhs), temp()), ins);
 }
 
 bool

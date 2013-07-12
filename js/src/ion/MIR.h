@@ -1129,6 +1129,32 @@ class MNewParallelArray : public MNullaryInstruction
     }
 };
 
+class MNewMatrix : public MNullaryInstruction
+{
+    CompilerRootObject templateObject_;
+
+    MNewMatrix(JSObject *templateObject)
+      : templateObject_(templateObject)
+    {
+        setResultType(MIRType_Object);
+    }
+
+  public:
+    INSTRUCTION_HEADER(NewMatrix);
+
+    static MNewMatrix *New(JSObject *templateObject) {
+        return new MNewMatrix(templateObject);
+    }
+
+    AliasSet getAliasSet() const {
+        return AliasSet::None();
+    }
+
+    JSObject *templateObject() const {
+        return templateObject_;
+    }
+};
+
 // Fabricate a type set containing only the type of the specified object.
 types::StackTypeSet *
 MakeSingletonTypeSet(JSObject *obj);
@@ -7077,6 +7103,27 @@ class MIn
     }
 };
 
+class MParSpew
+  : public MUnaryInstruction,
+    public StringPolicy<0>
+{
+  public:
+    INSTRUCTION_HEADER(ParSpew);
+
+    MParSpew(MDefinition *str)
+      : MUnaryInstruction(str)
+    {
+        setResultType(MIRType_None);
+    }
+
+    MDefinition *string() const {
+        return getOperand(0);
+    }
+
+    TypePolicy *typePolicy() {
+        return this;
+    }
+};
 
 // Test whether the index is in the array bounds or a hole.
 class MInArray
