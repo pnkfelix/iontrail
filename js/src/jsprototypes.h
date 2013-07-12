@@ -70,5 +70,6 @@
     macro(StructType,            51,     js_InitBinaryDataClasses) \
     macro(ArrayTypeObject,       52,     js_InitBinaryDataClasses) \
     macro(GeneratorFunction,     53,     js_InitIteratorClasses) \
+    macro(Matrix,                54,     js_InitMatrixClass) \
 
 #endif /* jsprototypes_h */

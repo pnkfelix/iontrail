@@ -23,6 +23,7 @@ namespace js {
 namespace jit {
 
 class OutOfLineNewParallelArray;
+class OutOfLineNewMatrix;
 class OutOfLineTestObject;
 class OutOfLineNewArray;
 class OutOfLineNewObject;
@@ -112,8 +113,11 @@ class CodeGenerator : public CodeGeneratorSpecific
     bool visitDoubleToInt32(LDoubleToInt32 *lir);
     bool visitNewSlots(LNewSlots *lir);
     bool visitNewParallelArrayVMCall(LNewParallelArray *lir);
+    bool visitNewMatrixVMCall(LNewMatrix *lir);
     bool visitNewParallelArray(LNewParallelArray *lir);
+    bool visitNewMatrix(LNewMatrix *lir);
     bool visitOutOfLineNewParallelArray(OutOfLineNewParallelArray *ool);
+    bool visitOutOfLineNewMatrix(OutOfLineNewMatrix *ool);
     bool visitNewArrayCallVM(LNewArray *lir);
     bool visitNewArray(LNewArray *lir);
     bool visitOutOfLineNewArray(OutOfLineNewArray *ool);

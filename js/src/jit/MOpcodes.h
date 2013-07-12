@@ -81,6 +81,7 @@ namespace jit {
     _(ToString)                                                             \
     _(NewSlots)                                                             \
     _(NewParallelArray)                                                     \
+    _(NewMatrix)                                                            \
     _(NewArray)                                                             \
     _(NewObject)                                                            \
     _(NewDeclEnvObject)                                                     \
