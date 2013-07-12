@@ -32,6 +32,7 @@ struct GCMarker;
 struct NativeIterator;
 class Nursery;
 struct StackShape;
+struct ThreadSafeContext;
 
 inline JSObject *
 CastAsObject(PropertyOp op)
@@ -1414,6 +1415,9 @@ ToObjectFromStack(JSContext *cx, HandleValue vp)
 
 extern JSObject *
 CloneObjectLiteral(JSContext *cx, HandleObject parent, HandleObject srcObj);
+
+bool
+GetObjectElementOperationPure(JSObject *obj, const Value &prop, Value *vp);
 
 } /* namespace js */
 

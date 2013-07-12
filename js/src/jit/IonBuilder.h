@@ -539,6 +539,7 @@ class IonBuilder : public MIRGenerator
 
     // Parallel intrinsics.
     InliningStatus inlineNewParallelArray(CallInfo &callInfo);
+    InliningStatus inlineNewMatrix(CallInfo &callInfo);
     InliningStatus inlineParallelArray(CallInfo &callInfo);
     InliningStatus inlineParallelArrayTail(CallInfo &callInfo,
                                            HandleFunction target,
@@ -552,6 +553,7 @@ class IonBuilder : public MIRGenerator
     InliningStatus inlineHaveSameClass(CallInfo &callInfo);
     InliningStatus inlineToObject(CallInfo &callInfo);
     InliningStatus inlineDump(CallInfo &callInfo);
+    InliningStatus inlineParallelSpew(CallInfo &callInfo);
 
     // Testing functions.
     InliningStatus inlineForceSequentialOrInParallelSection(CallInfo &callInfo);

@@ -13,6 +13,8 @@
 
 #include "js/Utility.h"
 
+namespace js { class ThreadSafeContext; }
+
 namespace JS {
 
 /*

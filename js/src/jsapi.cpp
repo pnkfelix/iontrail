@@ -1389,6 +1389,7 @@ static const JSStdName standard_class_atoms[] = {
     {js_InitSetClass,                   EAGER_ATOM_AND_OCLASP(Set)},
 #ifdef ENABLE_PARALLEL_JS
     {js_InitParallelArrayClass,         EAGER_ATOM_AND_OCLASP(ParallelArray)},
+    {js_InitMatrixClass,                EAGER_ATOM_AND_OCLASP(Matrix)},
 #endif
     {js_InitProxyClass,                 EAGER_CLASS_ATOM(Proxy), OCLASP(ObjectProxy)},
 #if EXPOSE_INTL_API

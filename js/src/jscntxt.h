@@ -986,6 +986,14 @@ bool intrinsic_HaveSameClass(JSContext *cx, unsigned argc, Value *vp);
 
 bool intrinsic_ShouldForceSequential(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_NewParallelArray(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_IsParallelArray(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_NewMatrix(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_IsMatrix(JSContext *cx, unsigned argc, Value *vp);
+
+#ifdef DEBUG
+bool intrinsic_Dump(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_ParallelSpew(JSContext *cx, unsigned argc, Value *vp);
+#endif
 
 } /* namespace js */
 

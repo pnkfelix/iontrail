@@ -2332,6 +2332,7 @@ BEGIN_CASE(JSOP_SETINTRINSIC)
 {
     HandleValue value = regs.stackHandleAt(-1);
 
+    JS_ASSERT(cx->runtime()->isSelfHostingGlobal(cx->global()));
     if (!SetIntrinsicOperation(cx, script, regs.pc, value))
         goto error;
 
