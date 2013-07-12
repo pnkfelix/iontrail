@@ -289,6 +289,16 @@ class LNewParallelArray : public LInstructionHelper<1, 0, 0>
     }
 };
 
+class LNewMatrix : public LInstructionHelper<1, 0, 0>
+{
+  public:
+    LIR_HEADER(NewMatrix);
+
+    MNewMatrix *mir() const {
+        return mir_->toNewMatrix();
+    }
+};
+
 class LNewArray : public LInstructionHelper<1, 0, 0>
 {
   public:
@@ -4357,6 +4367,20 @@ class LParDump : public LCallInstructionHelper<0, BOX_PIECES, 0>
     static const size_t Value = 0;
 
     const LAllocation *value() {
+        return getOperand(0);
+    }
+};
+
+class LParSpew : public LCallInstructionHelper<0, 1, 0>
+{
+  public:
+    LIR_HEADER(ParSpew);
+
+    LParSpew(const LAllocation &string) {
+        setOperand(0, string);
+    }
+
+    const LAllocation *string() {
         return getOperand(0);
     }
 };

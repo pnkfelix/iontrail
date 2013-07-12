@@ -1257,6 +1257,16 @@ CodeGenerator::visitParDump(LParDump *lir)
     return true;
 }
 
+typedef ParallelResult (*ParallelSpewFn)(ForkJoinSlice *, HandleString);
+static const VMFunction ParallelSpewInfo = FunctionInfo<ParallelSpewFn>(ParSpew);
+
+bool
+CodeGenerator::visitParSpew(LParSpew *lir)
+{
+    pushArg(ToRegister(lir->string()));
+    return callVM(ParallelSpewInfo, lir);
+}
+
 bool
 CodeGenerator::visitTypeBarrier(LTypeBarrier *lir)
 {
@@ -2711,6 +2721,50 @@ CodeGenerator::visitNewParallelArrayVMCall(LNewParallelArray *lir)
     return true;
 }
 
+// Out-of-line object allocation for LNewMatrix.
+class OutOfLineNewMatrix : public OutOfLineCodeBase<CodeGenerator>
+{
+    LNewMatrix *lir_;
+
+  public:
+    OutOfLineNewMatrix(LNewMatrix *lir)
+      : lir_(lir)
+    { }
+
+    bool accept(CodeGenerator *codegen) {
+        return codegen->visitOutOfLineNewMatrix(this);
+    }
+
+    LNewMatrix *lir() const {
+        return lir_;
+    }
+};
+
+typedef JSObject *(*NewInitMatrixFn)(JSContext *, HandleObject);
+static const VMFunction NewInitMatrixInfo =
+    FunctionInfo<NewInitMatrixFn>(NewInitMatrix);
+
+bool
+CodeGenerator::visitNewMatrixVMCall(LNewMatrix *lir)
+{
+    JS_ASSERT(gen->info().executionMode() == SequentialExecution);
+
+    Register objReg = ToRegister(lir->output());
+
+    JS_ASSERT(!lir->isCall());
+    saveLive(lir);
+
+    pushArg(ImmGCPtr(lir->mir()->templateObject()));
+    if (!callVM(NewInitMatrixInfo, lir))
+        return false;
+
+    if (ReturnReg != objReg)
+        masm.movePtr(ReturnReg, objReg);
+
+    restoreLive(lir);
+    return true;
+}
+
 // Out-of-line object allocation for LNewArray.
 class OutOfLineNewArray : public OutOfLineCodeBase<CodeGenerator>
 {
@@ -2820,6 +2874,32 @@ bool
 CodeGenerator::visitOutOfLineNewParallelArray(OutOfLineNewParallelArray *ool)
 {
     if (!visitNewParallelArrayVMCall(ool->lir()))
+        return false;
+    masm.jump(ool->rejoin());
+    return true;
+}
+
+bool
+CodeGenerator::visitNewMatrix(LNewMatrix *lir)
+{
+    Register objReg = ToRegister(lir->output());
+    JSObject *templateObject = lir->mir()->templateObject();
+
+    OutOfLineNewMatrix *ool = new OutOfLineNewMatrix(lir);
+    if (!addOutOfLineCode(ool))
+        return false;
+
+    masm.newGCThing(objReg, templateObject, ool->entry());
+    masm.initGCThing(objReg, templateObject);
+
+    masm.bind(ool->rejoin());
+    return true;
+}
+
+bool
+CodeGenerator::visitOutOfLineNewMatrix(OutOfLineNewMatrix *ool)
+{
+    if (!visitNewMatrixVMCall(ool->lir()))
         return false;
     masm.jump(ool->rejoin());
     return true;
@@ -4788,15 +4868,29 @@ CodeGenerator::emitArrayPopShift(LInstruction *lir, const MArrayPopShift *mir, R
 {
     OutOfLineCode *ool;
 
-    if (mir->mode() == MArrayPopShift::Pop) {
-        ool = oolCallVM(ArrayPopDenseInfo, lir, (ArgList(), obj), StoreValueTo(out));
+    switch (gen->info().executionMode()) {
+      case SequentialExecution:
+        if (mir->mode() == MArrayPopShift::Pop) {
+            ool = oolCallVM(ArrayPopDenseInfo, lir, (ArgList(), obj), StoreValueTo(out));
+            if (!ool)
+                return false;
+        } else {
+            JS_ASSERT(mir->mode() == MArrayPopShift::Shift);
+            ool = oolCallVM(ArrayShiftDenseInfo, lir, (ArgList(), obj), StoreValueTo(out));
+            if (!ool)
+                return false;
+        }
+        break;
+
+      case ParallelExecution:
+        // Bail out if we can't stay in the fast path in parallel execution.
+        ool = oolParallelAbort(ParallelBailoutUnsupported, lir);
         if (!ool)
             return false;
-    } else {
-        JS_ASSERT(mir->mode() == MArrayPopShift::Shift);
-        ool = oolCallVM(ArrayShiftDenseInfo, lir, (ArgList(), obj), StoreValueTo(out));
-        if (!ool)
-            return false;
+        break;
+
+      default:
+        JS_NOT_REACHED("No such execution mode");
     }
 
     // VM call if a write barrier is necessary.
@@ -5904,6 +5998,29 @@ CodeGenerator::visitGetElementIC(OutOfLineUpdateCache *ool, GetElementIC *ic)
     pushArg(ic->object());
     pushArg(Imm32(ool->getCacheIndex()));
     if (!callVM(GetElementIC::UpdateInfo, lir))
+        return false;
+    StoreValueTo(ic->output()).generate(this);
+    restoreLiveIgnore(lir, StoreValueTo(ic->output()).clobbered());
+
+    masm.jump(ool->rejoin());
+    return true;
+}
+
+typedef ParallelResult (*ParallelGetElementICFn)(ForkJoinSlice *, size_t, HandleObject,
+                                                 HandleValue, MutableHandleValue);
+const VMFunction ParallelGetElementIC::UpdateInfo =
+    FunctionInfo<ParallelGetElementICFn>(ParallelGetElementIC::update);
+
+bool
+CodeGenerator::visitParallelGetElementIC(OutOfLineUpdateCache *ool, ParallelGetElementIC *ic)
+{
+    LInstruction *lir = ool->lir();
+    saveLive(lir);
+
+    pushArg(ic->index());
+    pushArg(ic->object());
+    pushArg(Imm32(ool->getCacheIndex()));
+    if (!callVM(ParallelGetElementIC::UpdateInfo, lir))
         return false;
     StoreValueTo(ic->output()).generate(this);
     restoreLiveIgnore(lir, StoreValueTo(ic->output()).clobbered());
@@ -7043,6 +7160,22 @@ CodeGenerator::visitOutOfLinePropagateParallelAbort(OutOfLinePropagateParallelAb
 
     masm.moveValue(MagicValue(JS_ION_ERROR), JSReturnOperand);
     masm.jump(&returnLabel_);
+    return true;
+}
+
+bool
+CodeGenerator::visitHaveSameClass(LHaveSameClass *ins)
+{
+    Register lhs = ToRegister(ins->lhs());
+    Register rhs = ToRegister(ins->rhs());
+    Register temp = ToRegister(ins->getTemp(0));
+    Register output = ToRegister(ins->output());
+
+    masm.loadObjClass(lhs, temp);
+    masm.loadObjClass(rhs, output);
+    masm.cmpPtr(temp, output);
+    masm.emitSet(Assembler::Equal, output);
+
     return true;
 }
 

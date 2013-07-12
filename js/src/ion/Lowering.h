@@ -85,6 +85,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitTableSwitch(MTableSwitch *tableswitch);
     bool visitNewSlots(MNewSlots *ins);
     bool visitNewParallelArray(MNewParallelArray *ins);
+    bool visitNewMatrix(MNewMatrix *ins);
     bool visitNewArray(MNewArray *ins);
     bool visitNewObject(MNewObject *ins);
     bool visitNewDeclEnvObject(MNewDeclEnvObject *ins);
@@ -171,6 +172,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitParWriteGuard(MParWriteGuard *ins);
     bool visitParCheckInterrupt(MParCheckInterrupt *ins);
     bool visitParDump(MParDump *ins);
+    bool visitParSpew(MParSpew *ins);
     bool visitStoreSlot(MStoreSlot *ins);
     bool visitTypeBarrier(MTypeBarrier *ins);
     bool visitMonitorTypes(MMonitorTypes *ins);

@@ -80,6 +80,7 @@ namespace ion {
     _(ToString)                                                             \
     _(NewSlots)                                                             \
     _(NewParallelArray)                                                     \
+    _(NewMatrix)                                                            \
     _(NewArray)                                                             \
     _(NewObject)                                                            \
     _(NewDeclEnvObject)                                                     \
@@ -196,6 +197,7 @@ namespace ion {
     _(ParSlice)                                                             \
     _(ParWriteGuard)                                                        \
     _(ParDump)                                                              \
+    _(ParSpew)                                                              \
     _(ParCheckInterrupt)
 
 // Forward declarations of MIR types.
