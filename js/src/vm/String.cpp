@@ -330,7 +330,7 @@ JSRope::flattenInternal(JSContext *maybecx)
         }
     }
 
-    if (!AllocChars(maybecx, wholeLength, &wholeChars, &wholeCapacity))
+    if (!AllocChars(maybetcx, wholeLength, &wholeChars, &wholeCapacity))
         return NULL;
 
     pos = wholeChars;
@@ -440,14 +440,14 @@ js::ConcatStrings(JSContext *cx,
         return str;
     }
 
-    return JSRope::new_<allowGC>(cx, left, right, wholeLength);
+    return JSRope::new_<allowGC>(tcx, left, right, wholeLength);
 }
 
 template JSString *
-js::ConcatStrings<CanGC>(JSContext *cx, HandleString left, HandleString right);
+js::ConcatStrings<CanGC>(ThreadSafeContext *cx, HandleString left, HandleString right);
 
 template JSString *
-js::ConcatStrings<NoGC>(JSContext *cx, JSString *left, JSString *right);
+js::ConcatStrings<NoGC>(ThreadSafeContext *cx, JSString *left, JSString *right);
 
 JSString *
 js::ConcatStringsPure(ThreadSafeContext *cx, JSString *left, JSString *right)

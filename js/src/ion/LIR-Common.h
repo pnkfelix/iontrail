@@ -289,6 +289,16 @@ class LNewParallelArray : public LInstructionHelper<1, 0, 0>
     }
 };
 
+class LNewMatrix : public LInstructionHelper<1, 0, 0>
+{
+  public:
+    LIR_HEADER(NewMatrix);
+
+    MNewMatrix *mir() const {
+        return mir_->toNewMatrix();
+    }
+};
+
 class LNewArray : public LInstructionHelper<1, 0, 0>
 {
   public:
@@ -2341,6 +2351,41 @@ class LParConcat : public LInstructionHelper<1, 3, 3>
     }
 };
 
+class LParConcat : public LInstructionHelper<1, 3, 3>
+{
+  public:
+    LIR_HEADER(ParConcat)
+
+    LParConcat(const LAllocation &parSlice, const LAllocation &lhs, const LAllocation &rhs,
+               const LDefinition &temp1, const LDefinition &temp2, const LDefinition &temp3) {
+        setOperand(0, parSlice);
+        setOperand(1, lhs);
+        setOperand(2, rhs);
+        setTemp(0, temp1);
+        setTemp(1, temp2);
+        setTemp(2, temp3);
+    }
+
+    const LAllocation *parSlice() {
+        return this->getOperand(0);
+    }
+    const LAllocation *lhs() {
+        return this->getOperand(1);
+    }
+    const LAllocation *rhs() {
+        return this->getOperand(2);
+    }
+    const LDefinition *temp1() {
+        return this->getTemp(0);
+    }
+    const LDefinition *temp2() {
+        return this->getTemp(1);
+    }
+    const LDefinition *temp3() {
+        return this->getTemp(2);
+    }
+};
+
 // Get uint16 character code from a string.
 class LCharCodeAt : public LInstructionHelper<1, 2, 0>
 {
@@ -2489,6 +2534,25 @@ class LIntToString : public LInstructionHelper<1, 1, 0>
         setOperand(0, input);
     }
 
+    const MToString *mir() {
+        return mir_->toToString();
+    }
+};
+
+// Convert a double hosted on one definition to a string with a function call.
+class LDoubleToString : public LInstructionHelper<1, 1, 1>
+{
+  public:
+    LIR_HEADER(DoubleToString)
+
+    LDoubleToString(const LAllocation &input, const LDefinition &temp) {
+        setOperand(0, input);
+        setTemp(0, temp);
+    }
+
+    const LDefinition *tempInt() {
+        return getTemp(0);
+    }
     const MToString *mir() {
         return mir_->toToString();
     }
@@ -4314,8 +4378,8 @@ class LParRest : public LCallInstructionHelper<1, 2, 3>
     const LAllocation *numActuals() {
         return getOperand(1);
     }
-    MRest *mir() const {
-        return mir_->toRest();
+    MParRest *mir() const {
+        return mir_->toParRest();
     }
 };
 
@@ -4357,6 +4421,20 @@ class LParDump : public LCallInstructionHelper<0, BOX_PIECES, 0>
     static const size_t Value = 0;
 
     const LAllocation *value() {
+        return getOperand(0);
+    }
+};
+
+class LParSpew : public LCallInstructionHelper<0, 1, 0>
+{
+  public:
+    LIR_HEADER(ParSpew);
+
+    LParSpew(const LAllocation &string) {
+        setOperand(0, string);
+    }
+
+    const LAllocation *string() {
         return getOperand(0);
     }
 };
@@ -4647,6 +4725,28 @@ class LIsCallable : public LInstructionHelper<1, 1, 0>
     }
     MIsCallable *mir() const {
         return mir_->toIsCallable();
+    }
+};
+
+class LHaveSameClass : public LInstructionHelper<1, 2, 1>
+{
+  public:
+    LIR_HEADER(HaveSameClass);
+    LHaveSameClass(const LAllocation &left, const LAllocation &right,
+                   const LDefinition &temp) {
+        setOperand(0, left);
+        setOperand(1, right);
+        setTemp(0, temp);
+    }
+
+    const LAllocation *lhs() {
+        return getOperand(0);
+    }
+    const LAllocation *rhs() {
+        return getOperand(1);
+    }
+    MHaveSameClass *mir() const {
+        return mir_->toHaveSameClass();
     }
 };
 

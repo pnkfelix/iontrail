@@ -494,6 +494,25 @@ struct JSContext : public js::ExclusiveContext,
         return mainThread().activation()->asInterpreter()->regs();
     }
 
+    /* State used by jsdtoa.cpp. */
+    DtoaState           *dtoaState;
+
+  private:
+    /*
+     * Malloc counter to measure memory pressure for GC scheduling. It runs
+     * from gcMaxMallocBytes down to zero.
+     */
+    ptrdiff_t gcMallocBytes;
+
+  public:
+    inline void resetGCMallocBytes();
+
+    inline void updateMallocCounter(JS::Zone *zone, size_t nbytes);
+
+    bool isTooMuchMalloc() const {
+        return gcMallocBytes <= 0;
+    }
+
     /*
      * Get the topmost script and optional pc on the stack. By default, this
      * function only returns a JSScript in the current compartment, returning
@@ -808,6 +827,12 @@ JS_CHECK_OPERATION_LIMIT(JSContext *cx)
 {
     JS_ASSERT_REQUEST_DEPTH(cx);
     return !cx->runtime()->interrupt || js_InvokeOperationCallback(cx);
+}
+
+inline void
+js::PerThreadData::resetGCMallocBytes()
+{
+    gcMallocBytes = ptrdiff_t(runtime_->gcMaxMallocBytes);
 }
 
 namespace js {

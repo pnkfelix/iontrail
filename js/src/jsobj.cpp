@@ -2917,11 +2917,11 @@ JSObject::growElements(ThreadSafeContext *cx, uint32_t newcap)
 
     ObjectElements *newheader;
     if (hasDynamicElements()) {
-        newheader = ReallocateElements(cx, this, getElementsHeader(), oldAllocated, newAllocated);
+        newheader = ReallocateElements(tcx, this, getElementsHeader(), oldAllocated, newAllocated);
         if (!newheader)
             return false; /* Leave elements as its old size. */
     } else {
-        newheader = AllocateElements(cx, this, newAllocated);
+        newheader = AllocateElements(tcx, this, newAllocated);
         if (!newheader)
             return false; /* Leave elements as its old size. */
         js_memcpy(newheader, getElementsHeader(),
@@ -4364,6 +4364,49 @@ js::GetObjectElementOperationPure(ThreadSafeContext *cx, JSObject *obj, const Va
         return GetElementPure(cx, obj, index, vp);
 
     return GetPropertyPure(cx, obj, NameToId(name->asPropertyName()), vp);
+}
+
+static bool
+JS_ALWAYS_INLINE
+GetElementPure(JSObject *obj, uint32_t index, Value *vp)
+{
+    if (obj->getOps()->getElement)
+        return false;
+
+    jsid id;
+    if (!IndexToIdPure(index, &id))
+        return false;
+
+    /* Fast-path typed array index accesses. */
+    if (obj->isTypedArray() && index < TypedArray::length(obj)) {
+        TypedArray::copyTypedArrayElement(obj, index, MutableHandleValue::fromMarkedLocation(vp));
+        return true;
+    }
+
+    return GetPropertyPure(obj, id, vp);
+}
+
+/*
+ * A pure version of GetObjectElementOperation that can be called from
+ * parallel code without locking. This variant returns false whenever a
+ * side-effect might have occurred.
+ */
+bool
+js::GetObjectElementOperationPure(JSObject *obj, const Value &prop, Value *vp)
+{
+    uint32_t index;
+    if (IsDefinitelyIndex(prop, &index))
+        return GetElementPure(obj, index, vp);
+
+    /* Atomizing the property value is effectful and not threadsafe. */
+    if (!prop.isString() || !prop.toString()->isAtom())
+        return false;
+
+    JSAtom *name = &prop.toString()->asAtom();
+    if (name->isIndex(&index))
+        return GetElementPure(obj, index, vp);
+
+    return GetPropertyPure(obj, NameToId(name->asPropertyName()), vp);
 }
 
 JSBool

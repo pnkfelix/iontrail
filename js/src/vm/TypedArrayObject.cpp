@@ -3434,6 +3434,45 @@ TypedArrayObject::copyTypedArrayElement(uint32_t index, MutableHandleValue vp)
     }
 }
 
+void
+TypedArray::copyTypedArrayElement(JSObject *obj, uint32_t index, MutableHandleValue vp)
+{
+    JS_ASSERT(index < length(obj));
+
+    switch (type(obj)) {
+      case TYPE_INT8:
+        TypedArrayTemplate<int8_t>::copyIndexToValue(obj, index, vp);
+        break;
+      case TYPE_UINT8:
+        TypedArrayTemplate<uint8_t>::copyIndexToValue(obj, index, vp);
+        break;
+      case TYPE_UINT8_CLAMPED:
+        TypedArrayTemplate<uint8_clamped>::copyIndexToValue(obj, index, vp);
+        break;
+      case TYPE_INT16:
+        TypedArrayTemplate<int16_t>::copyIndexToValue(obj, index, vp);
+        break;
+      case TYPE_UINT16:
+        TypedArrayTemplate<uint16_t>::copyIndexToValue(obj, index, vp);
+        break;
+      case TYPE_INT32:
+        TypedArrayTemplate<int32_t>::copyIndexToValue(obj, index, vp);
+        break;
+      case TYPE_UINT32:
+        TypedArrayTemplate<uint32_t>::copyIndexToValue(obj, index, vp);
+        break;
+      case TYPE_FLOAT32:
+        TypedArrayTemplate<float>::copyIndexToValue(obj, index, vp);
+        break;
+      case TYPE_FLOAT64:
+        TypedArrayTemplate<double>::copyIndexToValue(obj, index, vp);
+        break;
+      default:
+        JS_NOT_REACHED("Unknown TypedArray type");
+        break;
+    }
+}
+
 /***
  *** JS impl
  ***/

@@ -1129,6 +1129,32 @@ class MNewParallelArray : public MNullaryInstruction
     }
 };
 
+class MNewMatrix : public MNullaryInstruction
+{
+    CompilerRootObject templateObject_;
+
+    MNewMatrix(JSObject *templateObject)
+      : templateObject_(templateObject)
+    {
+        setResultType(MIRType_Object);
+    }
+
+  public:
+    INSTRUCTION_HEADER(NewMatrix);
+
+    static MNewMatrix *New(JSObject *templateObject) {
+        return new MNewMatrix(templateObject);
+    }
+
+    AliasSet getAliasSet() const {
+        return AliasSet::None();
+    }
+
+    JSObject *templateObject() const {
+        return templateObject_;
+    }
+};
+
 // Fabricate a type set containing only the type of the specified object.
 types::StackTypeSet *
 MakeSingletonTypeSet(JSObject *obj);
@@ -3513,6 +3539,49 @@ class MConcat
     INSTRUCTION_HEADER(Concat)
     static MConcat *New(MDefinition *left, MDefinition *right) {
         return new MConcat(left, right);
+    }
+
+    TypePolicy *typePolicy() {
+        return this;
+    }
+    bool congruentTo(MDefinition *const &ins) const {
+        return congruentIfOperandsEqual(ins);
+    }
+    AliasSet getAliasSet() const {
+        return AliasSet::None();
+    }
+};
+
+class MParConcat
+  : public MTernaryInstruction,
+    public MixPolicy<StringPolicy<1>, StringPolicy<2> >
+{
+    MParConcat(MDefinition *parSlice, MDefinition *left, MDefinition *right)
+      : MTernaryInstruction(parSlice, left, right)
+    {
+        setMovable();
+        setResultType(MIRType_String);
+    }
+
+  public:
+    INSTRUCTION_HEADER(ParConcat)
+
+    static MParConcat *New(MDefinition *parSlice, MDefinition *left, MDefinition *right) {
+        return new MParConcat(parSlice, left, right);
+    }
+
+    static MParConcat *New(MDefinition *parSlice, MConcat *concat) {
+        return New(parSlice, concat->lhs(), concat->rhs());
+    }
+
+    MDefinition *parSlice() const {
+        return getOperand(0);
+    }
+    MDefinition *lhs() const {
+        return getOperand(1);
+    }
+    MDefinition *rhs() const {
+        return getOperand(2);
     }
 
     TypePolicy *typePolicy() {
@@ -7077,6 +7146,27 @@ class MIn
     }
 };
 
+class MParSpew
+  : public MUnaryInstruction,
+    public StringPolicy<0>
+{
+  public:
+    INSTRUCTION_HEADER(ParSpew);
+
+    MParSpew(MDefinition *str)
+      : MUnaryInstruction(str)
+    {
+        setResultType(MIRType_None);
+    }
+
+    MDefinition *string() const {
+        return getOperand(0);
+    }
+
+    TypePolicy *typePolicy() {
+        return this;
+    }
+};
 
 // Test whether the index is in the array bounds or a hole.
 class MInArray
@@ -8184,6 +8274,35 @@ class MAsmJSPassStackArg : public MUnaryInstruction
     }
     MDefinition *arg() const {
         return getOperand(0);
+    }
+    AliasSet getAliasSet() const {
+        return AliasSet::None();
+    }
+};
+
+class MHaveSameClass
+  : public MBinaryInstruction,
+    public MixPolicy<ObjectPolicy<0>, ObjectPolicy<1> >
+{
+    MHaveSameClass(MDefinition *left, MDefinition *right)
+      : MBinaryInstruction(left, right)
+    {
+        setResultType(MIRType_Boolean);
+        setMovable();
+    }
+
+  public:
+    INSTRUCTION_HEADER(HaveSameClass);
+
+    static MHaveSameClass *New(MDefinition *left, MDefinition *right) {
+        return new MHaveSameClass(left, right);
+    }
+
+    TypePolicy *typePolicy() {
+        return this;
+    }
+    AliasSet getAliasSet() const {
+        return AliasSet::None();
     }
 };
 

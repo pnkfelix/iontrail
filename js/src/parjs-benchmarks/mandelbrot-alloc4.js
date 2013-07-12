@@ -10,6 +10,20 @@ var nc = 30, maxCol = nc*3, cr,cg,cb;
 
 load(libdir + "util.js");
 
+// initialises the color map for translating Mandelbrot iterations
+// into nice colors
+function computeColorMap() {
+   var st = 255/nc;
+   cr = new Array(maxCol+1); cg = new Array(maxCol+1); cb = new Array(maxCol+1);
+   for (var i = 0; i < nc; i++){
+     var d = Math.floor(st*i);
+     cr[i] = 255 - d;  cr[i+nc] = 0;  cr[i+2*nc] = d;
+     cg[i] = d;  cg[i+nc] = 255 - d;  cg[i+2*nc] = 0;
+     cb[i] = 0;  cb[i+nc] = d;  cb[i+2*nc] = 255 - d;
+   }
+   cr[maxCol] = cg[maxCol] = cb[maxCol] = 0;
+}
+
 // this is the actual mandelbrot computation, ported to JavaScript
 // from the WebCL / OpenCL example at
 // http://www.ibiblio.org/e-notes/webcl/mandelbrot.html
@@ -25,7 +39,18 @@ function computeSetByRow(x, y) {
     I2 = I*I;
     n++;
   }
-  return n;
+  var ci = 0;
+  if (n == 512) {
+      ci = maxCol;
+  } else {
+      ci = n % maxCol;
+  }
+  var a = [cr[ci],cg[ci],cb[ci],255];
+
+  return a;
+  // return new ParallelArray(32, function (i) { return i; });
+  // return [cr[ci],cg[ci],cb[ci],255];
+  // return n;
 }
 
 function computeSequentially() {
@@ -38,25 +63,8 @@ function computeSequentially() {
   return result;
 }
 
-function computeSequentiallyInt16() {
-  var buf = new ArrayBuffer(rows*cols*2);
-  result = new Int16Array(buf);
-  for (var r = 0; r < rows; r++) {
-    for (var c = 0; c < cols; c++) {
-      result[ r*cols + c ] = computeSetByRow(c, r);
-    }
-  }
-  return result;
-}
-
 function computeParallel() {
   return new ParallelArray([rows, cols], function(r, c) {
-    return computeSetByRow(c, r);
-  }).flatten();
-}
-
-function computeParallelInt16() {
-  return new Matrix([rows, cols], ["int16"], function(r, c) {
     return computeSetByRow(c, r);
   }).flatten();
 }
@@ -70,12 +78,11 @@ function compare(arrs, pas) {
 }
 
 var scale = 10000*300;
-var rows = 1024;
-var cols = 1024;
+var rows = 512;
+var cols = 512;
+
+computeColorMap();
 
 // Experimentally, warmup doesn't seem to be necessary:
-benchmark("MANDELBROT ARRAY", 1, DEFAULT_MEASURE,
+benchmark("MANDELBROT", 1, DEFAULT_MEASURE,
           computeSequentially, computeParallel);
-
-benchmark("MANDELBROT M I16", 1, DEFAULT_MEASURE,
-          computeSequentiallyInt16, computeParallelInt16);

@@ -31,6 +31,7 @@ namespace js {
 
 class StaticStrings;
 class PropertyName;
+class ThreadSafeContext;
 
 /* The buffer length required to contain any unsigned 32-bit integer. */
 static const size_t UINT32_CHAR_BUFFER_LENGTH = sizeof("4294967295") - 1;
@@ -1008,15 +1009,15 @@ class AutoNameVector : public AutoVectorRooter<PropertyName *>
 /* Avoid requiring vm/String-inl.h just to call getChars. */
 
 JS_ALWAYS_INLINE const jschar *
-JSString::getChars(JSContext *cx)
+JSString::getChars(js::ThreadSafeContext *tcx)
 {
-    if (JSLinearString *str = ensureLinear(cx))
+    if (JSLinearString *str = ensureLinear(tcx))
         return str->chars();
     return NULL;
 }
 
 JS_ALWAYS_INLINE bool
-JSString::getChar(JSContext *cx, size_t index, jschar *code)
+JSString::getChar(js::ThreadSafeContext *tcx, size_t index, jschar *code)
 {
     JS_ASSERT(index < length());
 
@@ -1033,13 +1034,13 @@ JSString::getChar(JSContext *cx, size_t index, jschar *code)
     if (isRope()) {
         JSRope *rope = &asRope();
         if (uint32_t(index) < rope->leftChild()->length()) {
-            chars = rope->leftChild()->getChars(cx);
+            chars = rope->leftChild()->getChars(tcx);
         } else {
-            chars = rope->rightChild()->getChars(cx);
+            chars = rope->rightChild()->getChars(tcx);
             index -= rope->leftChild()->length();
         }
     } else {
-        chars = getChars(cx);
+        chars = getChars(tcx);
     }
 
     if (!chars)
@@ -1094,46 +1095,11 @@ JSString::getCharsZNonDestructive(js::ThreadSafeContext *cx,
 }
 
 JS_ALWAYS_INLINE JSLinearString *
-JSString::ensureLinear(JSContext *cx)
+JSString::ensureLinear(js::ThreadSafeContext *tcx)
 {
     return isLinear()
            ? &asLinear()
-           : asRope().flatten(cx);
-}
-
-JS_ALWAYS_INLINE JSFlatString *
-JSString::ensureFlat(JSContext *cx)
-{
-    return isFlat()
-           ? &asFlat()
-           : isDependent()
-             ? asDependent().undepend(cx)
-             : asRope().flatten(cx);
-}
-
-JS_ALWAYS_INLINE JSStableString *
-JSString::ensureStable(JSContext *maybecx)
-{
-    if (isRope()) {
-        JSFlatString *flat = asRope().flatten(maybecx);
-        if (!flat)
-            return NULL;
-        JS_ASSERT(!flat->isInline());
-        return &flat->asStable();
-    }
-
-    if (isDependent()) {
-        JSFlatString *flat = asDependent().undepend(maybecx);
-        if (!flat)
-            return NULL;
-        return &flat->asStable();
-    }
-
-    if (!isInline())
-        return &asStable();
-
-    JS_ASSERT(isInline());
-    return asInline().uninline(maybecx);
+           : asRope().flatten(tcx);
 }
 
 inline JSLinearString *
