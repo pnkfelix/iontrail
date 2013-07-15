@@ -155,6 +155,7 @@ ExecuteSequentially(JSContext *cx, HandleValue funVal, bool *complete)
         args[2].setBoolean(!!cx->runtime()->parallelWarmup);
         if (!fig.invoke(cx))
             return false;
+        JS_ASSERT(args.rval().isBoolean()); // else the self-hosted code is wrong
         allComplete = allComplete & args.rval().toBoolean();
     }
     *complete = allComplete;
