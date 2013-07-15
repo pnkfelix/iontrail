@@ -1505,31 +1505,5 @@ IonBuilder::inlineDump(CallInfo &callInfo)
     return InliningStatus_Inlined;
 }
 
-IonBuilder::InliningStatus
-IonBuilder::inlineParallelSpew(CallInfo &callInfo)
-{
-    if (callInfo.constructing())
-        return InliningStatus_NotInlined;
-
-    ExecutionMode executionMode = info().executionMode();
-    switch (executionMode) {
-      case SequentialExecution:
-        return InliningStatus_NotInlined;
-      case ParallelExecution:
-        break;
-    }
-
-    callInfo.unwrapArgs();
-    JS_ASSERT(1 == callInfo.argc());
-    MParSpew *spew = new MParSpew(callInfo.getArg(0));
-    current->add(spew);
-
-    MConstant *udef = MConstant::New(UndefinedValue());
-    current->add(udef);
-    current->push(udef);
-
-    return InliningStatus_Inlined;
-}
-
 } // namespace ion
 } // namespace js

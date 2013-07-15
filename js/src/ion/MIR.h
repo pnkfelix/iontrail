@@ -7103,28 +7103,6 @@ class MIn
     }
 };
 
-class MParSpew
-  : public MUnaryInstruction,
-    public StringPolicy<0>
-{
-  public:
-    INSTRUCTION_HEADER(ParSpew);
-
-    MParSpew(MDefinition *str)
-      : MUnaryInstruction(str)
-    {
-        setResultType(MIRType_None);
-    }
-
-    MDefinition *string() const {
-        return getOperand(0);
-    }
-
-    TypePolicy *typePolicy() {
-        return this;
-    }
-};
-
 // Test whether the index is in the array bounds or a hole.
 class MInArray
   : public MQuaternaryInstruction,

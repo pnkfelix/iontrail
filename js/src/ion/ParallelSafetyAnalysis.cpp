@@ -177,6 +177,7 @@ class ParallelSafetyVisitor : public MInstructionVisitor
     CUSTOM_OP(NewObject)
     CUSTOM_OP(NewCallObject)
     CUSTOM_OP(NewParallelArray)
+    CUSTOM_OP(NewMatrix)
     UNSAFE_OP(InitElem)
     UNSAFE_OP(InitProp)
     SAFE_OP(Start)
@@ -497,6 +498,14 @@ ParallelSafetyVisitor::convertToBailout(MBasicBlock *block, MInstruction *ins)
 
 bool
 ParallelSafetyVisitor::visitNewParallelArray(MNewParallelArray *ins)
+{
+    MParNew *parNew = new MParNew(parSlice(), ins->templateObject());
+    replace(ins, parNew);
+    return true;
+}
+
+bool
+ParallelSafetyVisitor::visitNewMatrix(MNewMatrix *ins)
 {
     MParNew *parNew = new MParNew(parSlice(), ins->templateObject());
     replace(ins, parNew);
