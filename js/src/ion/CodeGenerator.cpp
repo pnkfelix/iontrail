@@ -1257,16 +1257,6 @@ CodeGenerator::visitParDump(LParDump *lir)
     return true;
 }
 
-typedef ParallelResult (*ParallelSpewFn)(ForkJoinSlice *, HandleString);
-static const VMFunction ParallelSpewInfo = FunctionInfo<ParallelSpewFn>(ParSpew);
-
-bool
-CodeGenerator::visitParSpew(LParSpew *lir)
-{
-    pushArg(ToRegister(lir->string()));
-    return callVM(ParallelSpewInfo, lir);
-}
-
 bool
 CodeGenerator::visitTypeBarrier(LTypeBarrier *lir)
 {
@@ -4890,7 +4880,7 @@ CodeGenerator::emitArrayPopShift(LInstruction *lir, const MArrayPopShift *mir, R
         break;
 
       default:
-        JS_NOT_REACHED("No such execution mode");
+        MOZ_ASSUME_UNREACHABLE("No such execution mode");
     }
 
     // VM call if a write barrier is necessary.
@@ -5998,29 +5988,6 @@ CodeGenerator::visitGetElementIC(OutOfLineUpdateCache *ool, GetElementIC *ic)
     pushArg(ic->object());
     pushArg(Imm32(ool->getCacheIndex()));
     if (!callVM(GetElementIC::UpdateInfo, lir))
-        return false;
-    StoreValueTo(ic->output()).generate(this);
-    restoreLiveIgnore(lir, StoreValueTo(ic->output()).clobbered());
-
-    masm.jump(ool->rejoin());
-    return true;
-}
-
-typedef ParallelResult (*ParallelGetElementICFn)(ForkJoinSlice *, size_t, HandleObject,
-                                                 HandleValue, MutableHandleValue);
-const VMFunction ParallelGetElementIC::UpdateInfo =
-    FunctionInfo<ParallelGetElementICFn>(ParallelGetElementIC::update);
-
-bool
-CodeGenerator::visitParallelGetElementIC(OutOfLineUpdateCache *ool, ParallelGetElementIC *ic)
-{
-    LInstruction *lir = ool->lir();
-    saveLive(lir);
-
-    pushArg(ic->index());
-    pushArg(ic->object());
-    pushArg(Imm32(ool->getCacheIndex()));
-    if (!callVM(ParallelGetElementIC::UpdateInfo, lir))
         return false;
     StoreValueTo(ic->output()).generate(this);
     restoreLiveIgnore(lir, StoreValueTo(ic->output()).clobbered());
@@ -7160,22 +7127,6 @@ CodeGenerator::visitOutOfLinePropagateParallelAbort(OutOfLinePropagateParallelAb
 
     masm.moveValue(MagicValue(JS_ION_ERROR), JSReturnOperand);
     masm.jump(&returnLabel_);
-    return true;
-}
-
-bool
-CodeGenerator::visitHaveSameClass(LHaveSameClass *ins)
-{
-    Register lhs = ToRegister(ins->lhs());
-    Register rhs = ToRegister(ins->rhs());
-    Register temp = ToRegister(ins->getTemp(0));
-    Register output = ToRegister(ins->output());
-
-    masm.loadObjClass(lhs, temp);
-    masm.loadObjClass(rhs, output);
-    masm.cmpPtr(temp, output);
-    masm.emitSet(Assembler::Equal, output);
-
     return true;
 }
 

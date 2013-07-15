@@ -197,7 +197,6 @@ namespace ion {
     _(ParSlice)                                                             \
     _(ParWriteGuard)                                                        \
     _(ParDump)                                                              \
-    _(ParSpew)                                                              \
     _(ParCheckInterrupt)
 
 // Forward declarations of MIR types.
