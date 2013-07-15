@@ -1573,7 +1573,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
     var chunks = ComputeNumChunks(frame_len);
     var numSlices = ForkJoinSlices();
     var info = ComputeAllSliceBounds(chunks, numSlices);
-    ForkJoin(constructSlice, CheckParallel(mode));
+    ForkJoin(constructSlice, ForkJoinMode(mode));
     return;
   }
 
@@ -1601,6 +1601,13 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
       computefunc(indexStart, indexEnd);
       UnsafeSetElement(info, SLICE_POS(sliceId), ++chunkPos);
     }
+
+
+    var ret = (chunkEnd == info[SLICE_END(sliceId)]);
+    ret = undefined;
+    // return chunkEnd == info[SLICE_END(sliceId)];
+    mode && mode.print && mode.print({ret:ret, where:"MatrixReduce", depth:depth, func:func, mode:mode, self:self});
+    return ret;
   }
 
   function fill1_leaf(indexStart, indexEnd) {
@@ -2220,7 +2227,7 @@ function MatrixCommonReduceScalar(self, parexec, func, mode) {
 
     var info = ComputeAllSliceBounds(chunks, numSlices);
     var subreductions = NewDenseArray(numSlices);
-    ParallelDo(reduceSlice, CheckParallel(mode));
+    ForkJoin(reduceSlice, ForkJoinMode(mode));
     var accumulator = subreductions[0];
     for (var i = 1; i < numSlices; i++)
       accumulator = func(accumulator, subreductions[i]);
@@ -2266,6 +2273,12 @@ function MatrixCommonReduceScalar(self, parexec, func, mode) {
       UnsafeSetElement(subreductions, sliceId, accumulator,
                        info, SLICE_POS(sliceId), ++chunkPos);
     }
+
+    var ret = (chunkEnd == info[SLICE_END(sliceId)]);
+    ret = undefined;
+    // return chunkEnd == info[SLICE_END(sliceId)];
+    mode && mode.print && mode.print({ret:ret, where:"MatrixReduce", depth:depth, func:func, mode:mode, self:self});
+    return undefined;
   }
 
   function reduceChunk(accumulator, from, to) {
