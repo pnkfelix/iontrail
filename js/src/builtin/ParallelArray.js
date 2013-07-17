@@ -1446,7 +1446,7 @@ Cursor.set = function CursorSet(...args) {
                " sum: " + (bufferOffset + indexOffset) + "," +
                " v: " + v);
 
-  UnsafeSetElement(buffer, bufferOffset + indexOffset, v);
+  UnsafePutElements(buffer, bufferOffset + indexOffset, v);
   CURSOR_SET_USED(this, true);
 };
 
@@ -1599,12 +1599,12 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
       var indexStart = chunkPos << CHUNK_SHIFT;
       var indexEnd = std_Math_min(indexStart + CHUNK_SIZE, frame_len);
       computefunc(indexStart, indexEnd);
-      UnsafeSetElement(info, SLICE_POS(sliceId), ++chunkPos);
+      UnsafePutElements(info, SLICE_POS(sliceId), ++chunkPos);
     }
 
 
     var ret = (chunkEnd == info[SLICE_END(sliceId)]);
-    ret = undefined;
+    // ret = undefined;
     // return chunkEnd == info[SLICE_END(sliceId)];
     mode && mode.print && mode.print({ret:ret, where:"MatrixReduce", depth:depth, func:func, mode:mode, self:self});
     return ret;
@@ -1630,7 +1630,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
         mode && mode.spew &&
           ParallelSpew("(fill1_leaf E)" +
                        " val: " + val);
-        UnsafeSetElement(buffer, i, val);
+        UnsafePutElements(buffer, i, val);
       }
     }
   }
@@ -1690,7 +1690,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
           ParallelSpewAA(["called", "fill2_leaf E",
                           "val", val]);
 
-        UnsafeSetElement(buffer, i, val);
+        UnsafePutElements(buffer, i, val);
       }
 
       if (++y === yDimension) {
@@ -1767,7 +1767,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
           ParallelSpewAA(["called", "fill3_leaf E",
                           "val", val]);
 
-        UnsafeSetElement(buffer, i, val);
+        UnsafePutElements(buffer, i, val);
       }
 
       if (++z === zDimension) {
@@ -1852,7 +1852,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
                         "frame_indices", ArrayLikeToString(frame_indices),
                         "val", val]);
       if (!CURSOR_GET_USED(cursor)) {
-        UnsafeSetElement(buffer, i, val);
+        UnsafePutElements(buffer, i, val);
       }
       frame_indices.pop();
       StepIndices(frame, frame_indices);
@@ -2261,8 +2261,8 @@ function MatrixCommonReduceScalar(self, parexec, func, mode) {
       var indexPos = chunkStart << CHUNK_SHIFT;
       var accumulator = reduceChunk(self.buffer[self.offset+indexPos], indexPos + 1, indexPos + CHUNK_SIZE);
 
-      UnsafeSetElement(subreductions, sliceId, accumulator, // see (*) above
-                       info, SLICE_POS(sliceId), ++chunkPos);
+      UnsafePutElements(subreductions, sliceId, accumulator, // see (*) above
+                        info, SLICE_POS(sliceId), ++chunkPos);
     }
 
     var accumulator = subreductions[sliceId]; // see (*) above
@@ -2270,12 +2270,12 @@ function MatrixCommonReduceScalar(self, parexec, func, mode) {
     while (chunkPos < chunkEnd) {
       var indexPos = chunkPos << CHUNK_SHIFT;
       accumulator = reduceChunk(accumulator, indexPos, indexPos + CHUNK_SIZE);
-      UnsafeSetElement(subreductions, sliceId, accumulator,
-                       info, SLICE_POS(sliceId), ++chunkPos);
+      UnsafePutElements(subreductions, sliceId, accumulator,
+                        info, SLICE_POS(sliceId), ++chunkPos);
     }
 
     var ret = (chunkEnd == info[SLICE_END(sliceId)]);
-    ret = undefined;
+    // ret = undefined;
     // return chunkEnd == info[SLICE_END(sliceId)];
     mode && mode.print && mode.print({ret:ret, where:"MatrixReduce", depth:depth, func:func, mode:mode, self:self});
     return undefined;
@@ -2332,7 +2332,7 @@ function MatrixCommonReduce(self, parexec, depth, func, mode) {
     }
     var offset = ndimIndexToOffset.apply(null, args);
     mode && mode.print && mode.print({called: "outptr.set Y", bufoffset: bufoffset, offset: offset, sum: bufoffset + offset, v:v});
-    UnsafeSetElement(buffer, bufoffset + offset, v);
+    UnsafePutElements(buffer, bufoffset + offset, v);
     used_outptr = true;
   }
 
@@ -2462,10 +2462,10 @@ function MatrixCommonScan(parexec, self, depth, func, mode) {
   return NewMatrix(MatrixView, [length], buffer, 0);
 
   function scan(accumulator, start, end) {
-    UnsafeSetElement(buffer, start, accumulator);
+    UnsafePutElements(buffer, start, accumulator);
     for (var i = start + 1; i < end; i++) {
       accumulator = func(accumulator, self.get(i));
-      UnsafeSetElement(buffer, i, accumulator);
+      UnsafePutElements(buffer, i, accumulator);
     }
     return accumulator;
   }
@@ -2506,7 +2506,7 @@ function MatrixCommonFilter(self, parexec, func, mode) {
 
   // The strategy we use for ParallelArrayFilter is
   // specialized around setting a single element at a time.
-  // UnsafeSetElement cannot express an atomic combination of:
+  // UnsafePutElements cannot express an atomic combination of:
   // - Copying a whole n-length substring
   // - updating counts
   // - updating info
@@ -2542,7 +2542,7 @@ function MatrixCommonFilter(self, parexec, func, mode) {
 // System.arraycopy from Java).
 function UnsafeArrayCopy(buffer, bufoffset, subbuffer, suboffset, grain_len) {
   for (var j = 0; j < grain_len; j++) {
-    UnsafeSetElement(buffer, bufoffset+j, subbuffer[suboffset+j]);
+    UnsafePutElements(buffer, bufoffset+j, subbuffer[suboffset+j]);
   }
 }
 
