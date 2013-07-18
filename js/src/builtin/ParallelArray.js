@@ -1516,34 +1516,47 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
                  " frame: " + ArrayLikeToString(frame) + "," +
                  " grain: " + ArrayLikeToString(grain));
 
+  var xDimension, yDimension, zDimension;
   var computefunc;
   var frame_len;
   var isLeaf = (grain.length == 0);
 
+  mode && mode.spew && ParallelSpew("(PMF A2)");
+
   switch (frame.length) {
    case 1:
+    mode && mode.spew && ParallelSpew("(PMF A3)");
     frame_len = frame[0];
     computefunc = isLeaf ? fill1_leaf : fill1_subm;
+    mode && mode.spew && ParallelSpew("(PMF A4)");
     break;
   case 2:
+    mode && mode.spew && ParallelSpew("(PMF A5)");
     xDimension = frame[0];
     yDimension = frame[1];
     frame_len = xDimension * yDimension;
     computefunc = isLeaf ? fill2_leaf : fill2_subm;
+    mode && mode.spew && ParallelSpew("(PMF A6)");
     break;
   case 3:
+    mode && mode.spew && ParallelSpew("(PMF A7)");
     xDimension = frame[0];
     yDimension = frame[1];
     zDimension = frame[2];
     frame_len = xDimension * yDimension * zDimension;
     computefunc = isLeaf ? fill3_leaf : fill3_subm;
+    mode && mode.spew && ParallelSpew("(PMF A8)");
     break;
   default:
+    mode && mode.spew && ParallelSpew("(PMF A9)");
     frame_len = ProductOfArrayRange(frame, 0, frame.length);
     computefunc = isLeaf ? fillN_leaf : fillN_subm;
     mode && mode.spew && ParallelSpew("MatrixPFill computefunc is fillN");
+    mode && mode.spew && ParallelSpew("(PMF A10)");
     break;
   }
+
+  mode && mode.spew && ParallelSpew("(PMF A11)");
 
   var indexStart = offset;
   var indexEnd = offset+frame_len;
