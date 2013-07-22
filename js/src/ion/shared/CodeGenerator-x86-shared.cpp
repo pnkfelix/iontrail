@@ -279,13 +279,13 @@ class BailoutLabel {
 };
 
 template <typename T> bool
-CodeGeneratorX86Shared::bailout(const T &binder, LSnapshot *snapshot)
+CodeGeneratorX86Shared::bailout(const T &binder, LSnapshot *snapshot, ParallelBailoutCause cause)
 {
     CompileInfo &info = snapshot->mir()->block()->info();
     switch (info.executionMode()) {
       case ParallelExecution: {
         // in parallel mode, make no attempt to recover, just signal an error.
-        OutOfLineParallelAbort *ool = oolParallelAbort(ParallelBailoutUnsupported,
+        OutOfLineParallelAbort *ool = oolParallelAbort(cause,
                                                        snapshot->mir()->block(),
                                                        snapshot->mir()->pc());
         binder(masm, ool->entry());
@@ -328,31 +328,31 @@ CodeGeneratorX86Shared::bailout(const T &binder, LSnapshot *snapshot)
 }
 
 bool
-CodeGeneratorX86Shared::bailoutIf(Assembler::Condition condition, LSnapshot *snapshot)
+CodeGeneratorX86Shared::bailoutIf(Assembler::Condition condition, LSnapshot *snapshot, ParallelBailoutCause cause)
 {
-    return bailout(BailoutJump(condition), snapshot);
+    return bailout(BailoutJump(condition), snapshot, cause);
 }
 
 bool
-CodeGeneratorX86Shared::bailoutIf(Assembler::DoubleCondition condition, LSnapshot *snapshot)
+CodeGeneratorX86Shared::bailoutIf(Assembler::DoubleCondition condition, LSnapshot *snapshot, ParallelBailoutCause cause)
 {
     JS_ASSERT(Assembler::NaNCondFromDoubleCondition(condition) == Assembler::NaN_HandledByCond);
-    return bailoutIf(Assembler::ConditionFromDoubleCondition(condition), snapshot);
+    return bailoutIf(Assembler::ConditionFromDoubleCondition(condition), snapshot, cause);
 }
 
 bool
-CodeGeneratorX86Shared::bailoutFrom(Label *label, LSnapshot *snapshot)
+CodeGeneratorX86Shared::bailoutFrom(Label *label, LSnapshot *snapshot, ParallelBailoutCause cause)
 {
     JS_ASSERT(label->used() && !label->bound());
-    return bailout(BailoutLabel(label), snapshot);
+    return bailout(BailoutLabel(label), snapshot, cause);
 }
 
 bool
-CodeGeneratorX86Shared::bailout(LSnapshot *snapshot)
+CodeGeneratorX86Shared::bailout(LSnapshot *snapshot, ParallelBailoutCause cause)
 {
     Label label;
     masm.jump(&label);
-    return bailoutFrom(&label, snapshot);
+    return bailoutFrom(&label, snapshot, cause);
 }
 
 bool

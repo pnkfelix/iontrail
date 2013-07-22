@@ -1612,6 +1612,14 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
     while (chunkPos < chunkEnd) {
       var indexStart = chunkPos << CHUNK_SHIFT;
       var indexEnd = std_Math_min(indexStart + CHUNK_SIZE, frame_len);
+
+      var describeThis = "<nodesc>";
+      if (false && this === undefined) {
+        describeThis = "undefined";
+      }
+  mode && mode.spew &&
+    ParallelSpew("(MatrixPFill constructSlice) " + describeThis + " " + indexStart + " " + indexEnd);
+
       computefunc(indexStart, indexEnd);
       UnsafePutElements(info, SLICE_POS(sliceId), ++chunkPos);
     }
@@ -1625,9 +1633,15 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
   }
 
   function fill1_leaf(indexStart, indexEnd) {
+
+    ParallelSpew("here");
+    var b2s;
+    if (mode && mode.spew) {
+      b2s = ArrayLikeToString(buffer);
+    }
     mode && mode.spew &&
       ParallelSpew("(fill1_leaf A)" +
-                   " buffer: " + ArrayLikeToString(buffer) + "," +
+                   " buffer: " + b2s + "," +
                    " indexStart: " + indexStart + "," +
                    " indexEnd: " + indexEnd);
 

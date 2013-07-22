@@ -185,7 +185,7 @@ CodeGenerator::visitValueToInt32(LValueToInt32 *lir)
         masm.branchTestString(Assembler::Equal, tag, &fails);
     }
 
-    if (fails.used() && !bailoutFrom(&fails, lir->snapshot()))
+    if (fails.used() && !bailoutFrom(&fails, lir->snapshot(), ParallelBailoutValueToInt32))
         return false;
 
     // The value is null - just emit 0.
@@ -280,7 +280,7 @@ CodeGenerator::visitDoubleToInt32(LDoubleToInt32 *lir)
     FloatRegister input = ToFloatRegister(lir->input());
     Register output = ToRegister(lir->output());
     masm.convertDoubleToInt32(input, output, &fail, lir->mir()->canBeNegativeZero());
-    if (!bailoutFrom(&fail, lir->snapshot()))
+    if (!bailoutFrom(&fail, lir->snapshot(), ParallelBailoutDoubleToInt32))
         return false;
     return true;
 }
@@ -1269,7 +1269,7 @@ CodeGenerator::visitTypeBarrier(LTypeBarrier *lir)
     Label matched, miss;
     masm.guardTypeSet(operand, lir->mir()->resultTypeSet(), scratch, &matched, &miss);
     masm.jump(&miss);
-    if (!bailoutFrom(&miss, lir->snapshot()))
+    if (!bailoutFrom(&miss, lir->snapshot(), ParallelBailoutTypeBarrier))
         return false;
     masm.bind(&matched);
     return true;
@@ -1284,7 +1284,7 @@ CodeGenerator::visitMonitorTypes(LMonitorTypes *lir)
     Label matched, miss;
     masm.guardTypeSet(operand, lir->mir()->typeSet(), scratch, &matched, &miss);
     masm.jump(&miss);
-    if (!bailoutFrom(&miss, lir->snapshot()))
+    if (!bailoutFrom(&miss, lir->snapshot(), ParallelBailoutMonitorTypes))
         return false;
     masm.bind(&matched);
     return true;
@@ -2177,7 +2177,7 @@ CodeGenerator::visitFilterArguments(LFilterArguments *lir)
 
     Label bail;
     masm.branch32(Assembler::Equal, ReturnReg, Imm32(0), &bail);
-    return bailoutFrom(&bail, lir->snapshot());
+    return bailoutFrom(&bail, lir->snapshot(), ParallelBailoutOpcodeFilterArguments);
 }
 
 typedef bool (*DirectEvalFn)(JSContext *, HandleObject, HandleScript, HandleValue, HandleString,
@@ -2218,8 +2218,9 @@ CodeGenerator::generateArgumentsChecks()
 
     CompileInfo &info = gen->info();
 
-    Label miss;
-    for (uint32_t i = info.startArgSlot(); i < info.endArgSlot(); i++) {
+    Label miss[4];
+    uint32_t startSlot = info.startArgSlot();
+    for (uint32_t i = startSlot; i < info.endArgSlot(); i++) {
         // All initial parameters are guaranteed to be MParameters.
         MParameter *param = rp->getOperand(i)->toParameter();
         const types::TypeSet *types = param->resultTypeSet();
@@ -2232,13 +2233,25 @@ CodeGenerator::generateArgumentsChecks()
         // ArgToStackOffset(...)        - Compute displacement within arg vector.
         int32_t offset = ArgToStackOffset((i - info.startArgSlot()) * sizeof(Value));
         Label matched;
-        masm.guardTypeSet(Address(StackPointer, offset), types, temp, &matched, &miss);
-        masm.jump(&miss);
+        uint32_t missIdx = i - startSlot;
+        if (missIdx > 3)
+            missIdx = 3;
+        masm.guardTypeSet(Address(StackPointer, offset), types, temp, &matched, &miss[missIdx]);
+        masm.jump(&miss[missIdx]);
         masm.bind(&matched);
     }
 
-    if (miss.used() && !bailoutFrom(&miss, graph.entrySnapshot()))
-        return false;
+    for (uint32_t i = 0; i < 4; i++) {
+        ParallelBailoutCause cause;
+        switch (i) {
+        case 0: cause = ParallelBailoutArgumentChecks_0; break;
+        case 1: cause = ParallelBailoutArgumentChecks_1; break;
+        case 2: cause = ParallelBailoutArgumentChecks_2; break;
+        case 3: cause = ParallelBailoutArgumentChecks_ge3; break;
+        }
+        if (miss[i].used() && !bailoutFrom(&miss[i], graph.entrySnapshot(), cause))
+            return false;
+    }
 
     masm.freeStack(frameSize());
 
@@ -3269,7 +3282,24 @@ CodeGenerator::visitOutOfLineParNewGCThing(OutOfLineParNewGCThing *ool)
 bool
 CodeGenerator::visitParBailout(LParBailout *lir)
 {
-    OutOfLineParallelAbort *bail = oolParallelAbort(ParallelBailoutUnsupported, lir);
+    ParallelBailoutCause cause;
+    switch (lir->why_) {
+    case MParBailout::BailoutFromOpcode:
+        switch (lir->originalOp_) {
+#define HANDLE_OPCODE(op) case MDefinition::Op_ ## op: cause = ParallelBailoutOpcode ## op; break;
+        MIR_OPCODE_LIST(HANDLE_OPCODE)
+#undef  HANDLE_OPCODE
+        default:
+            cause = ParallelBailoutUnsupported;
+            break;
+        }
+    case LParBailout::BailoutFromThrow:
+        cause = ParallelBailoutUnsupportedThrow;
+        break;
+    case LParBailout::BailoutFromUnspecific:
+        cause = ParallelBailoutUnsupported;
+    }
+    OutOfLineParallelAbort *bail = oolParallelAbort(cause, lir);
     if (!bail)
         return false;
     masm.jump(bail->entry());
@@ -4918,7 +4948,7 @@ CodeGenerator::emitArrayPopShift(LInstruction *lir, const MArrayPopShift *mir, R
 
       case ParallelExecution:
         // Bail out if we can't stay in the fast path in parallel execution.
-        ool = oolParallelAbort(ParallelBailoutUnsupported, lir);
+        ool = oolParallelAbort(ParallelBailoutUnsupportedArrayPopShift, lir);
         if (!ool)
             return false;
         break;
@@ -6503,7 +6533,7 @@ CodeGenerator::visitLoadTypedArrayElement(LLoadTypedArrayElement *lir)
         masm.loadFromTypedArray(arrayType, source, out, temp, &fail);
     }
 
-    if (fail.used() && !bailoutFrom(&fail, lir->snapshot()))
+    if (fail.used() && !bailoutFrom(&fail, lir->snapshot(), ParallelBailoutLoadTypedArrayElement))
         return false;
 
     return true;
@@ -6544,7 +6574,7 @@ CodeGenerator::visitLoadTypedArrayElementHole(LLoadTypedArrayElementHole *lir)
                                 out.scratchReg(), &fail);
     }
 
-    if (fail.used() && !bailoutFrom(&fail, lir->snapshot()))
+    if (fail.used() && !bailoutFrom(&fail, lir->snapshot(), ParallelBailoutLoadTypedArrayElementHole))
         return false;
 
     masm.bind(&done);

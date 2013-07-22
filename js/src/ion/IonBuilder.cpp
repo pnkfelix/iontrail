@@ -6233,6 +6233,7 @@ IonBuilder::jsop_getname(HandlePropertyName name)
 bool
 IonBuilder::jsop_intrinsic(HandlePropertyName name)
 {
+    setbuf(stdout, NULL);
     types::StackTypeSet *types = types::TypeScript::BytecodeTypes(script(), pc);
     JSValueType type = types->getKnownTypeTag();
 

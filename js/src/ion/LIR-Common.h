@@ -525,6 +525,16 @@ class LParBailout : public LInstructionHelper<0, 0, 0>
 {
   public:
     LIR_HEADER(ParBailout);
+
+    enum BailoutFrom { BailoutFromOpcode, BailoutFromThrow, BailoutFromUnspecific };
+    const BailoutFrom why_;
+    const MDefinition::Opcode originalOp_;
+
+    LParBailout(BailoutFrom why, MDefinition::Opcode originalOp)
+        : why_(why),
+          originalOp_(originalOp)
+    {
+    }
 };
 
 class LInitElem : public LCallInstructionHelper<0, 1 + 2*BOX_PIECES, 0>

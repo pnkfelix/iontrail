@@ -241,7 +241,20 @@ LIRGenerator::visitNewStringObject(MNewStringObject *ins)
 bool
 LIRGenerator::visitParBailout(MParBailout *ins)
 {
-    LParBailout *lir = new LParBailout();
+    LParBailout::BailoutFrom why;
+    switch (ins->why_) {
+    case MParBailout::BailoutFromOpcode:
+        why = LParBailout::BailoutFromOpcode;
+        break;
+    case MParBailout::BailoutFromThrow:
+        why = LParBailout::BailoutFromThrow;
+        break;
+    case MParBailout::BailoutFromUnspecific:
+        why = LParBailout::BailoutFromUnspecific;
+        break;
+    }
+
+    LParBailout *lir = new LParBailout(why, ins->originalOp_);
     return add(lir, ins);
 }
 

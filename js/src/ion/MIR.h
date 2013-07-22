@@ -1287,8 +1287,23 @@ class MParBailout : public MAryControlInstruction<0, 0>
   public:
     INSTRUCTION_HEADER(ParBailout);
 
-    MParBailout()
-      : MAryControlInstruction<0, 0>()
+    enum BailoutFrom { BailoutFromOpcode, BailoutFromThrow, BailoutFromUnspecific };
+    const BailoutFrom why_;
+    const Opcode originalOp_;
+
+    MParBailout(BailoutFrom from)
+        : MAryControlInstruction<0, 0>(),
+          why_(from),
+          originalOp_(Op_Invalid)
+    {
+        setResultType(MIRType_Undefined);
+        setGuard();
+    }
+
+    MParBailout(Opcode originalOp)
+        : MAryControlInstruction<0, 0>(),
+          why_(BailoutFromOpcode),
+          originalOp_(originalOp)
     {
         setResultType(MIRType_Undefined);
         setGuard();

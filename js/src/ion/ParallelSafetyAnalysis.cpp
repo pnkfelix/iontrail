@@ -464,7 +464,8 @@ ParallelSafetyVisitor::convertToBailout(MBasicBlock *block, MInstruction *ins)
 
         // create bailout block to insert on this edge
         MBasicBlock *bailBlock = MBasicBlock::NewParBailout(graph_, block->info(), pred,
-                                                            block->pc(), block->entryResumePoint());
+                                                            block->pc(), block->entryResumePoint(),
+                                                            ins->op());
         if (!bailBlock)
             return false;
 
@@ -771,7 +772,7 @@ ParallelSafetyVisitor::visitThrow(MThrow *thr)
     MBasicBlock *block = thr->block();
     JS_ASSERT(block->lastIns() == thr);
     block->discardLastIns();
-    MParBailout *bailout = new MParBailout();
+    MParBailout *bailout = new MParBailout(MParBailout::BailoutFromThrow);
     if (!bailout)
         return false;
     block->end(bailout);

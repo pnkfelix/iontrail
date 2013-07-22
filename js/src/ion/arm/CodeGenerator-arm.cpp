@@ -199,7 +199,7 @@ CodeGeneratorARM::bailoutIf(Assembler::Condition condition, LSnapshot *snapshot)
     return true;
 }
 bool
-CodeGeneratorARM::bailoutFrom(Label *label, LSnapshot *snapshot)
+CodeGeneratorARM::bailoutFrom(Label *label, LSnapshot *snapshot, ParallelBailoutCause cause = ParallelBailoutUnsupported)
 {
     JS_ASSERT(label->used());
     JS_ASSERT(!label->bound());
@@ -208,7 +208,7 @@ CodeGeneratorARM::bailoutFrom(Label *label, LSnapshot *snapshot)
     switch (info.executionMode()) {
       case ParallelExecution: {
         // in parallel mode, make no attempt to recover, just signal an error.
-        OutOfLineParallelAbort *ool = oolParallelAbort(ParallelBailoutUnsupported,
+        OutOfLineParallelAbort *ool = oolParallelAbort(cause,
                                                        snapshot->mir()->block(),
                                                        snapshot->mir()->pc());
         masm.retarget(label, ool->entry());

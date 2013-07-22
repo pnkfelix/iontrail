@@ -1004,6 +1004,33 @@ BailoutExplanation(ParallelBailoutCause cause)
         return "requested GC";
       case ParallelBailoutRequestedZoneGC:
         return "requested zone GC";
+    case ParallelBailoutUnsupportedArrayPopShift:
+        return "unsupported array pop shift";
+    case ParallelBailoutUnsupportedThrow:
+        return "unsupported throw";
+    case ParallelBailoutValueToInt32:
+        return "unsupported ValueToInt32";
+    case ParallelBailoutDoubleToInt32:
+        return "unsupported DoubleToInt32";
+    case ParallelBailoutTypeBarrier:
+        return "unsupported TypeBarrier";
+    case ParallelBailoutMonitorTypes:
+        return "unsupported MonitorTypes";
+    case ParallelBailoutArgumentChecks_0:
+        return "unsupported ArgumentChecks_0";
+    case ParallelBailoutArgumentChecks_1:
+        return "unsupported ArgumentChecks_1";
+    case ParallelBailoutArgumentChecks_2:
+        return "unsupported ArgumentChecks_2";
+    case ParallelBailoutArgumentChecks_ge3:
+        return "unsupported ArgumentChecks_ge3";
+    case ParallelBailoutLoadTypedArrayElement:
+        return "unsupported LoadTypedArrayElement";
+    case ParallelBailoutLoadTypedArrayElementHole:
+        return "unsupported LoadTypedArrayElementHole";
+#define BAILOUT_FROM_OPCODE(op) case ParallelBailoutOpcode ## op: return #op;
+      MIR_OPCODE_LIST(BAILOUT_FROM_OPCODE)
+#undef BAILOUT_FROM_OPCODE
       default:
         return "no known reason";
     }

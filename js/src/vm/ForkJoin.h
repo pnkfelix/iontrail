@@ -11,6 +11,7 @@
 #include "vm/ThreadPool.h"
 #include "jsgc.h"
 #include "ion/Ion.h"
+#include "ion/MOpcodes.h"
 
 ///////////////////////////////////////////////////////////////////////////
 // Read Me First
@@ -253,7 +254,24 @@ enum ParallelBailoutCause {
     ParallelBailoutUnsupportedSparseArray,
     ParallelBailoutRequestedGC,
     ParallelBailoutRequestedZoneGC,
+    ParallelBailoutUnsupportedArrayPopShift,
+    ParallelBailoutUnsupportedThrow,
+    ParallelBailoutValueToInt32,
+    ParallelBailoutDoubleToInt32,
+    ParallelBailoutTypeBarrier,
+    ParallelBailoutMonitorTypes,
+    ParallelBailoutArgumentChecks_0,
+    ParallelBailoutArgumentChecks_1,
+    ParallelBailoutArgumentChecks_2,
+    ParallelBailoutArgumentChecks_ge3,
+    ParallelBailoutLoadTypedArrayElement,
+    ParallelBailoutLoadTypedArrayElementHole,
+#define BAILOUT_FROM_OPCODE(op) ParallelBailoutOpcode ## op,
+    MIR_OPCODE_LIST(BAILOUT_FROM_OPCODE)
+#undef  BAILOUT_FROM_OPCODE
 };
+
+
 
 struct ParallelBailoutTrace {
     JSScript *script;
