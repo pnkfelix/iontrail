@@ -1127,6 +1127,22 @@ js::ParallelDo::invalidateBailedOutScripts()
     return true;
 }
 
+
+struct AutoSetEagerBaseline
+{
+    uint32_t old;
+
+    AutoSetEagerBaseline()
+        : old(ion::js_IonOptions.baselineUsesBeforeCompile)
+    {
+        ion::js_IonOptions.baselineUsesBeforeCompile = 0;
+    }
+
+    ~AutoSetEagerBaseline() {
+        ion::js_IonOptions.baselineUsesBeforeCompile = old;
+    }
+};
+
 js::ParallelDo::TrafficLight
 js::ParallelDo::warmupExecution(bool stopIfComplete,
                                 ExecutionStatus *status)
@@ -1135,6 +1151,7 @@ js::ParallelDo::warmupExecution(bool stopIfComplete,
     // RedLight: fatal error or warmup completed all work (check status)
 
     Spew(SpewOps, "Executing warmup.");
+    AutoSetEagerBaseline godammit;
 
     AutoEnterWarmup warmup(cx_->runtime());
     RootedValue funVal(cx_, ObjectValue(*fun_));
