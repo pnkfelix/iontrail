@@ -2205,7 +2205,7 @@ function MatrixDecomposeArgsForMap(self, arg0, arg1, arg2, arg3) { // ([depth,] 
   return [depth, grain, func, mode];
 }
 
-function MatrixPMap(arg0, arg1, arg2, arg3) { // ([depth,] [output-grain-type,] func, [mode])
+function MatrixMapPar(arg0, arg1, arg2, arg3) { // ([depth,] [output-grain-type,] func, [mode])
   var [depth, outputgrain, func, mode] =
     MatrixDecomposeArgsForMap(this, arg0, arg1, arg2, arg3);
   return MatrixCommonMap(this, true, depth, outputgrain, func, mode);
@@ -2450,7 +2450,7 @@ function MatrixDecomposeArgsForReduceOrScan(self, arg0, arg1, arg2) { // ([depth
   return [depth, func, mode];
 }
 
-function MatrixPReduce(arg0, arg1, arg2) { // ([depth,] func, [mode])
+function MatrixReducePar(arg0, arg1, arg2) { // ([depth,] func, [mode])
   var [depth, func, mode] =
     MatrixDecomposeArgsForReduceOrScan(this, arg0, arg1, arg2);
   return MatrixCommonReduce(this, true, depth, func, mode);
@@ -2486,7 +2486,7 @@ function MatrixCommonScan(parexec, self, depth, func, mode) {
 
 }
 
-function MatrixPScan(arg0, arg1, arg2) {
+function MatrixScanPar(arg0, arg1, arg2) {
   var [depth, func, mode] =
     MatrixDecomposeArgsForReduceOrScan(this, arg0, arg1, arg2);
   return MatrixCommonScan(true, this, depth, func, mode);
@@ -2501,7 +2501,7 @@ function MatrixScan(arg0, arg1, arg2) {
 function MatrixScatter(targets, defaultValue, conflictFunc, length, mode) {
   ThrowError(JSMSG_BAD_BYTECODE, "Matrix.scatter");
 }
-function MatrixPScatter(targets, defaultValue, conflictFunc, length, mode) {
+function MatrixScatterPar(targets, defaultValue, conflictFunc, length, mode) {
   ThrowError(JSMSG_BAD_BYTECODE, "Matrix.pscatter");
 }
 
@@ -2566,7 +2566,7 @@ function ArrayCopy(buffer, bufoffset, subbuffer, suboffset, grain_len) {
   }
 }
 
-function MatrixPFilter(func, mode) {
+function MatrixFilterPar(func, mode) {
   return MatrixCommonFilter(this, true, func, mode);
 }
 
@@ -2722,7 +2722,7 @@ SetScriptHints(MatrixGet3,      { cloneAtCallsite: true, inline: true });
 
 SetScriptHints(MatrixConstructFromGrainFunctionMode, { cloneAtCallsite: true });
 SetScriptHints(MatrixPFill,                          { cloneAtCallsite: true });
-SetScriptHints(MatrixPMap,                           { cloneAtCallsite: true });
+SetScriptHints(MatrixMapPar,                         { cloneAtCallsite: true });
 SetScriptHints(MatrixCommonMap,                      { cloneAtCallsite: true });
 SetScriptHints(MatrixDecomposeArgsForMap,            { cloneAtCallsite: true });
-SetScriptHints(MatrixPReduce,                        { cloneAtCallsite: true });
+SetScriptHints(MatrixReducePar,                      { cloneAtCallsite: true });

@@ -263,17 +263,17 @@ FixedHeapPtr<PropertyName> MatrixObject::ctorNames[NumCtors];
 
 JSFunctionSpec MatrixObject::methods[] = {
     { "map",       JSOP_NULLWRAPPER, 4, 0, "MatrixMap"       },
-    { "pmap",      JSOP_NULLWRAPPER, 4, 0, "MatrixPMap"      },
+    { "mapPar",    JSOP_NULLWRAPPER, 4, 0, "MatrixMapPar"    },
     { "reduce",    JSOP_NULLWRAPPER, 3, 0, "MatrixReduce"    },
-    { "preduce",   JSOP_NULLWRAPPER, 3, 0, "MatrixPReduce"   },
+    { "reducePar", JSOP_NULLWRAPPER, 3, 0, "MatrixReducePar" },
     { "scan",      JSOP_NULLWRAPPER, 3, 0, "MatrixScan"      },
-    { "pscan",     JSOP_NULLWRAPPER, 3, 0, "MatrixPScan"     },
+    { "scanPar",   JSOP_NULLWRAPPER, 3, 0, "MatrixScanPar"   },
     { "scatter",   JSOP_NULLWRAPPER, 5, 0, "MatrixScatter"   },
-    { "pscatter",  JSOP_NULLWRAPPER, 5, 0, "MatrixPScatter"  },
+    { "scatterPar",JSOP_NULLWRAPPER, 5, 0, "MatrixScatterPar"},
     { "filter",    JSOP_NULLWRAPPER, 2, 0, "MatrixFilter"    },
-    { "pfilter",   JSOP_NULLWRAPPER, 2, 0, "MatrixPFilter"   },
+    { "filterPar", JSOP_NULLWRAPPER, 2, 0, "MatrixFilterPar" },
     { "partition", JSOP_NULLWRAPPER, 1, 0, "MatrixPartition" },
-    { "flatten",   JSOP_NULLWRAPPER, 0, 0, "MatrixFlatten" },
+    { "flatten",   JSOP_NULLWRAPPER, 0, 0, "MatrixFlatten"   },
 
     // FIXME #838906. Note that `get()` is not currently defined on this table but
     // rather is assigned to each instance of ParallelArray (and likewise Matrix) as an own
