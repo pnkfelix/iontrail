@@ -1631,7 +1631,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
                    " indexStart: " + indexStart + "," +
                    " indexEnd: " + indexEnd);
 
-    var cursor = NewCursor(buffer, indexStart);
+    var cursor = NewCursor(buffer, indexStart, []);
 
     for (var i = indexStart; i < indexEnd; i++) {
       mode && mode.spew &&
@@ -1687,7 +1687,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
 
     var x = (indexStart / yDimension) | 0;
     var y = indexStart - x*yDimension;
-    var cursor = NewCursor(buffer, indexStart, grain);
+    var cursor = NewCursor(buffer, indexStart, []);
 
     for (var i = indexStart; i < indexEnd; i++) {
       mode && mode.spew &&
@@ -1763,7 +1763,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
     var r = indexStart - x*yDimension*zDimension;
     var y = (r / zDimension) | 0;
     var z = r - y*zDimension;
-    var cursor = NewCursor(buffer, indexStart);
+    var cursor = NewCursor(buffer, indexStart, []);
 
     for (var i = indexStart; i < indexEnd; i++) {
       mode && mode.spew &&
@@ -1850,7 +1850,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
     mode && mode.spew &&
       ParallelSpewAA(["called", "fillN_leaf B",
                       "frame_indices", ArrayLikeToString(frame_indices)]);
-    var cursor = NewCursor(buffer, indexStart);
+    var cursor = NewCursor(buffer, indexStart, []);
     for (var i = indexStart; i < indexEnd; i++) {
       MoveCursor(cursor, i);
 
