@@ -68,7 +68,7 @@ function ArrayLikeToString(a) {
   for (var i = 0; i < a.length; i++) {
     output += a[i];
     if (i + 1 < a.length)
-      output += ", "
+      output += ", ";
   }
   output += "]";
   return output;
@@ -2155,15 +2155,15 @@ function MatrixCommonMap(self, parexec, depth, grain, func, mode) {
   var buffer = buffer_maker(len);
   var offset = 0;
 
-  function fill1(i) {
+  function fill1(i, outptr) {
     mode && mode.print && mode.print({called:"fill1",i:i});
-    return func(self.get(i), i); }
-  function fill2(i, j) {
+    return func(self.get(i), i, outptr); }
+  function fill2(i, j, outptr) {
     mode && mode.print && mode.print({called:"fill2",i:i,j:j});
-    return func(self.get(i, j), i, j); }
-  function fill3(i, j, k) {
+    return func(self.get(i, j), i, j, outptr); }
+  function fill3(i, j, k, outptr) {
     mode && mode.print && mode.print({called:"fill3",i:i,j:j,k:k});
-    return func(self.get(i, j, k), i, j, k); }
+    return func(self.get(i, j, k), i, j, k, outptr); }
   function fillN(...args) {
     mode && mode.print && mode.print({called:"fillN",args:args});
     return func.apply(undefined, self.get.apply(self, args), args); }
