@@ -1,7 +1,7 @@
 load(libdir + "parallelarray-helpers.js");
 
 function buildSimple() {
-  assertParallelModesCommute(["seq", "par"], function(m) {
+  assertParallelModesCommute(function(m) {
     Array.buildPar(256, function(i) {
       let obj = { x: i, y: i + 1, z: i + 2 };
       obj.x += 1;
