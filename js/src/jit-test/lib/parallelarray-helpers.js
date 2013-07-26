@@ -341,16 +341,12 @@ function testScatter(opFunction, cmpFunction) {
 
 // Checks that `opFunction`, when run with each of the modes
 // in `modes`, returns the same value each time.
-function assertParallelModesCommute(modes, opFunction) {
-  var expected = undefined;
-  var acc = opFunction(modes[0]);
+function assertParallelModesCommute(opFunction) {
+  var expected = opFunction({mode:"seq"});
   assertParallelExecSucceeds(
     opFunction,
     function(r) {
-      if (expected === undefined)
-        expected = r;
-      else
-        assertStructuralEq(expected, r);
+      assertStructuralEq(expected, r);
     });
 }
 

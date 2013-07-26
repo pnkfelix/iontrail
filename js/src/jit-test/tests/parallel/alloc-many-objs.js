@@ -7,7 +7,7 @@ function testMap() {
 
   var nums = range(0, 10);
 
-  assertParallelModesCommute(["seq", "par"], function(m) {
+  assertParallelModesCommute(function(m) {
     print(m.mode+" "+m.expect);
     nums.mapPar(function (v) {
       var x = [];
