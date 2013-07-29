@@ -84,6 +84,10 @@ function mapAnyOut() {
   });
 }
 
+// TODO: Currently all tests are [T] -> [T] maps rather than [X] ->
+// [T] maps; add variants that map from a different source array
+// type to the targetted destination type.
+
 function mapInt8() {
   // e.g. AT == Int8Array, ATdesc == "int8"
   function mapTyped(AT, ATdesc) {
