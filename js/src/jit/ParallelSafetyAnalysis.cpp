@@ -222,7 +222,7 @@ class ParallelSafetyVisitor : public MInstructionVisitor
     MAYBE_WRITE_GUARDED_OP(StoreTypedArrayElement, elements)
     WRITE_GUARDED_OP(StoreTypedArrayElementHole, elements)
     UNSAFE_OP(StoreTypedArrayElementStatic)
-    UNSAFE_OP(ClampToUint8)
+    SAFE_OP(ClampToUint8)
     SAFE_OP(LoadFixedSlot)
     WRITE_GUARDED_OP(StoreFixedSlot, object)
     UNSAFE_OP(CallGetProperty)
