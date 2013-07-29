@@ -670,7 +670,7 @@ const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("DecompileArg",            intrinsic_DecompileArg,            2,0),
     JS_FN("RuntimeDefaultLocale",    intrinsic_RuntimeDefaultLocale,    0,0),
 
-    JS_FN("UnsafePutElements",               intrinsic_UnsafePutElements,               3,0),
+    JS_FN("UnsafePutElements",       intrinsic_UnsafePutElements,       3,0),
     JS_FN("UnsafeSetReservedSlot",   intrinsic_UnsafeSetReservedSlot,   3,0),
     JS_FN("UnsafeGetReservedSlot",   intrinsic_UnsafeGetReservedSlot,   2,0),
 
