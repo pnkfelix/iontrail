@@ -1438,7 +1438,7 @@ function CursorIndexToOffset(grain, indices, idxlen) {
 
 var Cursor = NewClassPrototype(CURSOR_SLOTS);
 
-Cursor.set = function CursorSet(...args) {
+function CursorSet(...args) {
   if (false)
     ParallelSpew("(Cursor.set A)" +
                  " args: " + ArrayLikeToString(args, 0, args.length));
@@ -1462,7 +1462,7 @@ Cursor.set = function CursorSet(...args) {
   else
     indexOffset = 0|CursorIndexToOffset(grain, args, idxlen);
 
-  if (true)
+  if (false)
     ParallelSpew("(Cursor.set Y)" +
                  " bufferOffset: " + bufferOffset + "," +
                  " indexOffset: " + indexOffset + "," +
@@ -1472,6 +1472,7 @@ Cursor.set = function CursorSet(...args) {
   UnsafePutElements(buffer, bufferOffset + indexOffset, v);
   CURSOR_SET_USED(this, true);
 };
+Cursor.set = CursorSet;
 
 Cursor.gather = function CursorGather(arg0, arg1, arg2) { // ([depth,] func, [mode])
   if (false)
@@ -2751,3 +2752,5 @@ SetScriptHints(MatrixMapPar,                         { cloneAtCallsite: true });
 SetScriptHints(MatrixCommonMap,                      { cloneAtCallsite: true });
 SetScriptHints(MatrixDecomposeArgsForMap,            { cloneAtCallsite: true });
 SetScriptHints(MatrixReducePar,                      { cloneAtCallsite: true });
+
+SetScriptHints(CursorSet,   { cloneAtCallsite: true, inline: true });
