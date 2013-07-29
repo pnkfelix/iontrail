@@ -36,24 +36,6 @@ function constructAnyOut() {
   });
 }
 
-function buildArray(len, f) {
-  var AT = this;
-  var a = new AT(len);
-  for (var i=0; i < len; i++) { a[i] = f(i); }
-  return a;
-}
-
-Int8Array.build = buildArray;
-Int16Array.build = buildArray;
-Int32Array.build = buildArray;
-Uint8Array.build = buildArray;
-Uint8ClampedArray.build = buildArray;
-Uint16Array.build = buildArray;
-Uint32Array.build = buildArray;
-Float32Array.build = buildArray;
-Float64Array.build = buildArray;
-
-
 function constructInt8() {
   // e.g. AT == Int8Array, ATdesc == "int8"
   function constructTyped(AT, ATdesc) {
