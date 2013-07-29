@@ -55,7 +55,7 @@ Float64Array.build = buildArray;
 
 function constructInt8() {
   function kernel(i) { return i+200; };
-  var m = new Matrix([512], ["int8"], kernel, {spew:1});
+  var m = new Matrix([512], ["int8"], kernel);
   var a = Int8Array.build(512, function (i) { return i+200; });
   assertEqMatrixTypedArray(m, a, Int8Array);
 
@@ -66,7 +66,7 @@ function constructInt8() {
 
 function constructInt8Out() {
   function kernel(i, out) { out.set(i+200); };
-  var m = new Matrix([512], ["int8"], kernel, {spew:1});
+  var m = new Matrix([512], ["int8"], kernel);
   var a = Int8Array.build(512, function (i) { return i+200; });
   assertEqMatrixTypedArray(m, a, Int8Array);
 
