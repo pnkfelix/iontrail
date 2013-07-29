@@ -44,6 +44,23 @@ function build(n, f) {
   return result;
 }
 
+function buildArray(len, f) {
+  var MyArrayType = this;
+  var a = new MyArrayType(len);
+  for (var i=0; i < len; i++) { a[i] = f(i); }
+  return a;
+}
+
+Int8Array.build = buildArray;
+Int16Array.build = buildArray;
+Int32Array.build = buildArray;
+Uint8Array.build = buildArray;
+Uint8ClampedArray.build = buildArray;
+Uint16Array.build = buildArray;
+Uint32Array.build = buildArray;
+Float32Array.build = buildArray;
+Float64Array.build = buildArray;
+
 function range(n, m) {
   // Returns an array with [n..m] (include on n, exclusive on m)
 
