@@ -2198,27 +2198,19 @@ function MatrixCommonMap(self, parexec, depth, grain, func, mode) {
 
 }
 
+// (...args) -> [depth, output_grain, func, mode]
 function MatrixDecomposeArgsForMap(self, arg0, arg1, arg2, arg3) { // ([depth,] [output-grain-type,] func, [mode])
   var depth = self.shape.length;
   var grain = ["any"];
   var func, mode;
-  if (typeof arg0 === "function") {
-    func = arg0;
-    mode = arg1;
-  } else if (typeof arg1 === "function") {
-    if (std_Array_isArray(arg0)) {
-      grain = arg0;
-    } else {
-      depth = arg0;
-    }
-    func = arg1;
-    mode = arg2;
-  } else { // assumes (typeof arg2 === "function")
-    depth = arg0;
-    grain = arg1;
-    func = arg2;
-    mode = arg3;
+  func = arg0;
+  if (typeof(arg1) !== "undefined") {
+    depth = arg1;
   }
+  if (typeof(arg2) !== "undefined") {
+    grain = arg2;
+  }
+  mode = arg3;
 
   return [depth, grain, func, mode];
 }
