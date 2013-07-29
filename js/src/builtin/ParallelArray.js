@@ -2171,16 +2171,20 @@ function MatrixCommonMap(self, parexec, depth, grain, func, mode) {
 
   function fill1(i, outptr) {
     mode && mode.print && mode.print({called:"fill1",i:i});
-    return func(self.get(i), i, outptr); }
+    return func(self.get(i), i, self, outptr); }
   function fill2(i, j, outptr) {
     mode && mode.print && mode.print({called:"fill2",i:i,j:j});
-    return func(self.get(i, j), i, j, outptr); }
+    return func(self.get(i, j), i, j, self, outptr); }
   function fill3(i, j, k, outptr) {
     mode && mode.print && mode.print({called:"fill3",i:i,j:j,k:k});
-    return func(self.get(i, j, k), i, j, k, outptr); }
+    return func(self.get(i, j, k), i, j, k, self, outptr); }
   function fillN(...args) {
     mode && mode.print && mode.print({called:"fillN",args:args});
-    return func.apply(undefined, self.get.apply(self, args), args); }
+    var outptr = args.pop();
+    var elem = self.get.apply(self, args);
+    args.push(self);
+    args.push(outptr);
+    return func.apply(undefined, elem, args); }
   var fill;
   switch (frame.length) {
     case 1:  fill = fill1; break;
