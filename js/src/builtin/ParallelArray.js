@@ -1439,7 +1439,7 @@ function CursorIndexToOffset(grain, indices, idxlen) {
 var Cursor = NewClassPrototype(CURSOR_SLOTS);
 
 function CursorSet(...args) {
-  if (false)
+  if (true)
     ParallelSpew("(Cursor.set A)" +
                  " args: " + ArrayLikeToString(args, 0, args.length));
   CHECK_CURSOR_CLASS(this);
@@ -1462,7 +1462,7 @@ function CursorSet(...args) {
   else
     indexOffset = 0|CursorIndexToOffset(grain, args, idxlen);
 
-  if (false)
+  if (true)
     ParallelSpew("(Cursor.set Y)" +
                  " bufferOffset: " + bufferOffset + "," +
                  " indexOffset: " + indexOffset + "," +
@@ -1475,12 +1475,6 @@ function CursorSet(...args) {
 Cursor.set = CursorSet;
 
 function CursorGather(arg0, arg1, arg2) { // ([depth,] func, [mode])
-  if (false)
-    ParallelSpewAA(["called", "Cursor.gather A",
-                    "arg0", arg0,
-                    "arg1", arg1,
-                    "arg2", arg2]);
-
   CHECK_CURSOR_CLASS(this);
 
   var grain = CURSOR_GET_GRAIN(this);
@@ -1511,13 +1505,6 @@ function CursorGather(arg0, arg1, arg2) { // ([depth,] func, [mode])
                 subframe:subframe, subgrain:subgrain,
                 depth:depth});
 
-  if (false)
-    ParallelSpewAA(["called", "Cursor.gather",
-                    "bufferOffset", bufferOffset,
-                    "depth", depth,
-                    "subframe", ArrayLikeToString(subframe, 0, 1),
-                    "subgrain", ArrayLikeToString(subgrain, 0, 1)]);
-
   MatrixPFill(true, buffer, bufferOffset, grain, subframe, subgrain, valtype, func, mode);
   CURSOR_SET_USED(this, true);
 }
@@ -1533,6 +1520,7 @@ function NewCursor(buffer, bufferOffset, grain) {
 }
 
 function MoveCursor(c, offset) {
+  ParallelSpew("MoveCursor offset:"+offset);
   CURSOR_SET_OFFSET(c, offset);
   CURSOR_SET_USED(c, false);
 }
@@ -1664,10 +1652,11 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
     mode && mode.spew &&
       ParallelSpew("(fill1_leaf A)" +
                    " buffer: " + ArrayLikeToString(buffer, indexStart, indexEnd - indexStart) + "," +
+                   " offset: "+offset+","+
                    " indexStart: " + indexStart + "," +
                    " indexEnd: " + indexEnd);
 
-    var cursor = NewCursor(buffer, indexStart, []);
+    var cursor = NewCursor(buffer, offset+indexStart, []);
 
     for (var i = indexStart; i < indexEnd; i++) {
       mode && mode.spew &&
@@ -1688,6 +1677,8 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
   function fill1_subm(indexStart, indexEnd) {
     mode && mode.spew &&
       ParallelSpew("(fill1_subm A)" +
+                   " offset: "+offset+"," +
+                   " grain_len: "+grain_len+"," +
                    " indexStart: " + indexStart + "," +
                    " indexEnd: " + indexEnd);
 
@@ -1723,7 +1714,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
 
     var x = (indexStart / yDimension) | 0;
     var y = indexStart - x*yDimension;
-    var cursor = NewCursor(buffer, indexStart, []);
+    var cursor = NewCursor(buffer, offset+indexStart, []);
 
     for (var i = indexStart; i < indexEnd; i++) {
       mode && mode.spew &&
@@ -1753,6 +1744,8 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
   function fill2_subm(indexStart, indexEnd) {
     mode && mode.spew &&
       ParallelSpewAA(["called", "fill2_subm A",
+                      " offset: "+offset+"," +
+                      " grain_len: "+grain_len+"," +
                       "indexStart", indexStart,
                       "indexEnd", indexEnd]);
 
@@ -2054,9 +2047,11 @@ function value_type_to_buffer_allocator(descriptor) {
   return lookup[descriptor];
 }
 
-function make_buffer_from_shape_and_valtype(shape, descriptor) {
+function make_buffer_from_shape_and_valtype(shape, descriptor, mode) {
   var buffer_maker = value_type_to_buffer_allocator(descriptor);
   var elem_count = ProductOfArrayRange(shape, 0, shape.length);
+  mode && mode.print && mode.print({before:"buffer_maker",
+                                    elem_count:elem_count});
   return buffer_maker(elem_count);
 }
 
@@ -2099,7 +2094,7 @@ function MatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
 
   mode && mode.print && mode.print({called:"PMC B", shape:shape, valtype:valtype});
 
-  buffer = make_buffer_from_shape_and_valtype(shape, valtype);
+  buffer = make_buffer_from_shape_and_valtype(shape, valtype, mode);
 
   switch(shape.length) {
     case 1: getFunc = MatrixGet1; break;
