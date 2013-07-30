@@ -1595,8 +1595,8 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
 
   mode && mode.spew && ParallelSpew("(PMF A11)");
 
-  var indexStart = offset;
-  var indexEnd = offset+frame_len;
+  var indexStart = 0;
+  var indexEnd = frame_len;
   var grain_len = ProductOfArrayRange(grain, 0, grain.length);
 
   mode && mode.spew &&
@@ -1649,7 +1649,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
       var indexStart = chunkPos << CHUNK_SHIFT;
       var indexEnd = std_Math_min(indexStart + CHUNK_SIZE, frame_len);
       computefunc(indexStart, indexEnd);
-      UnsafePutElements(info, SLICE_POS(sliceId), ++chunkPos);
+      UnsafePutElements(info, offset+SLICE_POS(sliceId), ++chunkPos);
     }
 
 
@@ -1680,7 +1680,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
         mode && mode.spew &&
           ParallelSpew("(fill1_leaf E)" +
                        " val: " + val);
-        UnsafePutElements(buffer, i, val);
+        UnsafePutElements(buffer, offset+i, val);
       }
     }
   }
@@ -1691,7 +1691,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
                    " indexStart: " + indexStart + "," +
                    " indexEnd: " + indexEnd);
 
-    var bufferOffset = indexStart * grain_len;
+    var bufferOffset = offset + indexStart * grain_len;
     var cursor = NewCursor(buffer, bufferOffset, grain);
 
     for (var i = indexStart; i < indexEnd; i++, bufferOffset += grain_len) {
@@ -1740,7 +1740,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
           ParallelSpewAA(["called", "fill2_leaf E",
                           "val", val]);
 
-        UnsafePutElements(buffer, i, val);
+        UnsafePutElements(buffer, offset+i, val);
       }
 
       if (++y === yDimension) {
@@ -1758,7 +1758,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
 
     var x = (indexStart / yDimension) | 0;
     var y = indexStart - x*yDimension;
-    var bufferOffset = indexStart * grain_len;
+    var bufferOffset = offset + indexStart * grain_len;
     var cursor = NewCursor(buffer, bufferOffset, grain);
 
     for (var i = indexStart; i < indexEnd; i++, bufferOffset += grain_len) {
@@ -1799,7 +1799,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
     var r = indexStart - x*yDimension*zDimension;
     var y = (r / zDimension) | 0;
     var z = r - y*zDimension;
-    var cursor = NewCursor(buffer, indexStart, []);
+    var cursor = NewCursor(buffer, offset+indexStart, []);
 
     for (var i = indexStart; i < indexEnd; i++) {
       mode && mode.spew &&
@@ -1817,7 +1817,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
           ParallelSpewAA(["called", "fill3_leaf E",
                           "val", val]);
 
-        UnsafePutElements(buffer, i, val);
+        UnsafePutElements(buffer, offset+i, val);
       }
 
       if (++z === zDimension) {
@@ -1840,7 +1840,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
     var r = indexStart - x*yDimension*zDimension;
     var y = (r / zDimension) | 0;
     var z = r - y*zDimension;
-    var bufferOffset = indexStart * grain_len;
+    var bufferOffset = offset + indexStart * grain_len;
     var cursor = NewCursor(buffer, bufferOffset, grain);
 
     for (var i = indexStart; i < indexEnd; i++, bufferOffset += grain_len) {
@@ -1886,7 +1886,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
     mode && mode.spew &&
       ParallelSpewAA(["called", "fillN_leaf B",
                       "frame_indices", ArrayLikeToString(frame_indices, 0, 1)]);
-    var cursor = NewCursor(buffer, indexStart, []);
+    var cursor = NewCursor(buffer, offset + indexStart, []);
     for (var i = indexStart; i < indexEnd; i++) {
       MoveCursor(cursor, i);
 
@@ -1902,7 +1902,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
                         "frame_indices", ArrayLikeToString(frame_indices, 0, 1),
                         "val", val]);
       if (!CURSOR_GET_USED(cursor)) {
-        UnsafePutElements(buffer, i, val);
+        UnsafePutElements(buffer, offset+i, val);
       }
       frame_indices.pop();
       StepIndices(frame, frame_indices);
@@ -1919,7 +1919,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
     // allocate new arrays and copy in computed subarrays.
     var frame_indices = ComputeIndices(frame, indexStart);
 
-    var bufferOffset = indexStart * grain_len;
+    var bufferOffset = offset + indexStart * grain_len;
     var cursor = NewCursor(buffer, bufferOffset, grain);
 
     // FIXME: Something seems off about handling of i, indexStart, bufferOffset...
