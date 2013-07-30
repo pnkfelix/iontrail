@@ -78,11 +78,60 @@ function constructNested_DoesNotYetWork() {
   });
 }
 
+function constructAnyOut() {
+  function kernel(i,j) { return 1 + i*100 + j; }
+
+  var expectedArray = build2dArray(100, 5, kernel);
+
+  var mExpect, mActual;
+
+  mExpect = new Matrix([100,5], copyarray(expectedArray));
+  mActual = new Matrix([100,5], function (i,j,out) { out.set(kernel(i,j)); });
+  assertEqMatrix(mActual, mExpect);
+
+  mActual = new Matrix([100,5], ["any"], function (i,j,out) { out.set(kernel(i,j)); });
+  assertEqMatrix(mActual, mExpect);
+
+  mActual = new Matrix([100], [5, "any"],
+    function (i, out) { out.gather(function (j) { return kernel(i,j); }); });
+  assertEqMatrix(mActual, mExpect);
+
+  mActual = new Matrix([100], [5, "any"],
+    function (i, out) { out.gather(function (j, out2) { out2.set(kernel(i,j)); }); });
+  assertEqMatrix(mActual, mExpect);
+
+
+  assertParallelModesCommute(function(m) {
+    return new Matrix([100,5], function (i,j,out) { out.set(kernel(i,j)); }, m);
+  });
+
+  assertParallelModesCommute(function(m) {
+    return new Matrix([100,5],
+                      ["any"],
+                      function (i,j,out) { out.set(kernel(i,j)); }, m);
+  });
+
+  assertParallelModesCommute(function(m) {
+    function fill(i,out) {
+      out.gather(function (j) { return kernel(i,j); });
+    }
+    return new Matrix([3], [2,"any"], fill);
+  });
+
+  assertParallelModesCommute(function(m) {
+    function fill(i,out) {
+      out.gather(function (j, out2) { out2.set(kernel(i,j)); });
+    }
+    return new Matrix([100], [5,"any"], fill);
+  });
+}
+
 try {
   if (getBuildConfiguration().parallelJS) {
     constructSimple();
     constructAny();
     // constructIsolated_DoesNotYetWork();
+    constructAnyOut();
   }
 } catch (e) {
   print(e.name);
