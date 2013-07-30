@@ -1474,7 +1474,7 @@ function CursorSet(...args) {
 };
 Cursor.set = CursorSet;
 
-Cursor.gather = function CursorGather(arg0, arg1, arg2) { // ([depth,] func, [mode])
+function CursorGather(arg0, arg1, arg2) { // ([depth,] func, [mode])
   if (false)
     ParallelSpewAA(["called", "Cursor.gather A",
                     "arg0", arg0,
@@ -1486,6 +1486,7 @@ Cursor.gather = function CursorGather(arg0, arg1, arg2) { // ([depth,] func, [mo
   var grain = CURSOR_GET_GRAIN(this);
   var buffer = CURSOR_GET_BUFFER(this);
   var bufferOffset = CURSOR_GET_OFFSET(this);
+  var valtype = false; // Cursors do not (yet?) carry their expected valtype.
 
   if (!grain || grain.length === 0)
     ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "Cursor.gather on empty grain");
@@ -1504,6 +1505,12 @@ Cursor.gather = function CursorGather(arg0, arg1, arg2) { // ([depth,] func, [mo
   var subframe = grain.slice(0, depth);
   var subgrain = grain.slice(depth);
 
+  mode && mode.print &&
+    mode.print({called: "outptr.gather",
+                bufoffset:bufferOffset, grain:grain, valtype:valtype,
+                subframe:subframe, subgrain:subgrain,
+                depth:depth});
+
   if (false)
     ParallelSpewAA(["called", "Cursor.gather",
                     "bufferOffset", bufferOffset,
@@ -1511,9 +1518,10 @@ Cursor.gather = function CursorGather(arg0, arg1, arg2) { // ([depth,] func, [mo
                     "subframe", ArrayLikeToString(subframe, 0, 1),
                     "subgrain", ArrayLikeToString(subgrain, 0, 1)]);
 
-  MatrixPFill(true, buffer, bufoffset, grain, subframe, subgrain, valtype, func, mode);
+  MatrixPFill(true, buffer, bufferOffset, grain, subframe, subgrain, valtype, func, mode);
   CURSOR_SET_USED(this, true);
 }
+Cursor.gather = CursorGather;
 
 function NewCursor(buffer, bufferOffset, grain) {
   var c = NewObjectWithClassPrototype(Cursor);
@@ -1540,8 +1548,10 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
                  " parexec: " + parexec +
                  " buffer: " + ArrayLikeToString(buffer, 0, 1) + "," +
                  " offset: " + offset + "," +
+                 " shape: " + ArrayLikeToString(shape, 0, shape.length) + "," +
                  " frame: " + ArrayLikeToString(frame, 0, frame.length) + "," +
-                 " grain: " + ArrayLikeToString(grain, 0, grain.length));
+                 " grain: " + ArrayLikeToString(grain, 0, grain.length) + "," +
+                 " valtype: " + valtype );
 
   var xDimension, yDimension, zDimension;
   var computefunc;
@@ -2011,7 +2021,7 @@ function submatrix_matches_expectation(expect_shape, expect_valtype, actual_shap
 {
   if (expect_shape.length !== actual_shape.length)
     return false;
-  if (expect_valtype !== actual_valtype)
+  if (expect_valtype && expect_valtype !== actual_valtype)
     return false;
   var len = expect_shape.length;
   for (var i = 0; i < len; i++) {
@@ -2749,4 +2759,5 @@ SetScriptHints(MatrixCommonMap,                      { cloneAtCallsite: true });
 SetScriptHints(MatrixDecomposeArgsForMap,            { cloneAtCallsite: true });
 SetScriptHints(MatrixReducePar,                      { cloneAtCallsite: true });
 
-SetScriptHints(CursorSet,   { cloneAtCallsite: true, inline: true });
+SetScriptHints(CursorSet,    { cloneAtCallsite: true, inline: true });
+SetScriptHints(CursorGather, { cloneAtCallsite: true });
