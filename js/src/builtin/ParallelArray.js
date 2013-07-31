@@ -1651,7 +1651,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
        ParallelSpew("(fill1_leaf B)" +
                      " i: " + i);
 
-      MoveCursor(cursor, i);
+      MoveCursor(cursor, offset+i);
       var val = func(i, cursor);
       if (!CURSOR_GET_USED(cursor)) {
         mode && mode.spew &&
@@ -1711,7 +1711,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
                         "x", x,
                         "y", y]);
 
-      MoveCursor(cursor, i);
+      MoveCursor(cursor, offset+i);
       var val = func(x, y, cursor);
 
       if (!CURSOR_GET_USED(cursor)) {
@@ -1790,7 +1790,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
                         "y", y,
                         "z", z]);
 
-      MoveCursor(cursor, i);
+      MoveCursor(cursor, offset+i);
       var val = func(x, y, z, cursor);
 
       if (!CURSOR_GET_USED(cursor)) {
@@ -1869,7 +1869,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
                       "frame_indices", ArrayLikeToString(frame_indices, 0, 1)]);
     var cursor = NewCursor(buffer, offset + indexStart, []);
     for (var i = indexStart; i < indexEnd; i++) {
-      MoveCursor(cursor, i);
+      MoveCursor(cursor, offset+i);
 
       frame_indices.push(cursor);
       mode && mode.spew &&
