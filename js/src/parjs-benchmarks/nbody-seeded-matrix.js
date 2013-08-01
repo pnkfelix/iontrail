@@ -549,6 +549,13 @@ const TICKS = 10;
 
 Math.seedrandom("seed");
 
+try {
 benchmark("NBODY", 1, DEFAULT_MEASURE,
           function () { emulateNBody("seq", NUMBODIES, TICKS); },
           function () { emulateNBody("par", NUMBODIES, TICKS); });
+} catch (e) {
+  print(e.name);
+  print(e.message);
+  print(e.stack);
+  throw e;
+}
