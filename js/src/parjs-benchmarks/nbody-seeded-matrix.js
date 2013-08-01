@@ -6,7 +6,9 @@ load(libdir + "util.js");
 load(libdir + "seedrandom.js");
 
 function copyarray(a) {
-  function fill(i) { return a[i]; }
+  function fill(i) {
+    return new Matrix([a[i].length], function (j) { return a[i][j]; });
+  }
   return fill;
 }
 
@@ -41,8 +43,8 @@ var NBody = {
     NBody.private = {};
 
     if (mode === "par") {
-      NBody.private.pos = new Matrix([numBodies], copyarray(initPos));
-      NBody.private.vel = new Matrix([numBodies], copyarray(initVel));
+      NBody.private.pos = new Matrix([numBodies], [3, "any"], copyarray(initPos));
+      NBody.private.vel = new Matrix([numBodies], [6, "any"], copyarray(initVel));
     } else {
       NBody.private.pos = initPos;
       NBody.private.vel = initVel;
@@ -55,8 +57,8 @@ var NBody = {
   // Parallel
 
   tickPar: function tickPar() {
-    NBody.private.vel = new Matrix([NBody.numBodies], [6, "any"], NBody.velocityPar, {mode:"seq"});
-    NBody.private.pos = new Matrix([NBody.numBodies], [3, "any"], NBody.positionPar, {mode:"seq"});
+    NBody.private.vel = new Matrix([NBody.numBodies], [6, "any"], NBody.velocityPar);
+    NBody.private.pos = new Matrix([NBody.numBodies], [3, "any"], NBody.positionPar);
     NBody.time++;
   },
 
