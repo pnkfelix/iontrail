@@ -5,6 +5,11 @@
 load(libdir + "util.js");
 load(libdir + "seedrandom.js");
 
+function copyarray(a) {
+  function fill(i) { return a[i]; }
+  return fill;
+}
+
 var NBody = {
   Constant: {
     "deltaTime": 1,     // 0.005 in their code.
@@ -36,8 +41,8 @@ var NBody = {
     NBody.private = {};
 
     if (mode === "par") {
-      NBody.private.pos = new Matrix(initPos);
-      NBody.private.vel = new Matrix(initVel);
+      NBody.private.pos = new Matrix([numBodies], copyarray(initPos));
+      NBody.private.vel = new Matrix([numBodies], copyarray(initVel));
     } else {
       NBody.private.pos = initPos;
       NBody.private.vel = initVel;
@@ -50,12 +55,12 @@ var NBody = {
   // Parallel
 
   tickPar: function tickPar() {
-    NBody.private.vel = new Matrix([NBody.numBodies], [6, "any"], NBody.velocityPar);
-    NBody.private.pos = new Matrix([NBody.numBodies], [3, "any"], NBody.positionPar);
+    NBody.private.vel = new Matrix([NBody.numBodies], [6, "any"], NBody.velocityPar, {mode:"seq"});
+    NBody.private.pos = new Matrix([NBody.numBodies], [3, "any"], NBody.positionPar, {mode:"seq"});
     NBody.time++;
   },
 
-  velocityPar: function velocityPar(index) {
+  velocityPar: function velocityPar(index, outptr) {
     var pos = NBody.private.pos;
     var vel = NBody.private.vel;
 
@@ -100,9 +105,9 @@ var NBody = {
     var i;
 
     // define particle 1 center distance
-    var dirToCenterX = cX - pos.get(index)[0];
-    var dirToCenterY = cY - pos.get(index)[1];
-    var dirToCenterZ = cZ - pos.get(index)[2];
+    var dirToCenterX = cX - pos.get(index, 0);
+    var dirToCenterY = cY - pos.get(index, 1);
+    var dirToCenterZ = cZ - pos.get(index, 2);
 
     var distanceSquaredTo = dirToCenterX * dirToCenterX + dirToCenterY * dirToCenterY + dirToCenterZ * dirToCenterZ;
     var distToCenter = Math.sqrt(distanceSquaredTo);
@@ -120,13 +125,13 @@ var NBody = {
     }
 
     for (i = 0; i < shape; i = i + 1) {
-      var rx = pos.get(i)[0] - pos.get(index)[0];
-      var ry = pos.get(i)[1] - pos.get(index)[1];
-      var rz = pos.get(i)[2] - pos.get(index)[2];
+      var rx = pos.get(i, 0) - pos.get(index, 0);
+      var ry = pos.get(i, 1) - pos.get(index, 1);
+      var rz = pos.get(i, 2) - pos.get(index, 2);
 
       // make sure we are not testing the particle against its own position
       var areSame = 0;
-      if (pos.get(i)[0] == pos.get(index)[0] && pos.get(i)[1] == pos.get(index)[1] && pos.get(i)[2] == pos.get(index)[2])
+      if (pos.get(i, 0) == pos.get(index, 0) && pos.get(i, 1) == pos.get(index, 1) && pos.get(i, 2) == pos.get(index, 2))
         areSame += 1;
 
       var distSqrd = rx * rx + ry * ry + rz * rz;
@@ -156,9 +161,9 @@ var NBody = {
           var Q = (.5 - Math.cos(adjustedPercent * 3.14159265 * 2) * .5 + .5) * 100.9;
 
           // get velocity 2
-          var velX2 = vel.get(i)[4];
-          var velY2 = vel.get(i)[5];
-          var velZ2 = vel.get(i)[6];
+          var velX2 = vel.get(i, 4);
+          var velY2 = vel.get(i, 5);
+          var velZ2 = vel.get(i, 6);
 
           var velLength2 = Math.sqrt(velX2 * velX2 + velY2 * velY2 + velZ2 * velZ2);
 
@@ -168,9 +173,9 @@ var NBody = {
           velZ2 = (velZ2 / velLength2) * Q;
 
           // get own velocity
-          var velX = vel.get(i)[0];
-          var velY = vel.get(i)[1];
-          var velZ = vel.get(i)[2];
+          var velX = vel.get(i, 0);
+          var velY = vel.get(i, 1);
+          var velZ = vel.get(i, 2);
 
           var velLength = Math.sqrt(velX * velX + velY * velY + velZ * velZ);
 
@@ -227,13 +232,13 @@ var NBody = {
     }
 
     // Caclulate new velocity
-    newX = (vel.get(index)[0]) + accX;
-    newY = (vel.get(index)[1]) + accY;
-    newZ = (vel.get(index)[2]) + accZ;
+    newX = (vel.get(index, 0)) + accX;
+    newY = (vel.get(index, 1)) + accY;
+    newZ = (vel.get(index, 2)) + accZ;
 
-    newX2 = (vel.get(index)[3]) + accX2;
-    newY2 = (vel.get(index)[4]) + accY2;
-    newZ2 = (vel.get(index)[5]) + accZ2;
+    newX2 = (vel.get(index, 3)) + accX2;
+    newY2 = (vel.get(index, 4)) + accY2;
+    newZ2 = (vel.get(index, 5)) + accZ2;
 
     if (time < 500) {
       var acs = newX2 * newX2 + newY2 * newY2 + newZ2 * newZ2;
@@ -251,10 +256,16 @@ var NBody = {
       }
     }
 
-    return [newX, newY, newZ, newX2, newY2, newZ2];
+    // return [newX, newY, newZ, newX2, newY2, newZ2];
+    outptr.set(0, newX);
+    outptr.set(1, newY);
+    outptr.set(2, newZ);
+    outptr.set(3, newX2);
+    outptr.set(4, newY2);
+    outptr.set(5, newZ2);
   },
 
-  positionPar: function positionPar(index) {
+  positionPar: function positionPar(index, outptr) {
     var vel = NBody.private.vel;
     var pos = NBody.private.pos;
 
@@ -262,23 +273,26 @@ var NBody = {
     var y = 0;
     var z = 0;
 
-    var velX = vel.get(index)[0];
-    var velY = vel.get(index)[1];
-    var velZ = vel.get(index)[2];
+    var velX = vel.get(index, 0);
+    var velY = vel.get(index, 1);
+    var velZ = vel.get(index, 2);
 
-    var velX2 = vel.get(index)[3];
-    var velY2 = vel.get(index)[4];
-    var velZ2 = vel.get(index)[5];
+    var velX2 = vel.get(index, 3);
+    var velY2 = vel.get(index, 4);
+    var velZ2 = vel.get(index, 5);
 
     var netVelX = (velX - velX2);
     var netVelY = (velY - velY2);
     var netVelZ = (velZ - velZ2);
 
-    x = pos.get(index)[0] + (netVelX);
-    y = pos.get(index)[1] + (netVelY);
-    z = pos.get(index)[2] + (netVelZ);
+    x = pos.get(index, 0) + (netVelX);
+    y = pos.get(index, 1) + (netVelY);
+    z = pos.get(index, 2) + (netVelZ);
 
-    return [x, y, z];
+    // return [x, y, z];
+    outptr.set(0, x);
+    outptr.set(1, y);
+    outptr.set(2, z);
   },
 
   // Sequential
@@ -541,6 +555,7 @@ function emulateNBody(mode, numBodies, ticks) {
     //print(NBody.private.pos);
     print(mode + " bodies=" + numBodies + " tick=" + (i+1) + "/" + ticks + ": " + (Date.now() - start) + " ms");
   }
+  return NBody.private;
 }
 
 // Using 4000 bodies going off Rick's comment as 4000 being a typical workload.
@@ -551,8 +566,8 @@ Math.seedrandom("seed");
 
 try {
 benchmark("NBODY", 1, DEFAULT_MEASURE,
-          function () { emulateNBody("seq", NUMBODIES, TICKS); },
-          function () { emulateNBody("par", NUMBODIES, TICKS); });
+          function () { Math.seedrandom("seed"); return emulateNBody("seq", NUMBODIES, TICKS); },
+          function () { Math.seedrandom("seed"); return emulateNBody("par", NUMBODIES, TICKS); });
 } catch (e) {
   print(e.name);
   print(e.message);
