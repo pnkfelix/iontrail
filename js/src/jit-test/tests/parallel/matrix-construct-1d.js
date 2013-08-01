@@ -1,3 +1,4 @@
+// |jit-test| no-ion-limit-script-size
 load(libdir + "parallelarray-helpers.js");
 
 function constructAny() {
