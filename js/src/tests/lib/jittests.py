@@ -145,6 +145,8 @@ class Test:
                         test.jitflags.append('--no-ion')
                     elif name == 'dump-bytecode':
                         test.jitflags.append('--dump-bytecode')
+                    elif name == 'no-ion-limit-script-size':
+                        test.jitflags.append('--ion-limit-script-size=off');
                     else:
                         print('warning: unrecognized |jit-test| attribute %s' % part)
 
