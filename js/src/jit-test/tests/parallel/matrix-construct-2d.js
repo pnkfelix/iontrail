@@ -1,3 +1,4 @@
+// |jit-test| no-ion-limit-script-size
 load(libdir + "parallelarray-helpers.js");
 
 function copyarray(a) { return function (i, j) { return a[i][j]; }; }
@@ -94,6 +95,10 @@ function constructAnyOut() {
 
   mActual = new Matrix([100], [5, "any"],
     function (i, out) { out.gather(function (j) { return kernel(i,j); }); });
+  assertEqMatrix(mActual, mExpect);
+
+  mActual = new Matrix([100], [5, "any"],
+    function (i, out) { for (var j=0; j < 5; j++) { out.set(j, kernel(i, j)); } });
   assertEqMatrix(mActual, mExpect);
 
   mActual = new Matrix([100], [5, "any"],
