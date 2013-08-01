@@ -1637,7 +1637,7 @@ function MatrixPFill(parexec, buffer, offset, shape, frame, grain, valtype, func
       var indexStart = chunkPos << CHUNK_SHIFT;
       var indexEnd = std_Math_min(indexStart + CHUNK_SIZE, frame_len);
       computefunc(indexStart, indexEnd);
-      UnsafePutElements(info, offset+SLICE_POS(sliceId), ++chunkPos);
+      UnsafePutElements(info, SLICE_POS(sliceId), ++chunkPos);
     }
 
 
