@@ -1429,7 +1429,7 @@ function CursorIndexToOffset(grain, indices, idxlen) {
 var Cursor = NewClassPrototype(CURSOR_SLOTS);
 
 function CursorSet(...args) {
-  if (true)
+  if (false)
     ParallelSpew("(Cursor.set A)" +
                  " args: " + ArrayLikeToString(args, 0, args.length));
   CHECK_CURSOR_CLASS(this);
@@ -1452,7 +1452,7 @@ function CursorSet(...args) {
   else
     indexOffset = 0|CursorIndexToOffset(grain, args, idxlen-1);
 
-  if (true)
+  if (false)
     ParallelSpew("(Cursor.set Y)" +
                  " bufferOffset: " + bufferOffset + "," +
                  " indexOffset: " + indexOffset + "," +
