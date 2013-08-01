@@ -1450,9 +1450,13 @@ function CursorSet(...args) {
   var v = args[idxlen];
   var grain = CURSOR_GET_GRAIN(this);
 
-  if (idxlen > grain.length)
+    ParallelSpew("(Cursor.set A)" +
+                 " grain: " + ArrayLikeToString(grain, 0, grain.length) +
+                 " args: " + ArrayLikeToString(args, 0, args.length));
+
+  if (grain && idxlen > grain.length)
     ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "Cursor.set too many arguments");
-  if (idxlen < grain.length)
+  if (grain && idxlen < grain.length)
     ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "Cursor.set curry unsupported");
 
   var buffer = CURSOR_GET_BUFFER(this);
