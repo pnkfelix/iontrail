@@ -35,7 +35,7 @@
  * if debug is not on.
  */
 #ifndef DEBUG
-#define ParallelSpew(args)
+#define ParallelSpew(args) 0
 #endif
 
 /**
@@ -1437,10 +1437,6 @@ function CursorSet(...args) {
   var idxlen = args.length - 1;
   var v = args[idxlen];
   var grain = CURSOR_GET_GRAIN(this);
-
-    ParallelSpew("(Cursor.set A)" +
-                 " grain: " + ArrayLikeToString(grain, 0, grain.length) +
-                 " args: " + ArrayLikeToString(args, 0, args.length));
 
   if (grain && idxlen > grain.length)
     ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, "Cursor.set too many arguments");
