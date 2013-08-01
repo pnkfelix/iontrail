@@ -71,8 +71,10 @@ function ArrayLikeToString(a, start, len) {
     output += a[i];
     if (i + 1 < a.length)
       output += ", ";
-    if (i + 1 >= a.length)
+    if (i + 1 >= a.length) {
+      i++;
       break;
+    }
   }
   if (i < a.length)
     output += "...";
@@ -1460,7 +1462,7 @@ function CursorSet(...args) {
   if (!grain || grain.length === 0)
     indexOffset = 0;
   else
-    indexOffset = 0|CursorIndexToOffset(grain, args, idxlen);
+    indexOffset = 0|CursorIndexToOffset(grain, args, idxlen-1);
 
   if (true)
     ParallelSpew("(Cursor.set Y)" +
@@ -1520,7 +1522,6 @@ function NewCursor(buffer, bufferOffset, grain) {
 }
 
 function MoveCursor(c, offset) {
-  ParallelSpew("MoveCursor offset:"+offset);
   CURSOR_SET_OFFSET(c, offset);
   CURSOR_SET_USED(c, false);
 }
@@ -2079,6 +2080,14 @@ function MatrixConstructFromGrainFunctionMode(arg0, arg1, arg2, arg3) {
     grain = arg1;
     func = arg2;
     mode = arg3;
+  }
+
+  if (grain === undefined) {
+    grain = [];
+  }
+
+  if (!std_Array_isArray(grain)) {
+    ThrowError(JSMSG_PAR_ARRAY_BAD_ARG, ": grain argument "+grain+" is not an array.");
   }
 
   if (func === undefined) {
