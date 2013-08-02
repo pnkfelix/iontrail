@@ -303,6 +303,9 @@ math_atanh_uncached(double x);
 // Math.hypot is disabled pending the resolution of spec issues (bug 896264).
 #if 0
 extern double 
+math_atanh_uncached(double x);
+
+extern double 
 math_hypot_impl(double x, double y);
 
 extern double 
