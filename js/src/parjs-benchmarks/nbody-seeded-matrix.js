@@ -57,8 +57,10 @@ var NBody = {
   // Parallel
 
   tickPar: function tickPar() {
-    NBody.private.vel = new Matrix([NBody.numBodies], [6, "any"], NBody.velocityPar);
-    NBody.private.pos = new Matrix([NBody.numBodies], [3, "any"], NBody.positionPar);
+    var newvel = new Matrix([NBody.numBodies], [6, "any"], NBody.velocityPar, {mode:"seq"});
+    var newpos = new Matrix([NBody.numBodies], [3, "any"], NBody.positionPar, {mode:"seq"});
+    NBody.private.vel = newvel; 
+    NBody.private.pos = newpos;
     NBody.time++;
   },
 
@@ -258,13 +260,16 @@ var NBody = {
       }
     }
 
-    // return [newX, newY, newZ, newX2, newY2, newZ2];
     outptr.set(0, newX);
     outptr.set(1, newY);
     outptr.set(2, newZ);
     outptr.set(3, newX2);
     outptr.set(4, newY2);
     outptr.set(5, newZ2);
+    var ret = [newX, newY, newZ, newX2, newY2, newZ2];
+    print("velocityPar(index:"+index +
+          ", outptr:" + JSON.stringify(outptr) +
+          ") ret:" + JSON.stringify(ret));
   },
 
   positionPar: function positionPar(index, outptr) {
@@ -546,6 +551,20 @@ var NBody = {
   }
 };
 
+function matrixToArrays(m) {
+  var a = [];
+  if (m.shape.length == 1) {
+    for (var i = 0; i < m.shape[0]; i++) {
+      a.push(m.get(i));
+    }
+  } else {
+    for (var i = 0; i < m.shape[0]; i++) {
+      a.push(matrixToArrays(m.get(i)));
+    }
+  }
+  return a;
+}
+
 function emulateNBody(mode, numBodies, ticks) {
   NBody.init(mode, numBodies);
   for (var i = 0; i < ticks; i++) {
@@ -557,14 +576,34 @@ function emulateNBody(mode, numBodies, ticks) {
     //print(NBody.private.pos);
     print(mode + " bodies=" + numBodies + " tick=" + (i+1) + "/" + ticks + ": " + (Date.now() - start) + " ms");
   }
-  return NBody.private;
+  var ret;
+  if (mode === "par") {
+    ret = {pos:matrixToArrays(NBody.private.pos),
+           vel:matrixToArrays(NBody.private.vel)};
+    print("par: "+JSON.stringify(ret));
+  } else {
+    ret = NBody.private;
+    print("seq: "+JSON.stringify(ret));
+  }
+  return ret;
 }
 
 // Using 4000 bodies going off Rick's comment as 4000 being a typical workload.
-const NUMBODIES = 4000;
-const TICKS = 10;
+const NUMBODIES = 1;
+const TICKS = 1;
 
 Math.seedrandom("seed");
+
+var cursorVel = { data: [] };
+cursorVel.set = function(i, val) { this.data[i] = val; }
+var cursorPos = { data: [] };
+cursorPos.set = function(i, val) { this.data[i] = val; }
+Math.seedrandom("seed"); NBody.init("par", 10);
+NBody.velocityPar(0, cursorVel);
+NBody.positionPar(0, cursorPos);
+print("par:"+JSON.stringify({pos: cursorPos.data, vel:cursorVel.data}));
+Math.seedrandom("seed"); NBody.init("seq", 10);
+print("seq:"+JSON.stringify({pos: NBody.positionSeq(0), vel: NBody.velocitySeq(0)}));
 
 try {
 benchmark("NBODY", 1, DEFAULT_MEASURE,
