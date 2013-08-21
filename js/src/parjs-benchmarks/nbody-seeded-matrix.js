@@ -57,8 +57,8 @@ var NBody = {
   // Parallel
 
   tickPar: function tickPar() {
-    var newvel = new Matrix([NBody.numBodies], [6, "any"], NBody.velocityPar, {mode:"seq"});
-    var newpos = new Matrix([NBody.numBodies], [3, "any"], NBody.positionPar, {mode:"seq"});
+    var newvel = new Matrix([NBody.numBodies], [6, "any"], NBody.velocityPar);
+    var newpos = new Matrix([NBody.numBodies], [3, "any"], NBody.positionPar);
     NBody.private.vel = newvel; 
     NBody.private.pos = newpos;
     NBody.time++;
@@ -165,9 +165,9 @@ var NBody = {
           var Q = (.5 - Math.cos(adjustedPercent * 3.14159265 * 2) * .5 + .5) * 100.9;
 
           // get velocity 2
-          var velX2 = vel.get(i, 4);
-          var velY2 = vel.get(i, 5);
-          var velZ2 = vel.get(i, 6);
+          var velX2 = vel.get(i, 3);
+          var velY2 = vel.get(i, 4);
+          var velZ2 = vel.get(i, 5);
 
           var velLength2 = Math.sqrt(velX2 * velX2 + velY2 * velY2 + velZ2 * velZ2);
 
@@ -218,7 +218,7 @@ var NBody = {
       }
     }
 
-    // Speed limits
+    // enforce speed limits
     if (time > 500) {
       var accSquared = accX * accX + accY * accY + accZ * accZ;
       if (accSquared > speedLimit) {
@@ -266,10 +266,8 @@ var NBody = {
     outptr.set(3, newX2);
     outptr.set(4, newY2);
     outptr.set(5, newZ2);
-    var ret = [newX, newY, newZ, newX2, newY2, newZ2];
-    print("velocityPar(index:"+index +
-          ", outptr:" + JSON.stringify(outptr) +
-          ") ret:" + JSON.stringify(ret));
+    // var ret = [newX, newY, newZ, newX2, newY2, newZ2];
+    // return ret;
   },
 
   positionPar: function positionPar(index, outptr) {
@@ -322,8 +320,8 @@ var NBody = {
   },
 
   velocitySeq: function velocitySeq(index) {
-    var vel = NBody.private.vel;
     var pos = NBody.private.pos;
+    var vel = NBody.private.vel;
 
     var deltaTime = NBody.Constant.deltaTime;
     var epsSqr = NBody.Constant.epsSqr;
@@ -350,7 +348,6 @@ var NBody = {
     var repel = 100;
     var align = 300;
     var attract = 100;
-
 
     if (time < 500) {
       speedLimit = 2000;
@@ -391,6 +388,7 @@ var NBody = {
       var ry = pos[i][1] - pos[index][1];
       var rz = pos[i][2] - pos[index][2];
 
+      // make sure we are not testing the particle against its own position
       var areSame = 0;
       if (pos[i][0] == pos[index][0] && pos[i][1] == pos[index][1] && pos[i][2] == pos[index][2])
         areSame += 1;
@@ -401,7 +399,6 @@ var NBody = {
       if (distSqrd < zoneSqrd && areSame <= 0) {
         var length = Math.sqrt(distSqrd);
         var percent = distSqrd / zoneSqrd;
-
 
         if (distSqrd < repel) {
           var F = (repel / percent - 1) * .025;
@@ -420,7 +417,7 @@ var NBody = {
         } else if (distSqrd < align) { //align
           var threshDelta = align - repel;
           var adjustedPercent = (percent - repel) / threshDelta;
-          var Q = (.5 - Math.cos(adjustedPercent * 3.14159265 * 2) * .5 + .5) * 100;
+          var Q = (.5 - Math.cos(adjustedPercent * 3.14159265 * 2) * .5 + .5) * 100.9;
 
           // get velocity 2
           var velX2 = vel[i][3];
@@ -455,17 +452,15 @@ var NBody = {
           accZ2 += velZ;
         }
 
-        if (distSqrd > attract) {        //attract
-          var threshDelta2 = 1 - align;
-          var adjustedPercent2 = (percent - align) / threshDelta2;
+        if (distSqrd > attract) { // attract
+          var threshDelta2 = 1 - attract;
+          var adjustedPercent2 = (percent - attract) / threshDelta2;
           var C = (1 - (Math.cos(adjustedPercent2 * 3.14159265 * 2) * 0.5 + 0.5)) * attractPower;
 
           // normalize the distance vector
           var dx = (rx / (length)) * C;
           var dy = (ry / (length)) * C;
           var dz = (rz / (length)) * C;
-
-          debug = 1.1;
 
           accX += dx;
           accY += dy;
@@ -580,33 +575,18 @@ function emulateNBody(mode, numBodies, ticks) {
   if (mode === "par") {
     ret = {pos:matrixToArrays(NBody.private.pos),
            vel:matrixToArrays(NBody.private.vel)};
-    print("par: "+JSON.stringify(ret));
   } else {
     ret = NBody.private;
-    print("seq: "+JSON.stringify(ret));
   }
   return ret;
 }
 
 // Using 4000 bodies going off Rick's comment as 4000 being a typical workload.
-const NUMBODIES = 1;
-const TICKS = 1;
-
-Math.seedrandom("seed");
-
-var cursorVel = { data: [] };
-cursorVel.set = function(i, val) { this.data[i] = val; }
-var cursorPos = { data: [] };
-cursorPos.set = function(i, val) { this.data[i] = val; }
-Math.seedrandom("seed"); NBody.init("par", 10);
-NBody.velocityPar(0, cursorVel);
-NBody.positionPar(0, cursorPos);
-print("par:"+JSON.stringify({pos: cursorPos.data, vel:cursorVel.data}));
-Math.seedrandom("seed"); NBody.init("seq", 10);
-print("seq:"+JSON.stringify({pos: NBody.positionSeq(0), vel: NBody.velocitySeq(0)}));
+const NUMBODIES = 4000;
+const TICKS = 10;
 
 try {
-benchmark("NBODY", 1, DEFAULT_MEASURE,
+benchmark("NBODY", 1, 1, // DEFAULT_MEASURE,
           function () { Math.seedrandom("seed"); return emulateNBody("seq", NUMBODIES, TICKS); },
           function () { Math.seedrandom("seed"); return emulateNBody("par", NUMBODIES, TICKS); });
 } catch (e) {
