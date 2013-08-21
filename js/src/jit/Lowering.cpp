@@ -205,6 +205,16 @@ LIRGenerator::visitNewCallObject(MNewCallObject *ins)
 }
 
 bool
+LIRGenerator::visitNewDerivedTypedObject(MNewDerivedTypedObject *ins)
+{
+    LNewDerivedTypedObject *lir =
+        new LNewDerivedTypedObject(useRegisterAtStart(ins->type()),
+                                   useRegisterAtStart(ins->owner()),
+                                   useRegisterAtStart(ins->offset()));
+    return defineReturn(lir, ins) && assignSafepoint(lir, ins);
+}
+
+bool
 LIRGenerator::visitNewCallObjectPar(MNewCallObjectPar *ins)
 {
     const LAllocation &parThreadContext = useRegister(ins->forkJoinSlice());
@@ -1909,6 +1919,13 @@ LIRGenerator::visitTypedArrayElements(MTypedArrayElements *ins)
 {
     JS_ASSERT(ins->type() == MIRType_Elements);
     return define(new LTypedArrayElements(useRegisterAtStart(ins->object())), ins);
+}
+
+bool
+LIRGenerator::visitTypedObjectElements(MTypedObjectElements *ins)
+{
+    JS_ASSERT(ins->type() == MIRType_Elements);
+    return define(new LTypedObjectElements(useRegisterAtStart(ins->object())), ins);
 }
 
 bool

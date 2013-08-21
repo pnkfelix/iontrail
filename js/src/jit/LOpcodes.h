@@ -31,6 +31,7 @@
     _(NewPar)                       \
     _(NewDenseArrayPar)             \
     _(NewCallObjectPar)             \
+    _(NewDerivedTypedObject)        \
     _(AbortPar)                     \
     _(InitElem)                     \
     _(InitElemGetterSetter)         \
@@ -211,6 +212,7 @@
     _(ArrayLength)                  \
     _(TypedArrayLength)             \
     _(TypedArrayElements)           \
+    _(TypedObjectElements)          \
     _(StringLength)                 \
     _(ArgumentsLength)              \
     _(GetArgument)                  \
