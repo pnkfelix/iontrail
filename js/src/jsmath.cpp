@@ -142,6 +142,16 @@ js::math_acos_impl(MathCache *cache, double x)
     return cache->lookup(acos, x);
 }
 
+double
+js::math_acos_uncached(double x)
+{
+#if defined(SOLARIS) && defined(__GNUC__)
+    if (x < -1 || 1 < x)
+        return js_NaN;
+#endif
+    return acos(x);
+}
+
 bool
 js::math_acos(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -175,6 +185,16 @@ js::math_asin_impl(MathCache *cache, double x)
     return cache->lookup(asin, x);
 }
 
+double
+js::math_asin_uncached(double x)
+{
+#if defined(SOLARIS) && defined(__GNUC__)
+    if (x < -1 || 1 < x)
+        return js_NaN;
+#endif
+    return asin(x);
+}
+
 bool
 js::math_asin(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -202,6 +222,12 @@ double
 js::math_atan_impl(MathCache *cache, double x)
 {
     return cache->lookup(atan, x);
+}
+
+double
+js::math_atan_uncached(double x)
+{
+    return atan(x);
 }
 
 bool
@@ -311,6 +337,12 @@ js::math_cos_impl(MathCache *cache, double x)
     return cache->lookup(cos, x);
 }
 
+double
+js::math_cos_uncached(double x)
+{
+    return cos(x);
+}
+
 bool
 js::math_cos(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -346,6 +378,20 @@ js::math_exp_impl(MathCache *cache, double x)
     }
 #endif
     return cache->lookup(exp, x);
+}
+
+double
+js::math_exp_uncached(double x)
+{
+#ifdef _WIN32
+    if (!IsNaN(x)) {
+        if (x == js_PositiveInfinity)
+            return js_PositiveInfinity;
+        if (x == js_NegativeInfinity)
+            return 0.0;
+    }
+#endif
+    return exp(x);
 }
 
 bool
@@ -422,6 +468,16 @@ js::math_log_impl(MathCache *cache, double x)
         return js_NaN;
 #endif
     return cache->lookup(log, x);
+}
+
+double
+js::math_log_uncached(double x)
+{
+#if defined(SOLARIS) && defined(__GNUC__)
+    if (x < 0)
+        return js_NaN;
+#endif
+    return log(x);
 }
 
 bool
@@ -724,6 +780,12 @@ js::math_sin_impl(MathCache *cache, double x)
     return cache->lookup(sin, x);
 }
 
+double
+js::math_sin_uncached(double x)
+{
+    return sin(x);
+}
+
 bool
 js::math_sin(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -774,6 +836,12 @@ double
 js::math_tan_impl(MathCache *cache, double x)
 {
     return cache->lookup(tan, x);
+}
+
+double
+js::math_tan_uncached(double x)
+{
+    return tan(x);
 }
 
 bool
@@ -832,6 +900,12 @@ js::math_log10_impl(MathCache *cache, double x)
     return cache->lookup(log10, x);
 }
 
+double
+js::math_log10_uncached(double x)
+{
+    return log10(x);
+}
+
 bool
 js::math_log10(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -849,6 +923,12 @@ double
 js::math_log2_impl(MathCache *cache, double x)
 {
     return cache->lookup(log2, x);
+}
+
+double
+js::math_log2_uncached(double x)
+{
+    return log2(x);
 }
 
 bool
@@ -886,6 +966,18 @@ js::math_log1p_impl(MathCache *cache, double x)
     return cache->lookup(log1p, x);
 }
 
+double
+js::math_log1p_uncached(double x)
+{
+#ifdef __APPLE__
+    // Ensure that log1p(-0) is -0.
+    if (x == 0)
+        return x;
+#endif
+
+    return log1p(x);
+}
+
 bool
 js::math_log1p(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -919,6 +1011,12 @@ js::math_expm1_impl(MathCache *cache, double x)
     return cache->lookup(expm1, x);
 }
 
+double
+js::math_expm1_uncached(double x)
+{
+    return expm1(x);
+}
+
 bool
 js::math_expm1(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -943,6 +1041,12 @@ js::math_cosh_impl(MathCache *cache, double x)
     return cache->lookup(cosh, x);
 }
 
+double
+js::math_cosh_uncached(double x)
+{
+    return cosh(x);
+}
+
 bool
 js::math_cosh(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -955,6 +1059,12 @@ js::math_sinh_impl(MathCache *cache, double x)
     return cache->lookup(sinh, x);
 }
 
+double
+js::math_sinh_uncached(double x)
+{
+    return sinh(x);
+}
+
 bool
 js::math_sinh(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -965,6 +1075,12 @@ double
 js::math_tanh_impl(MathCache *cache, double x)
 {
     return cache->lookup(tanh, x);
+}
+
+double
+js::math_tanh_uncached(double x)
+{
+    return tanh(x);
 }
 
 bool
@@ -1008,6 +1124,12 @@ double
 js::math_acosh_impl(MathCache *cache, double x)
 {
     return cache->lookup(acosh, x);
+}
+
+double
+js::math_acosh_uncached(double x)
+{
+    return acosh(x);
 }
 
 bool
@@ -1055,6 +1177,12 @@ js::math_asinh_impl(MathCache *cache, double x)
     return cache->lookup(asinh, x);
 }
 
+double
+js::math_asinh_uncached(double x)
+{
+    return asinh(x);
+}
+
 bool
 js::math_asinh(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -1093,6 +1221,12 @@ double
 js::math_atanh_impl(MathCache *cache, double x)
 {
     return cache->lookup(atanh, x);
+}
+
+double
+js::math_atanh_uncached(double x)
+{
+    return atanh(x);
 }
 
 bool
@@ -1183,6 +1317,12 @@ js::math_trunc_impl(MathCache *cache, double x)
     return cache->lookup(trunc, x);
 }
 
+double
+js::math_trunc_uncached(double x)
+{
+    return trunc(x);
+}
+
 bool
 js::math_trunc(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -1201,6 +1341,12 @@ double
 js::math_sign_impl(MathCache *cache, double x)
 {
     return cache->lookup(sign, x);
+}
+
+double
+js::math_sign_uncached(double x)
+{
+    return sign(x);
 }
 
 bool
@@ -1226,6 +1372,12 @@ double
 js::math_cbrt_impl(MathCache *cache, double x)
 {
     return cache->lookup(cbrt, x);
+}
+
+double
+js::math_cbrt_uncached(double x)
+{
+    return cbrt(x);
 }
 
 bool
