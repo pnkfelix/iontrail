@@ -21,46 +21,63 @@ function benchmark(label, w, m, seq, par) {
     }
     bits = SEQ|PAR;
   }
+  var seq_params = new BenchParams(SEQ, "sequential", "SEQ", w, m, seq);
+  var par_params = new BenchParams(PAR, "parallel", "PAR", w, m, par);
+  benchmark_generic(bits, label, seq_params, par_params);
+}
 
-  if (mode(SEQ)) {
-    print("Warming up sequential runs");
-    warmup(w, seq);
+function BenchParams(bit, label, tag, w, m, thunk) {
+  this.bit = bit;
+  this.label = label;
+  this.tag = tag;
+  this.warmups = w;
+  this.measurements = m;
+  this.thunk = thunk;
+}
 
-    print("Measuring sequential runs");
-    var [seqTimes, seqResult] = measureN(m, seq);
+function benchmark_generic(bits, label, seq, par) {
+  if (mode(seq.bit)) {
+    print("Warming up "+seq.label+" runs");
+    warmup(seq.warmups, seq.thunk);
+
+    print("Measuring "+seq.label+" runs");
+    var [seqTimes, seqResult] = measureN(seq.measurements, seq.thunk);
   }
 
-  if (mode(PAR)) {
-    print("Warming up parallel runs");
-    warmup(w, par);
+  if (mode(par.bit)) {
+    print("Warming up "+par.label+" runs");
+    warmup(par.warmups, par.thunk);
 
-    print("Measuring parallel runs");
-    var [parTimes, parResult] = measureN(m, par);
+    print("Measuring "+par.label+" runs");
+    var [parTimes, parResult] = measureN(par.measurements, par.thunk);
   }
 
-  if (mode(SEQ|PAR)) {
+  if (mode(seq.bit|par.bit)) {
     // Check correctness
     print("Checking correctness");
     assertStructuralEq(seqResult, parResult);
   }
 
-  if (mode(SEQ)) {
+  var SEQ_LABEL = seq.label.toUpperCase();
+  var PAR_LABEL = par.label.toUpperCase();
+
+  if (mode(seq.bit)) {
     var seqAvg = average(seqTimes);
     for (var i = 0; i < seqTimes.length; i++)
-      print(label + " SEQUENTIAL MEASUREMENT " + i + ": " + seqTimes[i]);
-    print(label + " SEQUENTIAL AVERAGE: " + seqAvg);
+      print(label + " "+SEQ_LABEL+" MEASUREMENT " + i + ": " + seqTimes[i]);
+    print(label + " "+SEQ_LABEL+" AVERAGE: " + seqAvg);
   }
 
-  if (mode(PAR)) {
+  if (mode(par.bit)) {
     var parAvg = average(parTimes);
     for (var i = 0; i < parTimes.length; i++)
-      print(label + " PARALLEL MEASUREMENT " + i + ": " + parTimes[i]);
-    print(label + " PARALLEL AVERAGE  : " + parAvg);
+      print(label + " "+PAR_LABEL+" MEASUREMENT " + i + ": " + parTimes[i]);
+    print(label + " "+PAR_LABEL+" AVERAGE  : " + parAvg);
   }
 
-  if (mode(SEQ|PAR)) {
-    print(label + " SEQ/PAR RATIO     : " + seqAvg/parAvg);
-    print(label + " PAR/SEQ RATIO     : " + parAvg/seqAvg);
+  if (mode(seq.bit|par.bit)) {
+    print(label + " "+seq.tag+"/"+par.tag+" RATIO     : " + seqAvg/parAvg);
+    print(label + " "+par.tag+"/"+seq.tag+" RATIO     : " + parAvg/seqAvg);
     print(label + " IMPROVEMENT       : " +
           (((seqAvg - parAvg) / seqAvg * 100.0) | 0) + "%");
   }
