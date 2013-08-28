@@ -853,46 +853,31 @@ function reseed() { Math.seedrandom("seed"); }
 function seq_vs_par() {
   function seq() { reseed(); return emulateNBody("seq", NUMBODIES, TICKS); }
   function par() { reseed(); return emulateNBody("par", NUMBODIES, TICKS); }
-
-  var seq_params = new BenchParams(1, "sequential", "SEQ", 1, 1, seq);
-  var par_params = new BenchParams(2, "parallel",   "PAR", 1, 1, par);
-  benchmark_generic(3, "NBODY", seq_params, par_params);
+  benchmark_pair("NBODY", 1, 1, "sequential", seq, "parallel", par);
 }
 
 function seq_vs_matrix() {
   function seq() { reseed(); return emulateNBody("seq",            NUMBODIES, TICKS); }
   function par() { reseed(); return emulateNBody("par-any-matrix", NUMBODIES, TICKS, "any"); }
-
-  var seq_params = new BenchParams(1, "sequential", "SEQ", 1, 1, seq);
-  var par_params = new BenchParams(2, "par-matrix", "MAT", 1, 1, par);
-  benchmark_generic(3, "NBODY", seq_params, par_params);
+  benchmark_pair("NBODY", 1, 1, "sequential", seq, "par-matrix", par);
 }
 
 function array_vs_matrix() {
   function f() { reseed(); return emulateNBody("par",            NUMBODIES, TICKS); }
   function g() { reseed(); return emulateNBody("par-any-matrix", NUMBODIES, TICKS, "any"); }
-
-  var params1 = new BenchParams(1, "array",  "ARR", 1, 1, f);
-  var params2 = new BenchParams(2, "matrix", "MAT", 1, 1, g);
-  benchmark_generic(3, "NBODY", params1, params2);
+  benchmark_pair("NBODY", 1, 1, "array", f, "matrix", g);
 }
 
 function any_vs_float64() {
   function f() { reseed(); return emulateNBody("par-any-matrix",     NUMBODIES, TICKS, "any"); }
   function g() { reseed(); return emulateNBody("par-float64-matrix", NUMBODIES, TICKS, "float64"); }
-
-  var params1 = new BenchParams(1, "matrix-any",     "ANY", 1, 1, f);
-  var params2 = new BenchParams(2, "matrix-float64", "F64", 1, 1, g);
-  benchmark_generic(3, "NBODY", params1, params2);
+  benchmark_pair("NBODY", 1, 1, "any-matrix", f, "f64-matrix", g);
 }
 
 function float32_vs_float64() {
   function f() { reseed(); return emulateNBody("par-float32-matrix", NUMBODIES, TICKS, "float32"); }
   function g() { reseed(); return emulateNBody("par-float64-matrix", NUMBODIES, TICKS, "float64"); }
-
-  var params1 = new BenchParams(1, "matrix-float32", "F32", 1, 1, f);
-  var params2 = new BenchParams(2, "matrix-float64", "F64", 1, 1, g);
-  benchmark_generic(3, "NBODY", params1, params2);
+  benchmark_pair("NBODY", 1, 1, "f32-matrix", f, "f64-matrix", g);
 }
 
 try {

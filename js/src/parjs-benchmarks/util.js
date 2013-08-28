@@ -13,8 +13,8 @@ function benchmark(label, w, m, seq, par) {
   var SEQ = 1
   var PAR = 2
   var bits = 0
-  if (MODE === "seq") { bits = SEQ; }
-  else if (MODE === "par") { bits = PAR; }
+  if (MODE === "seq" || MODE === "one") { bits = SEQ; }
+  else if (MODE === "par" || MODE === "two") { bits = PAR; }
   else {
     if (MODE !== "compare") {
       print("Invalid MODE, expected seq|par|compare: ", MODE);
@@ -33,6 +33,25 @@ function BenchParams(bit, label, tag, w, m, thunk) {
   this.warmups = w;
   this.measurements = m;
   this.thunk = thunk;
+}
+
+function benchmark_pair(label, w, m, one_label, one_f, two_label, two_f) {
+  var ONE = 1;
+  var TWO = 2;
+  var bits = 0;
+  if (MODE === "one") { bits = ONE; }
+  else if (MODE === "two") { bits = TWO; }
+  else {
+    if (MODE !== "compare") {
+      print("Invalid MODE, expected one|two|compare: ", MODE);
+    }
+    bits = ONE|TWO;
+  }
+  var one_params =
+    new BenchParams(ONE, one_label, one_label.slice(0,3).toUpperCase(), w, m, one_f);
+  var two_params =
+    new BenchParams(TWO, two_label, two_label.slice(0,3).toUpperCase(), w, m, two_f);
+  benchmark_generic(bits, label, one_params, two_params);
 }
 
 function benchmark_generic(bits, label, seq, par) {
