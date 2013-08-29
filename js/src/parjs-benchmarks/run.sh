@@ -1,5 +1,7 @@
 #!/bin/bash
 
+ION_OPTS="--ion-parallel-compile=on "
+
 MODE=compare
 if [[ "$1" == "--seq" ]]; then
     MODE=seq
@@ -13,10 +15,12 @@ elif [[ "$1" == "--one" ]]; then
 elif [[ "$1" == "--two" ]]; then
     MODE=two
     shift
+elif [[ "$1" == "--logs" ]]; then # for getting IONFLAGS=logs to work
+    ION_OPTS="--ion-parallel-compile=off --ion-limit-script-size=off "
 fi
 
 if [[ -z "$1" ]] || [[ "$1" == "--help" ]]; then
-    echo "Usage: run.sh [--seq | --par | --one | --two] path-to-shell paths-to-test"
+    echo "Usage: run.sh [--seq | --par | --one | --two] [--logs] path-to-shell paths-to-test"
     echo ""
     echo "Runs the given benchmark(s) using the given shell and "
     echo "prints the results.  If -seq or -par is supplied, only"
@@ -29,6 +33,6 @@ D="$(dirname $0)"
 S="$1"
 shift
 for T in "$@"; do
-    echo "$S" --ion-parallel-compile=on -e "'"'var libdir="'$D'/"; var MODE="'$MODE'";'"'" "$T"
-    "$S" --ion-parallel-compile=on -e 'var libdir="'$D'/"; var MODE="'$MODE'";' "$T"
+    echo "$S" $ION_OPTS -e "'"'var libdir="'$D'/"; var MODE="'$MODE'";'"'" "$T"
+    "$S" $ION_OPTS -e 'var libdir="'$D'/"; var MODE="'$MODE'";' "$T"
 done
