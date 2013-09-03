@@ -3,22 +3,27 @@
 ION_OPTS="--ion-parallel-compile=on "
 
 MODE=compare
-if [[ "$1" == "--seq" ]]; then
-    MODE=seq
-    shift
-elif [[ "$1" == "--par" ]]; then
-    MODE=par
-    shift
-elif [[ "$1" == "--one" ]]; then
-    MODE=one
-    shift
-elif [[ "$1" == "--two" ]]; then
-    MODE=two
-    shift
-elif [[ "$1" == "--logs" ]]; then # for getting IONFLAGS=logs to work
-    ION_OPTS="--ion-parallel-compile=off --ion-limit-script-size=off "
-    shift
-fi
+for var in "$@"
+do
+    if [[ "$var" == "--seq" ]]; then
+        MODE=seq
+        shift
+    elif [[ "$var" == "--par" ]]; then
+        MODE=par
+        shift
+    elif [[ "$var" == "--one" ]]; then
+        MODE=one
+        shift
+    elif [[ "$var" == "--two" ]]; then
+        MODE=two
+        shift
+    elif [[ "$var" == "--logs" ]]; then # for getting IONFLAGS=logs to work
+        ION_OPTS="--ion-parallel-compile=off --ion-limit-script-size=off "
+        shift
+    else
+        break
+    fi
+done
 
 if [[ -z "$1" ]] || [[ "$1" == "--help" ]]; then
     echo "Usage: run.sh [--seq | --par | --one | --two] [--logs] path-to-shell paths-to-test"
