@@ -17,6 +17,7 @@ elif [[ "$1" == "--two" ]]; then
     shift
 elif [[ "$1" == "--logs" ]]; then # for getting IONFLAGS=logs to work
     ION_OPTS="--ion-parallel-compile=off --ion-limit-script-size=off "
+    shift
 fi
 
 if [[ -z "$1" ]] || [[ "$1" == "--help" ]]; then
