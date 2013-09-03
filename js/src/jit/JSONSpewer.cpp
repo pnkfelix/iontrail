@@ -184,10 +184,19 @@ JSONSpewer::beginFunction(JSScript *script)
         endFunction();
 
     beginObject();
-    if (script)
+    if (script) {
         stringProperty("name", "%s:%d", script->filename(), script->lineno);
-    else
+        stringProperty("ionCodeAddress", "%x",
+                       (!script->hasIonScript() ? 0 :
+                        !script->ionScript()->method() ? 0 : (uintptr_t)
+                        script->ionScript()->method()->raw() ));
+        stringProperty("parallelIonCodeAddress", "%x",
+                       (!script->hasParallelIonScript() ? 0 :
+                        !script->parallelIonScript()->method() ? 0 : (uintptr_t)
+                        script->parallelIonScript()->method()->raw() ));
+    } else {
         stringProperty("name", "asm.js compilation");
+    }
     beginListProperty("passes");
 
     inFunction_ = true;
