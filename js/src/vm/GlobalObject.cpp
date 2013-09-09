@@ -629,3 +629,9 @@ GlobalObject::addDebugger(JSContext *cx, Handle<GlobalObject*> global, Debugger 
     }
     return true;
 }
+
+
+void
+GlobalObject::setArrayType(JSObject *obj) {
+    initSlot(ARRAY_TYPE, ObjectValue(*obj));
+}

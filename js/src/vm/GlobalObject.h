@@ -28,7 +28,7 @@ extern JSObject *
 js_InitTypedArrayClasses(JSContext *cx, js::HandleObject obj);
 
 extern JSObject *
-js_InitTypedObjectClasses(JSContext *cx, js::HandleObject obj);
+js_InitTypedObjectClass(JSContext *cx, js::HandleObject obj);
 
 namespace js {
 
@@ -102,9 +102,10 @@ class GlobalObject : public JSObject
     static const unsigned RUNTIME_CODEGEN_ENABLED = FUNCTION_NS + 1;
     static const unsigned DEBUGGERS               = RUNTIME_CODEGEN_ENABLED + 1;
     static const unsigned INTRINSICS              = DEBUGGERS + 1;
+    static const unsigned ARRAY_TYPE              = INTRINSICS + 1;
 
     /* Total reserved-slot count for global objects. */
-    static const unsigned RESERVED_SLOTS = INTRINSICS + 1;
+    static const unsigned RESERVED_SLOTS = ARRAY_TYPE + 1;
 
     void staticAsserts() {
         /*
@@ -364,17 +365,19 @@ class GlobalObject : public JSObject
         return &getPrototype(JSProto_Iterator).toObject();
     }
 
-    JSObject *getOrCreateDataObject(JSContext *cx) {
-        return getOrCreateObject(cx, JSProto_Data, initDataObject);
+    JSObject *getArrayType(JSContext *cx) {
+        Value v = getSlotRef(ARRAY_TYPE);
+
+        // This method is only called from within TypedObject.cpp,
+        // and in order for the relevant code to be executing,
+        // TypedObject must have been initialized, which should
+        // invoke setArrayType() below.
+        JS_ASSERT(v.isObject());
+
+        return &v.toObject();
     }
 
-    JSObject *getOrCreateTypeObject(JSContext *cx) {
-        return getOrCreateObject(cx, JSProto_Type, initTypeObject);
-    }
-
-    JSObject *getOrCreateArrayTypeObject(JSContext *cx) {
-        return getOrCreateObject(cx, JSProto_ArrayTypeObject, initArrayTypeObject);
-    }
+    void setArrayType(JSObject *obj);
 
   private:
     typedef bool (*ObjectInitOp)(JSContext *cx, Handle<GlobalObject*> global);
@@ -499,11 +502,6 @@ class GlobalObject : public JSObject
     static bool initCollatorProto(JSContext *cx, Handle<GlobalObject*> global);
     static bool initNumberFormatProto(JSContext *cx, Handle<GlobalObject*> global);
     static bool initDateTimeFormatProto(JSContext *cx, Handle<GlobalObject*> global);
-
-    // Implemented in builtin/TypedObject.cpp
-    static bool initTypeObject(JSContext *cx, Handle<GlobalObject*> global);
-    static bool initDataObject(JSContext *cx, Handle<GlobalObject*> global);
-    static bool initArrayTypeObject(JSContext *cx, Handle<GlobalObject*> global);
 
     static bool initStandardClasses(JSContext *cx, Handle<GlobalObject*> global);
 
