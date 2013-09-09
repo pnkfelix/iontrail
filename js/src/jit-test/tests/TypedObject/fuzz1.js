@@ -1,8 +1,8 @@
-if (!this.hasOwnProperty("Type"))
+if (!this.hasOwnProperty("TypedObject"))
   exit(0);
 
 function eval() {
     yield(undefined)
 }
-new(StructType)
+new(TypedObject.StructType)
 (eval())

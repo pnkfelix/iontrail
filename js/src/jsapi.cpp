@@ -1366,7 +1366,7 @@ static const JSStdName standard_class_atoms[] = {
     {js_InitIntlClass,                  EAGER_ATOM_AND_CLASP(Intl)},
 #endif
 #ifdef ENABLE_BINARYDATA
-    {js_InitTypedObjectClasses,         EAGER_ATOM_AND_CLASP(Type)},
+    {js_InitTypedObjectClass,           EAGER_ATOM_AND_CLASP(TypedObject)},
 #endif
     {NULL,                              0, NULL}
 };
@@ -1424,17 +1424,6 @@ static const JSStdName standard_class_names[] = {
                                 TYPED_ARRAY_CLASP(TYPE_UINT8_CLAMPED)},
     {js_InitTypedArrayClasses,  EAGER_CLASS_ATOM(DataView),     &DataViewObject::class_},
 
-    /* Binary Data */
-#ifdef ENABLE_BINARYDATA
-    {js_InitTypedObjectClasses,   EAGER_ATOM_AND_CLASP(Type)},
-    {js_InitTypedObjectClasses,   EAGER_ATOM_AND_CLASP(Data)},
-#define BINARYDATA_NUMERIC_NAMES(constant_, type_, name_) \
-    {js_InitTypedObjectClasses,   EAGER_CLASS_ATOM(name_),      &NumericTypeClasses[constant_]},
-    JS_FOR_EACH_SCALAR_TYPE_REPR(BINARYDATA_NUMERIC_NAMES)
-#undef BINARYDATA_NUMERIC_NAMES
-    {js_InitTypedObjectClasses,   EAGER_CLASS_ATOM(ArrayType),  &js::ArrayType::class_},
-    {js_InitTypedObjectClasses,   EAGER_CLASS_ATOM(StructType), &js::StructType::class_},
-#endif
     {NULL,                      0, NULL}
 };
 
