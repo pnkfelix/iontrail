@@ -35,6 +35,7 @@
     macro(configurable, configurable, "configurable") \
     macro(construct, construct, "construct") \
     macro(constructor, constructor, "constructor") \
+    macro(ConvertAndCopyTo, ConvertAndCopyTo, "ConvertAndCopyTo") \
     macro(currency, currency, "currency") \
     macro(currencyDisplay, currencyDisplay, "currencyDisplay") \
     macro(DateTimeFormat, DateTimeFormat, "DateTimeFormat") \
@@ -61,6 +62,7 @@
     macro(fieldOffsets, fieldOffsets, "fieldOffsets") \
     macro(fieldTypes, fieldTypes, "fieldTypes") \
     macro(fileName, fileName, "fileName") \
+    macro(FillTypedArrayWithValue, FillTypedArrayWithValue, "FillTypedArrayWithValue") \
     macro(fix, fix, "fix") \
     macro(format, format, "format") \
     macro(get, get, "get") \
