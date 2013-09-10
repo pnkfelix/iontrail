@@ -12,6 +12,7 @@
 
 #include "builtin/Intl.h"
 #include "builtin/ParallelArray.h"
+#include "builtin/TypedObject.h"
 #include "gc/Marking.h"
 #include "vm/ForkJoin.h"
 #include "vm/Interpreter.h"
@@ -645,6 +646,38 @@ const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("NewDenseArray",           intrinsic_NewDenseArray,           1,0),
     JS_FN("ShouldForceSequential",   intrinsic_ShouldForceSequential,   0,0),
     JS_FN("ParallelTestsShouldPass", intrinsic_ParallelTestsShouldPass, 0,0),
+
+    // See builtin/TypedObject.h for descriptors of the typedobj functions.
+    JS_FNINFO("ClampToUint8",
+              JSNativeThreadSafeWrapper<js::ClampToUint8>,
+              &js::ClampToUint8JitInfo, 1, 0),
+    JS_FNINFO("Memcpy",
+              JSNativeThreadSafeWrapper<js::Memcpy>,
+              &js::MemcpyJitInfo, 5, 0),
+    JS_FNINFO("StoreInt8",
+              JSNativeThreadSafeWrapper<js::StoreScalar<int8_t>::Func>,
+              &js::StoreScalar<int8_t>::JitInfo, 3, 0),
+    JS_FNINFO("StoreInt16",
+              JSNativeThreadSafeWrapper<js::StoreScalar<int16_t>::Func>,
+              &js::StoreScalar<int16_t>::JitInfo, 3, 0),
+    JS_FNINFO("StoreInt32",
+              JSNativeThreadSafeWrapper<js::StoreScalar<int32_t>::Func>,
+              &js::StoreScalar<int32_t>::JitInfo, 3, 0),
+    JS_FNINFO("StoreUint8",
+              JSNativeThreadSafeWrapper<js::StoreScalar<uint8_t>::Func>,
+              &js::StoreScalar<uint8_t>::JitInfo, 3, 0),
+    JS_FNINFO("StoreUint16",
+              JSNativeThreadSafeWrapper<js::StoreScalar<uint16_t>::Func>,
+              &js::StoreScalar<uint16_t>::JitInfo, 3, 0),
+    JS_FNINFO("StoreUint32",
+              JSNativeThreadSafeWrapper<js::StoreScalar<uint32_t>::Func>,
+              &js::StoreScalar<uint32_t>::JitInfo, 3, 0),
+    JS_FNINFO("StoreFloat32",
+              JSNativeThreadSafeWrapper<js::StoreScalar<float>::Func>,
+              &js::StoreScalar<float>::JitInfo, 3, 0),
+    JS_FNINFO("StoreFloat64",
+              JSNativeThreadSafeWrapper<js::StoreScalar<double>::Func>,
+              &js::StoreScalar<double>::JitInfo, 3, 0),
 
     // See builtin/Intl.h for descriptions of the intl_* functions.
     JS_FN("intl_availableCalendars", intl_availableCalendars, 1,0),

@@ -25,7 +25,6 @@ class NumericType
   private:
     static Class * typeToClass();
   public:
-    static bool convert(JSContext *cx, HandleValue val, T* converted);
     static bool reify(JSContext *cx, void *mem, MutableHandleValue vp);
     static bool call(JSContext *cx, unsigned argc, Value *vp);
 };
@@ -215,6 +214,35 @@ class BinaryBlock
     static bool construct(JSContext *cx, unsigned int argc, jsval *vp);
 };
 
+
+// Usage: ClampToUint8(v)
+//
+// Same as the C function ClampDoubleToUint8. `v` must be a number.
+bool ClampToUint8(ThreadSafeContext *cx, unsigned argc, Value *vp);
+extern const JSJitInfo ClampToUint8JitInfo;
+
+// Usage: Memcpy(targetTypedObj, targetOffset,
+//               sourceTypedObj, sourceOffset,
+//               size)
+//
+// Intrinsic function. Copies size bytes from the data for
+// `sourceTypedObj` at `sourceOffset` into the data for
+// `targetTypedObj` at `targetOffset`.
+bool Memcpy(ThreadSafeContext *cx, unsigned argc, Value *vp);
+
+extern const JSJitInfo MemcpyJitInfo;
+
+// Usage: StoreScalar(targetTypedObj, targetOffset, value)
+//
+// Intrinsic function. Stores value (which must be an int32 or uint32)
+// by `scalarTypeRepr` (which must be a type repr obj) and stores the
+// value at the memory for `targetTypedObj` at offset `targetOffset`.
+template<typename T>
+class StoreScalar {
+  public:
+    static bool Func(ThreadSafeContext *cx, unsigned argc, Value *vp);
+    static const JSJitInfo JitInfo;
+};
 
 } // namespace js
 
