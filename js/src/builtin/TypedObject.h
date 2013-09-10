@@ -9,6 +9,7 @@
 
 #include "jsobj.h"
 
+#include "builtin/TypedObjectConstants.h"
 #include "builtin/TypeRepresentation.h"
 
 namespace js {
@@ -19,40 +20,6 @@ namespace js {
  * Eventually it will go away and become a module.
  */
 extern const Class TypedObjectClass;
-
-// Slots common to all type descriptors:
-enum TypeCommonSlots {
-    // Canonical type representation of this type (see TypeRepresentation.h).
-    SLOT_TYPE_REPR=0,
-    TYPE_RESERVED_SLOTS
-};
-
-// Slots for ArrayType type descriptors:
-enum ArrayTypeCommonSlots {
-    // Type descriptor for the element type.
-    SLOT_ARRAY_ELEM_TYPE = TYPE_RESERVED_SLOTS,
-    ARRAY_TYPE_RESERVED_SLOTS
-};
-
-// Slots for StructType type descriptors:
-enum StructTypeCommonSlots {
-    // JS array containing type descriptors for each field, in order.
-    SLOT_STRUCT_FIELD_TYPES = TYPE_RESERVED_SLOTS,
-    STRUCT_TYPE_RESERVED_SLOTS
-};
-
-// Slots for data blocks:
-enum BlockCommonSlots {
-    // The type descriptor with which this block is associated.
-    SLOT_DATATYPE = 0,
-
-    // If this value is nullptr, then the block instance owns the
-    // uint8_t* in its priate data. Otherwise, this field contains the
-    // owner, and thus keeps the owner alive.
-    SLOT_BLOCKREFOWNER,
-
-    BLOCK_RESERVED_SLOTS
-};
 
 template <ScalarTypeRepresentation::Type type, typename T>
 class NumericType
