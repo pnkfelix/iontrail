@@ -183,7 +183,7 @@ typeRepresentationOwnerObj(JSObject &typeObj)
 static TypeRepresentation *
 typeRepresentation(JSObject &typeObj)
 {
-    return TypeRepresentation::fromOwnerObject(typeRepresentationOwnerObj(typeObj));
+    return TypeRepresentation::fromOwnerObject(*typeRepresentationOwnerObj(typeObj));
 }
 
 static inline JSObject *
@@ -791,7 +791,7 @@ InitializeCommonTypeDescriptorProperties(JSContext *cx,
                                          HandleObject typeReprOwnerObj)
 {
     TypeRepresentation *typeRepr =
-        TypeRepresentation::fromOwnerObject(typeReprOwnerObj);
+        TypeRepresentation::fromOwnerObject(*typeReprOwnerObj);
 
     // equivalent()
     if (!JS_DefineFunction(cx, obj, "equivalent",
@@ -1050,7 +1050,7 @@ StructType::layout(JSContext *cx, HandleObject structType, HandleObject fields)
     if (!typeReprObj)
         return false;
     StructTypeRepresentation *typeRepr =
-        TypeRepresentation::fromOwnerObject(typeReprObj)->asStruct();
+        TypeRepresentation::fromOwnerObject(*typeReprObj)->asStruct();
     structType->initReservedSlot(JS_TYPEOBJ_SLOT_TYPE_REPR,
                                  ObjectValue(*typeReprObj));
 
