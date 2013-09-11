@@ -181,7 +181,7 @@ typeRepresentationOwnerObj(JSObject &typeObj)
 static TypeRepresentation *
 typeRepresentation(JSObject &typeObj)
 {
-    return TypeRepresentation::fromOwnerObject(typeRepresentationOwnerObj(typeObj));
+    return TypeRepresentation::fromOwnerObject(*typeRepresentationOwnerObj(typeObj));
 }
 
 static inline JSObject *
@@ -801,7 +801,7 @@ InitializeCommonTypeDescriptorProperties(JSContext *cx,
                                          HandleObject typeReprOwnerObj)
 {
     TypeRepresentation *typeRepr =
-        TypeRepresentation::fromOwnerObject(typeReprOwnerObj);
+        TypeRepresentation::fromOwnerObject(*typeReprOwnerObj);
 
     // equivalent()
     if (!JS_DefineFunction(cx, obj, "equivalent",
