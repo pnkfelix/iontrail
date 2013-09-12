@@ -125,6 +125,7 @@
     macro(preventExtensions, preventExtensions, "preventExtensions") \
     macro(propertyIsEnumerable, propertyIsEnumerable, "propertyIsEnumerable") \
     macro(proto, proto, "__proto__") \
+    macro(Reify, Reify, "Reify") \
     macro(return, return_, "return") \
     macro(sensitivity, sensitivity, "sensitivity") \
     macro(set, set, "set") \
