@@ -244,6 +244,19 @@ class StoreScalar {
     static const JSJitInfo JitInfo;
 };
 
+// Usage: LoadScalar(targetTypedObj, targetOffset, value)
+//
+// Intrinsic function. Loads value (which must be an int32 or uint32)
+// by `scalarTypeRepr` (which must be a type repr obj) and loads the
+// value at the memory for `targetTypedObj` at offset `targetOffset`.
+// `targetTypedObj` must be attached.
+template<typename T>
+class LoadScalar {
+  public:
+    static bool Func(ThreadSafeContext *cx, unsigned argc, Value *vp);
+    static const JSJitInfo JitInfo;
+};
+
 } // namespace js
 
 #endif /* builtin_TypedObject_h */

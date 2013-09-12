@@ -2261,15 +2261,32 @@ js::StoreScalar<T>::JitInfo =
     JS_JITINFO_NATIVE_PARALLEL(
         JSParallelNativeThreadSafeWrapper<Func>);
 
-namespace js {
+template<typename T>
+bool
+js::LoadScalar<T>::Func(ThreadSafeContext *, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(args.length() == 2);
+    JS_ASSERT(args[0].isObject() && HasTypedContents(args[0].toObject()));
+    JS_ASSERT(args[1].isInt32());
 
-template class StoreScalar<uint8_t>;
-template class StoreScalar<uint16_t>;
-template class StoreScalar<uint32_t>;
-template class StoreScalar<int8_t>;
-template class StoreScalar<int16_t>;
-template class StoreScalar<int32_t>;
-template class StoreScalar<float>;
-template class StoreScalar<double>;
+    int32_t offset = args[1].toInt32();
 
-} // namespace js
+    // Should be guaranteed by the typed objects API:
+    JS_ASSERT(offset % alignof(T) == 0);
+
+    T *target = (T*) (TypedMem(args[0].toObject()) + offset);
+    args.rval().setNumber((double) *target);
+    return true;
+}
+
+template<typename T>
+const JSJitInfo
+js::LoadScalar<T>::JitInfo =
+    JS_JITINFO_NATIVE_PARALLEL(
+        JSParallelNativeThreadSafeWrapper<Func>);
+
+#define PREDECLARED_LOAD_AND_STORE(_constant, _type, _name)                   \
+    namespace js { template class StoreScalar<_type>;                         \
+                   template class LoadScalar<_type>; }
+JS_FOR_EACH_UNIQUE_SCALAR_TYPE_REPR_CTYPE(PREDECLARED_LOAD_AND_STORE)

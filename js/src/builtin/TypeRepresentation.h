@@ -199,16 +199,22 @@ class ScalarTypeRepresentation : public TypeRepresentation {
     static JSObject *Create(JSContext *cx, Type type);
 };
 
-// Must be in same order as the enum:
+// Enumerates the cases of ScalarTypeRepresentation::Type which have
+// unique C representation. In particular, omits Uint8Clamped since it
+// is just a Uint8.
+#define JS_FOR_EACH_UNIQUE_SCALAR_TYPE_REPR_CTYPE(macro_)                     \
+    macro_(ScalarTypeRepresentation::TYPE_INT8,    int8_t,   int8)            \
+    macro_(ScalarTypeRepresentation::TYPE_UINT8,   uint8_t,  uint8)           \
+    macro_(ScalarTypeRepresentation::TYPE_INT16,   int16_t,  int16)           \
+    macro_(ScalarTypeRepresentation::TYPE_UINT16,  uint16_t, uint16)          \
+    macro_(ScalarTypeRepresentation::TYPE_INT32,   int32_t,  int32)           \
+    macro_(ScalarTypeRepresentation::TYPE_UINT32,  uint32_t, uint32)          \
+    macro_(ScalarTypeRepresentation::TYPE_FLOAT32, float,    float32)         \
+    macro_(ScalarTypeRepresentation::TYPE_FLOAT64, double,   float64)
+
+// Must be in same order as the enum ScalarTypeRepresentation::Type:
 #define JS_FOR_EACH_SCALAR_TYPE_REPR(macro_)                                    \
-    macro_(ScalarTypeRepresentation::TYPE_INT8,    int8_t,   int8)              \
-    macro_(ScalarTypeRepresentation::TYPE_UINT8,   uint8_t,  uint8)             \
-    macro_(ScalarTypeRepresentation::TYPE_INT16,   int16_t,  int16)             \
-    macro_(ScalarTypeRepresentation::TYPE_UINT16,  uint16_t, uint16)            \
-    macro_(ScalarTypeRepresentation::TYPE_INT32,   int32_t,  int32)             \
-    macro_(ScalarTypeRepresentation::TYPE_UINT32,  uint32_t, uint32)            \
-    macro_(ScalarTypeRepresentation::TYPE_FLOAT32, float,    float32)           \
-    macro_(ScalarTypeRepresentation::TYPE_FLOAT64, double,   float64)           \
+    JS_FOR_EACH_UNIQUE_SCALAR_TYPE_REPR_CTYPE(macro_)                           \
     macro_(ScalarTypeRepresentation::TYPE_UINT8_CLAMPED, uint8_t, uint8Clamped)
 
 class ArrayTypeRepresentation : public TypeRepresentation {

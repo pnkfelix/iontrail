@@ -654,30 +654,15 @@ const JSFunctionSpec intrinsic_functions[] = {
     JS_FNINFO("Memcpy",
               JSNativeThreadSafeWrapper<js::Memcpy>,
               &js::MemcpyJitInfo, 5, 0),
-    JS_FNINFO("StoreInt8",
-              JSNativeThreadSafeWrapper<js::StoreScalar<int8_t>::Func>,
-              &js::StoreScalar<int8_t>::JitInfo, 3, 0),
-    JS_FNINFO("StoreInt16",
-              JSNativeThreadSafeWrapper<js::StoreScalar<int16_t>::Func>,
-              &js::StoreScalar<int16_t>::JitInfo, 3, 0),
-    JS_FNINFO("StoreInt32",
-              JSNativeThreadSafeWrapper<js::StoreScalar<int32_t>::Func>,
-              &js::StoreScalar<int32_t>::JitInfo, 3, 0),
-    JS_FNINFO("StoreUint8",
-              JSNativeThreadSafeWrapper<js::StoreScalar<uint8_t>::Func>,
-              &js::StoreScalar<uint8_t>::JitInfo, 3, 0),
-    JS_FNINFO("StoreUint16",
-              JSNativeThreadSafeWrapper<js::StoreScalar<uint16_t>::Func>,
-              &js::StoreScalar<uint16_t>::JitInfo, 3, 0),
-    JS_FNINFO("StoreUint32",
-              JSNativeThreadSafeWrapper<js::StoreScalar<uint32_t>::Func>,
-              &js::StoreScalar<uint32_t>::JitInfo, 3, 0),
-    JS_FNINFO("StoreFloat32",
-              JSNativeThreadSafeWrapper<js::StoreScalar<float>::Func>,
-              &js::StoreScalar<float>::JitInfo, 3, 0),
-    JS_FNINFO("StoreFloat64",
-              JSNativeThreadSafeWrapper<js::StoreScalar<double>::Func>,
-              &js::StoreScalar<double>::JitInfo, 3, 0),
+
+#define LOAD_AND_STORE_FN_DECLS(_constant, _type, _name)                      \
+    JS_FNINFO("Store_" #_name,                                                \
+              JSNativeThreadSafeWrapper<js::StoreScalar<_type>::Func>,        \
+              &js::StoreScalar<_type>::JitInfo, 3, 0),                        \
+    JS_FNINFO("Load_" #_name,                                                 \
+              JSNativeThreadSafeWrapper<js::LoadScalar<_type>::Func>,         \
+              &js::LoadScalar<_type>::JitInfo, 3, 0),
+    JS_FOR_EACH_UNIQUE_SCALAR_TYPE_REPR_CTYPE(LOAD_AND_STORE_FN_DECLS)
 
     // See builtin/Intl.h for descriptions of the intl_* functions.
     JS_FN("intl_availableCalendars", intl_availableCalendars, 1,0),
