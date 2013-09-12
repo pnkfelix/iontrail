@@ -132,6 +132,7 @@
     macro(propertyIsEnumerable, propertyIsEnumerable, "propertyIsEnumerable") \
     macro(proto, proto, "__proto__") \
     macro(prototype, prototype, "prototype") \
+    macro(Reify, Reify, "Reify") \
     macro(return, return_, "return") \
     macro(sensitivity, sensitivity, "sensitivity") \
     macro(set, set, "set") \
