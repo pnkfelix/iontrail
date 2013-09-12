@@ -493,9 +493,8 @@ InitClass(JSContext *cx,
     // Create ctor.prototype, which inherits from Function.__proto__
 
     RootedObject proto(
-        cx,
-        NewObjectWithGivenProto(cx, &JSObject::class_, funcProto,
-                                global, SingletonObject));
+        cx, NewObjectWithGivenProto(cx, &JSObject::class_, funcProto,
+                                    global, SingletonObject));
     if (!proto)
         return NULL;
 
@@ -505,9 +504,8 @@ InitClass(JSContext *cx,
     if (!objProto)
         return NULL;
     RootedObject protoProto(
-        cx,
-        NewObjectWithGivenProto(cx, &JSObject::class_, objProto,
-                                global, SingletonObject));
+        cx, NewObjectWithGivenProto(cx, &JSObject::class_, objProto,
+                                    global, SingletonObject));
     if (!proto)
         return NULL;
 
@@ -748,7 +746,8 @@ ArrayType::subarray(JSContext *cx, unsigned int argc, Value *vp)
     int32_t elementSize = typeRepr->element()->size();
     size_t offset = elementSize * begin;
 
-    RootedObject subarray(cx, BinaryBlock::createDerived(cx, subArrayType, thisObj, offset));
+    RootedObject subarray(
+        cx, TypedContents::createDerived(cx, subArrayType, thisObj, offset));
     if (!subarray)
         return false;
 
@@ -1083,11 +1082,9 @@ StructType::layout(JSContext *cx, HandleObject structType, HandleObject fields)
     // fieldOffsets : { string: integer, ... }
     // fieldTypes : { string: Type, ... }
     RootedObject fieldOffsets(
-        cx,
-        NewObjectWithClassProto(cx, &JSObject::class_, NULL, NULL));
+        cx, NewObjectWithClassProto(cx, &JSObject::class_, NULL, NULL));
     RootedObject fieldTypes(
-        cx,
-        NewObjectWithClassProto(cx, &JSObject::class_, NULL, NULL));
+        cx, NewObjectWithClassProto(cx, &JSObject::class_, NULL, NULL));
     for (size_t i = 0; i < typeRepr->fieldCount(); i++) {
         const StructField &field = typeRepr->field(i);
         RootedId fieldId(cx, field.id);
@@ -1336,7 +1333,8 @@ js_InitTypedObjectClass(JSContext *cx, HandleObject obj)
 
     global->setArrayType(arrayType);
 
-    RootedPropertyName arrayTypeName(cx, PropertyNameFromCString(cx, ArrayType::class_.name));
+    RootedPropertyName arrayTypeName(
+        cx, PropertyNameFromCString(cx, ArrayType::class_.name));
     if (!arrayTypeName)
         return NULL;
 
@@ -1353,7 +1351,8 @@ js_InitTypedObjectClass(JSContext *cx, HandleObject obj)
     if (!structType)
         return NULL;
 
-    RootedPropertyName structTypeName(cx, PropertyNameFromCString(cx, StructType::class_.name));
+    RootedPropertyName structTypeName(
+        cx, PropertyNameFromCString(cx, StructType::class_.name));
     if (!structTypeName)
         return NULL;
 
