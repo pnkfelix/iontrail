@@ -77,7 +77,7 @@
 #define JS_SCALARTYPEREPR_UINT8_CLAMPED 8
 
 ///////////////////////////////////////////////////////////////////////////
-// Slots for typed objects
+// Slots for typed objects (actually, any TypedContents objects)
 
 #define JS_TYPEDOBJ_SLOT_TYPE_OBJ 0  // Type object for a given typed object
 #define JS_TYPEDOBJ_SLOT_OWNER    1  // Owner of data (if null, this is owner)

@@ -12,6 +12,8 @@
 
 #define TYPED_TYPE_OBJ(obj) \
     UnsafeGetReservedSlot(obj, JS_TYPEDOBJ_SLOT_TYPE_OBJ)
+#define TYPED_OWNER(obj) \
+    UnsafeGetReservedSlot(obj, JS_TYPEDOBJ_SLOT_OWNER)
 
 // Type repr slots
 
@@ -62,6 +64,13 @@ function TypedObjectPointer(typeRepr, typeObj, owner, offset) {
 }
 
 MakeConstructible(TypedObjectPointer, {});
+
+TypedObjectPointer.fromTypedContents = function(typed) {
+  return new TypedObjectPointer(TYPED_TYPE_REPR(typed),
+                                TYPED_TYPE_OBJ(typed),
+                                typed,
+                                0);
+}
 
 #ifdef DEBUG
 TypedObjectPointer.prototype.toString = function() {
@@ -160,6 +169,56 @@ TypedObjectPointer.prototype.moveToField = function(propName) {
 }
 
 ///////////////////////////////////////////////////////////////////////////
+// get()
+//
+// Reifies the value referenced by the pointer, meaning that it
+// returns a new object pointing at the value. If the value is
+// a scalar, it will return a JS number, but otherwise the reified
+// result will be a typed object or handle, depending on the type
+// of the ptr's owner.
+
+TypedObjectPointer.prototype.get = function() {
+  assert(ObjectIsAttached(this.owner), "get() called with unattached owner");
+
+  if (REPR_KIND(this.typeRepr) == JS_TYPEREPR_SCALAR_KIND)
+    return this.getScalar();
+
+  return NewDerivedTypedContents(this.typeObj, this.owner, this.offset);
+}
+
+TypedObjectPointer.prototype.getScalar = function() {
+  var type = REPR_TYPE(this.typeRepr);
+  switch (type) {
+  case JS_SCALARTYPEREPR_INT8:
+    return Load_int8(this.owner, this.offset);
+
+  case JS_SCALARTYPEREPR_UINT8:
+  case JS_SCALARTYPEREPR_UINT8_CLAMPED:
+    return Load_uint8(this.owner, this.offset);
+
+  case JS_SCALARTYPEREPR_INT16:
+    return Load_int16(this.owner, this.offset);
+
+  case JS_SCALARTYPEREPR_UINT16:
+    return Load_uint16(this.owner, this.offset);
+
+  case JS_SCALARTYPEREPR_INT32:
+    return Load_int32(this.owner, this.offset);
+
+  case JS_SCALARTYPEREPR_UINT32:
+    return Load_uint32(this.owner, this.offset);
+
+  case JS_SCALARTYPEREPR_FLOAT32:
+    return Load_float32(this.owner, this.offset);
+
+  case JS_SCALARTYPEREPR_FLOAT64:
+    return Load_float64(this.owner, this.offset);
+  }
+
+  assert(false, "Unhandled scalar type: " + type);
+}
+
+///////////////////////////////////////////////////////////////////////////
 // set(fromValue)
 //
 // Assigns `fromValue` to the memory pointed at by `this`, adapting it
@@ -167,6 +226,8 @@ TypedObjectPointer.prototype.moveToField = function(propName) {
 // works for any type.
 
 TypedObjectPointer.prototype.set = function(fromValue) {
+  assert(ObjectIsAttached(this.owner), "set() called with unattached owner");
+
   var typeRepr = this.typeRepr;
 
   // Fast path: `fromValue` is a typed object with same type
@@ -174,6 +235,9 @@ TypedObjectPointer.prototype.set = function(fromValue) {
   // memcpy.
   if (IsObject(fromValue) && HaveSameClass(fromValue, this.owner)) {
     if (TYPED_TYPE_REPR(fromValue) === typeRepr) {
+      if (!ObjectIsAttached(fromValue))
+        ThrowError(JSMSG_TYPEDOBJECT_HANDLE_UNATTACHED);
+
       var size = REPR_SIZE(typeRepr);
       Memcpy(this.owner, this.offset, fromValue, 0, size);
       return;
@@ -270,9 +334,36 @@ function ConvertAndCopyTo(destTypeRepr,
                           destTypedObj,
                           destOffset,
                           fromValue) {
+  assert(IsObject(destTypeRepr) && ObjectIsTypeRepresentation(destTypeRepr),
+         "ConvertAndCopyTo: not type repr");
+  assert(IsObject(destTypeObj) && ObjectIsTypeObject(destTypeObj),
+         "ConvertAndCopyTo: not type obj");
+
+  if (!ObjectIsAttached(destTypedObj))
+    ThrowError(JSMSG_TYPEDOBJECT_HANDLE_UNATTACHED);
+
   var ptr = new TypedObjectPointer(destTypeRepr, destTypeObj,
                                    destTypedObj, destOffset);
   ptr.set(fromValue);
+}
+
+// Wrapper for use from C++ code.
+function Reify(sourceTypeRepr,
+               sourceTypeObj,
+               sourceTypedObj,
+               sourceOffset) {
+  assert(IsObject(sourceTypeRepr) && ObjectIsTypeRepresentation(sourceTypeRepr),
+         "Reify: not type repr");
+  assert(IsObject(sourceTypeObj) && ObjectIsTypeObject(sourceTypeObj),
+         "Reify: not type obj");
+
+  if (!ObjectIsAttached(sourceTypedObj))
+    ThrowError(JSMSG_TYPEDOBJECT_HANDLE_UNATTACHED);
+
+  var ptr = new TypedObjectPointer(sourceTypeRepr, sourceTypeObj,
+                                   sourceTypedObj, sourceOffset);
+
+  return ptr.get();
 }
 
 function FillTypedArrayWithValue(destArray, fromValue) {
@@ -282,10 +373,7 @@ function FillTypedArrayWithValue(destArray, fromValue) {
     return;
 
   // Use convert and copy to to produce the first element:
-  var ptr = new TypedObjectPointer(typeRepr,
-                                   TYPED_TYPE_OBJ(destArray),
-                                   destArray,
-                                   0);
+  var ptr = TypedObjectPointer.fromTypedContents(destArray);
   ptr.moveToElem(0);
   ptr.set(fromValue);
 
@@ -296,4 +384,85 @@ function FillTypedArrayWithValue(destArray, fromValue) {
     Memcpy(destArray, offset, destArray, 0, elementSize);
 }
 
+///////////////////////////////////////////////////////////////////////////
+// Handles
+//
+// Note: these methods are directly invokable by users and so must be
+// defensive.
 
+// This is the `handle([obj, [...path]])` method on type objects.
+function HandleCreate(obj, ...path) {
+  if (!ObjectIsTypeObject(this))
+    ThrowError(JSMSG_INCOMPATIBLE_PROTO, "Type", "handle", "value");
+
+  var handle = NewTypedHandle(this);
+
+  if (obj !== undefined)
+    HandleMoveInternal(handle, obj, path)
+
+  return handle;
+}
+
+// Handle.move: user exposed!
+function HandleMove(obj, ...path) {
+  if (!ObjectIsTypedHandle(this))
+    ThrowError(JSMSG_INCOMPATIBLE_PROTO, "Handle", "set", typeof value);
+
+  HandleMoveInternal(this, obj, path);
+}
+
+function HandleMoveInternal(handle, obj, path) {
+  assert(ObjectIsTypedHandle(handle),
+         "HandleMoveInternal: not typed handle");
+
+  if (!IsObject(obj) || !ObjectHasTypedContents(obj))
+    ThrowError(JSMSG_INCOMPATIBLE_PROTO);
+
+  var ptr = TypedObjectPointer.fromTypedContents(obj);
+  for (var i = 0; i < path.length; i++)
+    ptr.moveTo(path[i]);
+
+  AttachHandle(handle, ptr.owner, ptr.offset)
+}
+
+// Handle.get: user exposed!
+function HandleGet() {
+  if (!ObjectIsTypedHandle(this))
+    ThrowError(JSMSG_INCOMPATIBLE_PROTO, "Handle", "set", typeof value);
+
+  if (!ObjectIsAttached(this))
+    ThrowError(JSMSG_TYPEDOBJECT_HANDLE_UNATTACHED);
+
+  var ptr = TypedObjectPointer.fromTypedContents(destArray);
+  return ptr.get();
+}
+
+// Handle.set: user exposed!
+function HandleSet(value) {
+  if (!ObjectIsTypedHandle(this))
+    ThrowError(JSMSG_INCOMPATIBLE_PROTO, "Handle", "set", typeof value);
+
+  if (!ObjectIsAttached(this))
+    ThrowError(JSMSG_TYPEDOBJECT_HANDLE_UNATTACHED);
+
+  var ptr = TypedObjectPointer.fromTypedContents(destArray);
+  ptr.set(value);
+}
+
+// Handle.isHandle: user exposed!
+function HandleTest(obj) {
+  return IsObject(obj) && ObjectIsTypedHandle(obj);
+}
+
+///////////////////////////////////////////////////////////////////////////
+// Miscellaneous
+
+function ObjectHasTypedContents(obj) {
+  return ObjectIsTypedObject(obj) || ObjectIsTypedHandle(obj);
+}
+
+function ObjectIsAttached(obj) {
+  assert(ObjectHasTypedContents(obj),
+         "ObjectIsAttached() invoked on invalid obj");
+  return TYPED_OWNER(obj) != null;
+}

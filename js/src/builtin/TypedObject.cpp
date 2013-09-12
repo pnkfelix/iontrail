@@ -43,22 +43,6 @@ Class js::TypedObjectClass = {
     JS_ConvertStub
 };
 
-/*
- * Reify() converts a binary value into a JS Object.
- *
- * The type of the value to be converted is described by `typeRepr`,
- * and `type` is an associated type descriptor object with that
- * same representation (note that there may be many descriptors
- * that all share the same `typeRepr`).
- *
- * The value is located at the offset `offset` in the binary block
- * associated with `owner`, which must be a BinaryBlock object.
- *
- * Upon success, the result is stored in `vp`.
- */
-static bool Reify(JSContext *cx, TypeRepresentation *typeRepr, HandleObject type,
-                  HandleObject owner, size_t offset, MutableHandleValue vp);
-
 static void
 ReportCannotConvertTo(JSContext *cx, HandleValue fromValue, const char *toType)
 {
@@ -149,15 +133,15 @@ IsTypeObject(JSObject &type)
 }
 
 static inline bool
-IsBlock(JSObject &obj)
+HasTypedContents(JSObject &obj)
 {
-    return obj.hasClass(&BinaryBlock::class_);
+    return obj.is<TypedObject>() || obj.is<TypedHandle>();
 }
 
 static inline uint8_t *
-BlockMem(JSObject &val)
+TypedMem(JSObject &val)
 {
-    JS_ASSERT(IsBlock(val));
+    JS_ASSERT(HasTypedContents(val));
     return (uint8_t*) val.getPrivate();
 }
 
@@ -187,7 +171,7 @@ typeRepresentation(JSObject &typeObj)
 static inline JSObject *
 GetType(JSObject &block)
 {
-    JS_ASSERT(IsBlock(block));
+    JS_ASSERT(HasTypedContents(block));
     return &block.getReservedSlot(JS_TYPEDOBJ_SLOT_TYPE_OBJ).toObject();
 }
 
@@ -254,6 +238,39 @@ ConvertAndCopyTo(JSContext *cx, HandleObject block, HandleValue val)
     return ConvertAndCopyTo(cx, type, block, 0, val);
 }
 
+/*
+ * Overwrites the contents of `block` at offset `offset` with `val`
+ * converted to the type `typeObj`
+ */
+static bool
+Reify(JSContext *cx,
+      TypeRepresentation *typeRepr,
+      HandleObject type,
+      HandleObject owner,
+      size_t offset,
+      MutableHandleValue to)
+{
+    RootedFunction func(cx, SelfHostedFunction(cx, "Reify"));
+    if (!func)
+        return false;
+
+    InvokeArgs args(cx);
+    if (!args.init(4))
+        return false;
+
+    args.setCallee(ObjectValue(*func));
+    args[0].setObject(*typeRepr->ownerObject());
+    args[1].setObject(*type);
+    args[2].setObject(*owner);
+    args[3].setInt32(offset);
+
+    if (!Invoke(cx, args))
+        return false;
+
+    to.set(args.rval());
+    return true;
+}
+
 static inline size_t
 TypeSize(JSObject &type)
 {
@@ -267,24 +284,12 @@ BlockSize(JSObject &val)
 }
 
 static inline bool
-IsBlockOfKind(JSObject &obj, TypeRepresentation::Kind kind)
+HasTypedContentsOfKind(JSObject &obj, TypeRepresentation::Kind kind)
 {
-    if (!IsBlock(obj))
+    if (!HasTypedContents(obj))
         return false;
     TypeRepresentation *repr = typeRepresentation(*GetType(obj));
     return repr->kind() == kind;
-}
-
-static inline bool
-IsBinaryArray(JSObject &obj)
-{
-    return IsBlockOfKind(obj, TypeRepresentation::Array);
-}
-
-static inline bool
-IsBinaryStruct(JSObject &obj)
-{
-    return IsBlockOfKind(obj, TypeRepresentation::Struct);
 }
 
 static bool
@@ -342,14 +347,6 @@ Class js::NumericTypeClasses[ScalarTypeRepresentation::TYPE_MAX] = {
     JS_FOR_EACH_SCALAR_TYPE_REPR(BINARYDATA_NUMERIC_CLASSES)
 };
 
-#define BINARYDATA_TYPE_TO_CLASS(constant_, type_, name_)                     \
-    template <>                                                               \
-    Class *                                                                   \
-    NumericType<constant_, type_>::typeToClass()                              \
-    {                                                                         \
-        return &NumericTypeClasses[constant_];                                \
-    }
-
 template <typename T>
 static T ConvertScalar(double d)
 {
@@ -364,25 +361,6 @@ static T ConvertScalar(double d)
     }
 }
 
-
-/**
- * This namespace declaration is required because of a weird 'specialization in
- * different namespace' error that happens in gcc, only on type specialized
- * template functions.
- */
-namespace js {
-JS_FOR_EACH_SCALAR_TYPE_REPR(BINARYDATA_TYPE_TO_CLASS);
-
-template <ScalarTypeRepresentation::Type type, typename T>
-JS_ALWAYS_INLINE
-bool NumericType<type, T>::reify(JSContext *cx, void *mem, MutableHandleValue vp)
-{
-    vp.setNumber((double)*((T*)mem) );
-    return true;
-}
-
-} // namespace js
-
 template<ScalarTypeRepresentation::Type N>
 static bool
 NumericTypeToString(JSContext *cx, unsigned int argc, Value *vp)
@@ -394,26 +372,6 @@ NumericTypeToString(JSContext *cx, unsigned int argc, Value *vp)
         return false;
     args.rval().set(StringValue(s));
     return true;
-}
-
-static bool
-ReifyScalar(JSContext *cx, ScalarTypeRepresentation *typeRepr, HandleObject type,
-            HandleObject owner, size_t offset, MutableHandleValue to)
-{
-    JS_ASSERT(&NumericTypeClasses[0] <= type->getClass() &&
-              type->getClass() <= &NumericTypeClasses[ScalarTypeRepresentation::TYPE_MAX]);
-
-    switch (typeRepr->type()) {
-#define REIFY_CASES(constant_, type_, name_)                                  \
-        case constant_:                                                       \
-          return NumericType<constant_, type_>::reify(                        \
-                cx, BlockMem(*owner) + offset, to);
-        JS_FOR_EACH_SCALAR_TYPE_REPR(REIFY_CASES)
-    }
-#undef REIFY_CASES
-
-    MOZ_ASSUME_UNREACHABLE("Invalid type");
-    return false;
 }
 
 template <ScalarTypeRepresentation::Type type, typename T>
@@ -550,7 +508,7 @@ Class ArrayType::class_ = {
     NULL,
     NULL,
     NULL,
-    BinaryBlock::construct,
+    TypedObject::construct,
     NULL
 };
 
@@ -559,6 +517,7 @@ const JSPropertySpec ArrayType::typeObjectProperties[] = {
 };
 
 const JSFunctionSpec ArrayType::typeObjectMethods[] = {
+    {"handle", {NULL, NULL}, 2, 0, "HandleCreate"},
     JS_FN("repeat", ArrayType::repeat, 1, 0),
     JS_FN("toSource", ArrayType::toSource, 0, 0),
     JS_FS_END
@@ -584,7 +543,7 @@ ArrayElementType(HandleObject array)
 static bool
 FillTypedArrayWithValue(JSContext *cx, HandleObject array, HandleValue val)
 {
-    JS_ASSERT(IsBinaryArray(*array));
+    JS_ASSERT(HasTypedContentsOfKind(*array, TypeRepresentation::Array));
 
     RootedFunction func(
         cx, SelfHostedFunction(cx, "FillTypedArrayWithValue"));
@@ -622,7 +581,7 @@ ArrayType::repeat(JSContext *cx, unsigned int argc, Value *vp)
         return false;
     }
 
-    RootedObject binaryArray(cx, BinaryBlock::createZeroed(cx, thisObj));
+    RootedObject binaryArray(cx, TypedObject::createZeroed(cx, thisObj));
     if (!binaryArray)
         return false;
 
@@ -699,7 +658,7 @@ ArrayType::subarray(JSContext *cx, unsigned int argc, Value *vp)
     }
 
     RootedObject thisObj(cx, &args.thisv().toObject());
-    if (!IsBinaryArray(*thisObj)) {
+    if (!HasTypedContentsOfKind(*thisObj, TypeRepresentation::Array)) {
         ReportCannotConvertTo(cx, thisObj, "binary array");
         return false;
     }
@@ -768,7 +727,7 @@ ArrayFillSubarray(JSContext *cx, unsigned int argc, Value *vp)
     }
 
     RootedObject thisObj(cx, ToObjectIfObject(args.thisv()));
-    if (!thisObj || !IsBinaryArray(*thisObj)) {
+    if (!thisObj || !HasTypedContentsOfKind(*thisObj, TypeRepresentation::Array)) {
         JS_ReportErrorNumber(cx, js_GetErrorMessage,
                              NULL, JSMSG_INCOMPATIBLE_PROTO,
                              "ArrayType", "fill",
@@ -971,7 +930,7 @@ Class StructType::class_ = {
     NULL, /* checkAccess */
     NULL, /* call */
     NULL, /* hasInstance */
-    BinaryBlock::construct,
+    TypedObject::construct,
     NULL  /* trace */
 };
 
@@ -980,6 +939,7 @@ const JSPropertySpec StructType::typeObjectProperties[] = {
 };
 
 const JSFunctionSpec StructType::typeObjectMethods[] = {
+    {"handle", {NULL, NULL}, 2, 0, "HandleCreate"},
     JS_FN("toSource", StructType::toSource, 0, 0),
     JS_FS_END
 };
@@ -1210,32 +1170,6 @@ StructType::toSource(JSContext *cx, unsigned int argc, Value *vp)
 
 ///////////////////////////////////////////////////////////////////////////
 
-static bool
-ReifyComplex(JSContext *cx, HandleObject type, HandleObject owner,
-             size_t offset, MutableHandleValue to)
-{
-    RootedObject obj(cx, BinaryBlock::createDerived(cx, type, owner, offset));
-    if (!obj)
-        return false;
-    to.setObject(*obj);
-    return true;
-}
-
-static bool
-Reify(JSContext *cx, TypeRepresentation *typeRepr, HandleObject type,
-      HandleObject owner, size_t offset, MutableHandleValue to)
-{
-    JS_ASSERT(typeRepr == typeRepresentation(*type));
-    switch (typeRepr->kind()) {
-      case TypeRepresentation::Scalar:
-        return ReifyScalar(cx, typeRepr->asScalar(), type, owner, offset, to);
-      case TypeRepresentation::Struct:
-      case TypeRepresentation::Array:
-        return ReifyComplex(cx, type, owner, offset, to);
-    }
-    MOZ_ASSUME_UNREACHABLE("Invalid typeRepr kind");
-}
-
 ///////////////////////////////////////////////////////////////////////////
 // Creating the TypedObject "module"
 //
@@ -1360,15 +1294,28 @@ js_InitTypedObjectClass(JSContext *cx, HandleObject obj)
     if (!JSObject::defineProperty(cx, module, structTypeName,
                                   structTypeValue,
                                   NULL, NULL,
-                                  JSPROP_READONLY | JSPROP_PERMANENT))
+                                  NORMAL_JS_PROPS))
         return NULL;
 
-    RootedValue moduleValue(cx, ObjectValue(*module));
-    global->setReservedSlot(JSProto_TypedObject, moduleValue);
-    if (!JSObject::defineProperty(cx, global, ClassName(JSProto_TypedObject, cx),
-                                  moduleValue,
+    //  Handle
+
+    RootedObject handle(cx, NewBuiltinClassInstance(cx, &JSObject::class_));
+    if (!module)
+        return NULL;
+
+    if (!JS_DefineFunctions(cx, handle, TypedHandle::handleStaticMethods))
+        return NULL;
+
+    RootedPropertyName handleTypeName(
+        cx, PropertyNameFromCString(cx, TypedHandle::class_.name));
+    if (!handleTypeName)
+        return NULL;
+
+    RootedValue handleValue(cx, ObjectValue(*handle));
+    if (!JSObject::defineProperty(cx, module, handleTypeName,
+                                  handleValue,
                                   NULL, NULL,
-                                  0))
+                                  NORMAL_JS_PROPS))
         return NULL;
 
     return module;
@@ -1435,60 +1382,106 @@ DefineNumericClass(JSContext *cx,
 ///////////////////////////////////////////////////////////////////////////
 // Binary blocks
 
-Class BinaryBlock::class_ = {
-    "BinaryBlock",
-    Class::NON_NATIVE |
-    JSCLASS_HAS_RESERVED_SLOTS(JS_TYPEDOBJ_SLOTS) |
-    JSCLASS_HAS_PRIVATE |
-    JSCLASS_IMPLEMENTS_BARRIERS,
-    JS_PropertyStub,
-    JS_DeletePropertyStub,
-    JS_PropertyStub,
-    JS_StrictPropertyStub,
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub,
-    BinaryBlock::obj_finalize,
-    NULL,           /* checkAccess */
-    NULL,           /* call        */
-    NULL,           /* construct   */
-    NULL,           /* hasInstance */
-    BinaryBlock::obj_trace,
-    JS_NULL_CLASS_EXT,
-    {
-        BinaryBlock::obj_lookupGeneric,
-        BinaryBlock::obj_lookupProperty,
-        BinaryBlock::obj_lookupElement,
-        BinaryBlock::obj_lookupSpecial,
-        BinaryBlock::obj_defineGeneric,
-        BinaryBlock::obj_defineProperty,
-        BinaryBlock::obj_defineElement,
-        BinaryBlock::obj_defineSpecial,
-        BinaryBlock::obj_getGeneric,
-        BinaryBlock::obj_getProperty,
-        BinaryBlock::obj_getElement,
-        BinaryBlock::obj_getElementIfPresent,
-        BinaryBlock::obj_getSpecial,
-        BinaryBlock::obj_setGeneric,
-        BinaryBlock::obj_setProperty,
-        BinaryBlock::obj_setElement,
-        BinaryBlock::obj_setSpecial,
-        BinaryBlock::obj_getGenericAttributes,
-        BinaryBlock::obj_setGenericAttributes,
-        BinaryBlock::obj_deleteProperty,
-        BinaryBlock::obj_deleteElement,
-        BinaryBlock::obj_deleteSpecial,
-        BinaryBlock::obj_enumerate,
-        NULL, /* thisObject */
+template<class T>
+/*static*/ T *
+TypedContents::createUnattached(JSContext *cx,
+                                HandleObject type)
+{
+    JS_STATIC_ASSERT(T::IsTypedContents);
+    JS_ASSERT(IsTypeObject(*type));
+
+    RootedObject obj(cx, createUnattachedWithClass(cx, &T::class_, type));
+    if (!obj)
+        return NULL;
+
+    return &obj->as<T>();
+}
+
+/*static*/ TypedContents *
+TypedContents::createUnattachedWithClass(JSContext *cx,
+                                         Class *clasp,
+                                         HandleObject type)
+{
+    JS_ASSERT(IsTypeObject(*type));
+    JS_ASSERT(clasp == &TypedObject::class_ || clasp == &TypedHandle::class_);
+    JS_ASSERT(JSCLASS_RESERVED_SLOTS(clasp) == JS_TYPEDOBJ_SLOTS);
+    JS_ASSERT(clasp->hasPrivate());
+
+    RootedValue protoVal(cx);
+    if (!JSObject::getProperty(cx, type, type,
+                               cx->names().classPrototype, &protoVal))
+        return NULL;
+
+    RootedObject obj(
+        cx, NewObjectWithClassProto(cx, clasp, &protoVal.toObject(), NULL));
+    if (!obj)
+        return NULL;
+
+    obj->setPrivate(NULL);
+    obj->initReservedSlot(JS_TYPEDOBJ_SLOT_TYPE_OBJ, ObjectValue(*type));
+    obj->initReservedSlot(JS_TYPEDOBJ_SLOT_OWNER, NullValue());
+
+    // Tag the type object for this instance with the type
+    // representation, if that has not been done already.
+    if (cx->typeInferenceEnabled()) {
+        RootedTypeObject typeObj(cx, obj->getType(cx));
+        if (typeObj) {
+            TypeRepresentation *typeRepr = typeRepresentation(*type);
+            if (!typeObj->addTypedObjectAddendum(cx, typeRepr))
+                return NULL;
+        }
     }
-};
+
+    return static_cast<TypedContents*>(&*obj);
+}
+
+/*static*/ void
+TypedContents::attach(void *memory)
+{
+    setPrivate(memory);
+    setReservedSlot(JS_TYPEDOBJ_SLOT_OWNER, ObjectValue(*this));
+}
+
+/*static*/ void
+TypedContents::attach(JSObject &owner, uint32_t offset)
+{
+    // `owner` must be attached
+    JS_ASSERT(HasTypedContents(owner));
+    JS_ASSERT(owner.getReservedSlot(JS_TYPEDOBJ_SLOT_OWNER).isObject());
+
+    // find the location in memory
+    uint8_t *mem = TypedMem(owner) + offset;
+
+    // find the transitive owner, which is usually but not always `owner`
+    JSObject &trueOwner = owner.getReservedSlot(JS_TYPEDOBJ_SLOT_OWNER).toObject();
+
+    setPrivate(mem);
+    setReservedSlot(JS_TYPEDOBJ_SLOT_OWNER, ObjectValue(trueOwner));
+}
+
+/*static*/ TypedContents *
+TypedContents::createDerived(JSContext *cx, HandleObject type,
+                             HandleObject owner, size_t offset)
+{
+    JS_ASSERT(HasTypedContents(*owner));
+    JS_ASSERT(offset <= BlockSize(*owner));
+    JS_ASSERT(offset + TypeSize(*type) <= BlockSize(*owner));
+
+    js::Class *clasp = owner->getClass();
+    Rooted<TypedContents*> obj(cx, createUnattachedWithClass(cx, clasp, type));
+    if (!obj)
+        return NULL;
+
+    obj->attach(*owner, offset);
+    return obj;
+}
 
 static bool
 ReportBlockTypeError(JSContext *cx,
                      const unsigned errorNumber,
                      HandleObject obj)
 {
-    JS_ASSERT(IsBlock(*obj));
+    JS_ASSERT(HasTypedContents(*obj));
 
     RootedObject type(cx, GetType(*obj));
     TypeRepresentation *typeRepr = typeRepresentation(*type);
@@ -1513,115 +1506,36 @@ ReportBlockTypeError(JSContext *cx,
 }
 
 /*static*/ void
-BinaryBlock::obj_trace(JSTracer *trace, JSObject *object)
+TypedContents::obj_trace(JSTracer *trace, JSObject *object)
 {
-    JS_ASSERT(object->hasClass(&class_));
+    JS_ASSERT(HasTypedContents(*object));
 
     for (size_t i = 0; i < JS_TYPEDOBJ_SLOTS; i++)
-        gc::MarkSlot(trace, &object->getReservedSlotRef(i), "BinaryBlockSlot");
+        gc::MarkSlot(trace, &object->getReservedSlotRef(i), "TypedObjectSlot");
 }
 
 /*static*/ void
-BinaryBlock::obj_finalize(js::FreeOp *op, JSObject *obj)
+TypedContents::obj_finalize(js::FreeOp *op, JSObject *obj)
 {
-    if (!obj->getReservedSlot(JS_TYPEDOBJ_SLOT_OWNER).isNull())
-        return;
+    // if the obj owns the memory, indicating by the owner slot being
+    // set to itself, then we must free it when finalized.
 
-    if (void *mem = obj->getPrivate())
-        op->free_(mem);
-}
+    JS_ASSERT(obj->getReservedSlotRef(JS_TYPEDOBJ_SLOT_OWNER).isObjectOrNull());
 
-/*static*/ JSObject *
-BinaryBlock::createNull(JSContext *cx, HandleObject type, HandleValue owner)
-{
-    JS_ASSERT(IsTypeObject(*type));
+    if (obj->getReservedSlot(JS_TYPEDOBJ_SLOT_OWNER).isNull())
+        return; // Unattached
 
-    RootedValue protoVal(cx);
-    if (!JSObject::getProperty(cx, type, type,
-                               cx->names().classPrototype, &protoVal))
-        return NULL;
-
-    RootedObject obj(cx,
-        NewObjectWithClassProto(cx, &class_, &protoVal.toObject(), NULL));
-    obj->initReservedSlot(JS_TYPEDOBJ_SLOT_TYPE_OBJ, ObjectValue(*type));
-    obj->initReservedSlot(JS_TYPEDOBJ_SLOT_OWNER, owner);
-
-    // Tag the type object for this instance with the type
-    // representation, if that has not been done already.
-    if (cx->typeInferenceEnabled()) {
-        RootedTypeObject typeObj(cx, obj->getType(cx));
-        if (typeObj) {
-            TypeRepresentation *typeRepr = typeRepresentation(*type);
-            if (!typeObj->addTypedObjectAddendum(cx, typeRepr))
-                return NULL;
-        }
+    if (&obj->getReservedSlot(JS_TYPEDOBJ_SLOT_OWNER).toObject() == obj) {
+        JS_ASSERT(obj->getPrivate());
+        op->free_(obj->getPrivate());
     }
-
-    return obj;
-}
-
-/*static*/ JSObject *
-BinaryBlock::createZeroed(JSContext *cx, HandleObject type)
-{
-    RootedValue owner(cx, NullValue());
-    RootedObject obj(cx, createNull(cx, type, owner));
-    if (!obj)
-        return NULL;
-
-    TypeRepresentation *typeRepr = typeRepresentation(*type);
-    size_t memsize = typeRepr->size();
-    void *memory = JS_malloc(cx, memsize);
-    if (!memory)
-        return NULL;
-    memset(memory, 0, memsize);
-    obj->setPrivate(memory);
-    return obj;
-}
-
-/*static*/ JSObject *
-BinaryBlock::createDerived(JSContext *cx, HandleObject type,
-                           HandleObject owner, size_t offset)
-{
-    JS_ASSERT(IsBlock(*owner));
-    JS_ASSERT(offset <= BlockSize(*owner));
-    JS_ASSERT(offset + TypeSize(*type) <= BlockSize(*owner));
-
-    RootedValue ownerValue(cx, ObjectValue(*owner));
-    RootedObject obj(cx, createNull(cx, type, ownerValue));
-    if (!obj)
-        return NULL;
-
-    obj->setPrivate(BlockMem(*owner) + offset);
-    return obj;
-}
-
-/*static*/ bool
-BinaryBlock::construct(JSContext *cx, unsigned int argc, Value *vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-
-    RootedObject callee(cx, &args.callee());
-    JS_ASSERT(IsTypeObject(*callee));
-
-    RootedObject obj(cx, createZeroed(cx, callee));
-    if (!obj)
-        return false;
-
-    if (argc == 1) {
-        RootedValue initial(cx, args[0]);
-        if (!ConvertAndCopyTo(cx, obj, initial))
-            return false;
-    }
-
-    args.rval().setObject(*obj);
-    return true;
 }
 
 bool
-BinaryBlock::obj_lookupGeneric(JSContext *cx, HandleObject obj, HandleId id,
+TypedContents::obj_lookupGeneric(JSContext *cx, HandleObject obj, HandleId id,
                                 MutableHandleObject objp, MutableHandleShape propp)
 {
-    JS_ASSERT(IsBlock(*obj));
+    JS_ASSERT(HasTypedContents(*obj));
 
     RootedObject type(cx, GetType(*obj));
     TypeRepresentation *typeRepr = typeRepresentation(*type);
@@ -1669,7 +1583,7 @@ BinaryBlock::obj_lookupGeneric(JSContext *cx, HandleObject obj, HandleId id,
 }
 
 bool
-BinaryBlock::obj_lookupProperty(JSContext *cx,
+TypedContents::obj_lookupProperty(JSContext *cx,
                                 HandleObject obj,
                                 HandlePropertyName name,
                                 MutableHandleObject objp,
@@ -1680,10 +1594,10 @@ BinaryBlock::obj_lookupProperty(JSContext *cx,
 }
 
 bool
-BinaryBlock::obj_lookupElement(JSContext *cx, HandleObject obj, uint32_t index,
+TypedContents::obj_lookupElement(JSContext *cx, HandleObject obj, uint32_t index,
                                 MutableHandleObject objp, MutableHandleShape propp)
 {
-    JS_ASSERT(IsBlock(*obj));
+    JS_ASSERT(HasTypedContents(*obj));
     MarkNonNativePropertyFound(propp);
     objp.set(obj);
     return true;
@@ -1710,7 +1624,7 @@ ReportPropertyError(JSContext *cx,
 }
 
 bool
-BinaryBlock::obj_lookupSpecial(JSContext *cx, HandleObject obj,
+TypedContents::obj_lookupSpecial(JSContext *cx, HandleObject obj,
                                HandleSpecialId sid, MutableHandleObject objp,
                                MutableHandleShape propp)
 {
@@ -1719,14 +1633,14 @@ BinaryBlock::obj_lookupSpecial(JSContext *cx, HandleObject obj,
 }
 
 bool
-BinaryBlock::obj_defineGeneric(JSContext *cx, HandleObject obj, HandleId id, HandleValue v,
+TypedContents::obj_defineGeneric(JSContext *cx, HandleObject obj, HandleId id, HandleValue v,
                                PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
 {
     return ReportPropertyError(cx, JSMSG_UNDEFINED_PROP, id);
 }
 
 bool
-BinaryBlock::obj_defineProperty(JSContext *cx, HandleObject obj,
+TypedContents::obj_defineProperty(JSContext *cx, HandleObject obj,
                                 HandlePropertyName name, HandleValue v,
                                 PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
 {
@@ -1735,7 +1649,7 @@ BinaryBlock::obj_defineProperty(JSContext *cx, HandleObject obj,
 }
 
 bool
-BinaryBlock::obj_defineElement(JSContext *cx, HandleObject obj, uint32_t index, HandleValue v,
+TypedContents::obj_defineElement(JSContext *cx, HandleObject obj, uint32_t index, HandleValue v,
                                PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
 {
     AutoRooterGetterSetter gsRoot(cx, attrs, &getter, &setter);
@@ -1747,7 +1661,7 @@ BinaryBlock::obj_defineElement(JSContext *cx, HandleObject obj, uint32_t index, 
 }
 
 bool
-BinaryBlock::obj_defineSpecial(JSContext *cx, HandleObject obj, HandleSpecialId sid, HandleValue v,
+TypedContents::obj_defineSpecial(JSContext *cx, HandleObject obj, HandleSpecialId sid, HandleValue v,
                                PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
 {
     Rooted<jsid> id(cx, SPECIALID_TO_JSID(sid));
@@ -1786,10 +1700,10 @@ StructFieldType(JSContext *cx,
 }
 
 bool
-BinaryBlock::obj_getGeneric(JSContext *cx, HandleObject obj, HandleObject receiver,
+TypedContents::obj_getGeneric(JSContext *cx, HandleObject obj, HandleObject receiver,
                              HandleId id, MutableHandleValue vp)
 {
-    JS_ASSERT(IsBlock(*obj));
+    JS_ASSERT(HasTypedContents(*obj));
 
     // Dispatch elements to obj_getElement:
     uint32_t index;
@@ -1835,7 +1749,7 @@ BinaryBlock::obj_getGeneric(JSContext *cx, HandleObject obj, HandleObject receiv
 }
 
 bool
-BinaryBlock::obj_getProperty(JSContext *cx, HandleObject obj, HandleObject receiver,
+TypedContents::obj_getProperty(JSContext *cx, HandleObject obj, HandleObject receiver,
                               HandlePropertyName name, MutableHandleValue vp)
 {
     RootedId id(cx, NameToId(name));
@@ -1843,7 +1757,7 @@ BinaryBlock::obj_getProperty(JSContext *cx, HandleObject obj, HandleObject recei
 }
 
 bool
-BinaryBlock::obj_getElement(JSContext *cx, HandleObject obj, HandleObject receiver,
+TypedContents::obj_getElement(JSContext *cx, HandleObject obj, HandleObject receiver,
                              uint32_t index, MutableHandleValue vp)
 {
     bool present;
@@ -1851,7 +1765,7 @@ BinaryBlock::obj_getElement(JSContext *cx, HandleObject obj, HandleObject receiv
 }
 
 bool
-BinaryBlock::obj_getElementIfPresent(JSContext *cx, HandleObject obj,
+TypedContents::obj_getElementIfPresent(JSContext *cx, HandleObject obj,
                                      HandleObject receiver, uint32_t index,
                                      MutableHandleValue vp, bool *present)
 {
@@ -1889,7 +1803,7 @@ BinaryBlock::obj_getElementIfPresent(JSContext *cx, HandleObject obj,
 }
 
 bool
-BinaryBlock::obj_getSpecial(JSContext *cx, HandleObject obj,
+TypedContents::obj_getSpecial(JSContext *cx, HandleObject obj,
                             HandleObject receiver, HandleSpecialId sid,
                             MutableHandleValue vp)
 {
@@ -1898,7 +1812,7 @@ BinaryBlock::obj_getSpecial(JSContext *cx, HandleObject obj,
 }
 
 bool
-BinaryBlock::obj_setGeneric(JSContext *cx, HandleObject obj, HandleId id,
+TypedContents::obj_setGeneric(JSContext *cx, HandleObject obj, HandleId id,
                             MutableHandleValue vp, bool strict)
 {
     uint32_t index;
@@ -1937,7 +1851,7 @@ BinaryBlock::obj_setGeneric(JSContext *cx, HandleObject obj, HandleId id,
 }
 
 bool
-BinaryBlock::obj_setProperty(JSContext *cx, HandleObject obj,
+TypedContents::obj_setProperty(JSContext *cx, HandleObject obj,
                              HandlePropertyName name, MutableHandleValue vp,
                              bool strict)
 {
@@ -1946,7 +1860,7 @@ BinaryBlock::obj_setProperty(JSContext *cx, HandleObject obj,
 }
 
 bool
-BinaryBlock::obj_setElement(JSContext *cx, HandleObject obj, uint32_t index,
+TypedContents::obj_setElement(JSContext *cx, HandleObject obj, uint32_t index,
                             MutableHandleValue vp, bool strict)
 {
     RootedObject type(cx, GetType(*obj));
@@ -1976,7 +1890,7 @@ BinaryBlock::obj_setElement(JSContext *cx, HandleObject obj, uint32_t index,
 }
 
 bool
-BinaryBlock::obj_setSpecial(JSContext *cx, HandleObject obj,
+TypedContents::obj_setSpecial(JSContext *cx, HandleObject obj,
                              HandleSpecialId sid, MutableHandleValue vp,
                              bool strict)
 {
@@ -1985,7 +1899,7 @@ BinaryBlock::obj_setSpecial(JSContext *cx, HandleObject obj,
 }
 
 bool
-BinaryBlock::obj_getGenericAttributes(JSContext *cx, HandleObject obj,
+TypedContents::obj_getGenericAttributes(JSContext *cx, HandleObject obj,
                                        HandleId id, unsigned *attrsp)
 {
     uint32_t index;
@@ -2046,7 +1960,7 @@ IsOwnId(JSContext *cx, HandleObject obj, HandleId id)
 }
 
 bool
-BinaryBlock::obj_setGenericAttributes(JSContext *cx, HandleObject obj,
+TypedContents::obj_setGenericAttributes(JSContext *cx, HandleObject obj,
                                        HandleId id, unsigned *attrsp)
 {
     RootedObject type(cx, GetType(*obj));
@@ -2064,7 +1978,7 @@ BinaryBlock::obj_setGenericAttributes(JSContext *cx, HandleObject obj,
 }
 
 bool
-BinaryBlock::obj_deleteProperty(JSContext *cx, HandleObject obj,
+TypedContents::obj_deleteProperty(JSContext *cx, HandleObject obj,
                                 HandlePropertyName name, bool *succeeded)
 {
     Rooted<jsid> id(cx, NameToId(name));
@@ -2081,7 +1995,7 @@ BinaryBlock::obj_deleteProperty(JSContext *cx, HandleObject obj,
 }
 
 bool
-BinaryBlock::obj_deleteElement(JSContext *cx, HandleObject obj, uint32_t index,
+TypedContents::obj_deleteElement(JSContext *cx, HandleObject obj, uint32_t index,
                                bool *succeeded)
 {
     RootedId id(cx);
@@ -2101,7 +2015,7 @@ BinaryBlock::obj_deleteElement(JSContext *cx, HandleObject obj, uint32_t index,
 }
 
 bool
-BinaryBlock::obj_deleteSpecial(JSContext *cx, HandleObject obj,
+TypedContents::obj_deleteSpecial(JSContext *cx, HandleObject obj,
                                HandleSpecialId sid, bool *succeeded)
 {
     RootedObject proto(cx, obj->getProto());
@@ -2114,7 +2028,7 @@ BinaryBlock::obj_deleteSpecial(JSContext *cx, HandleObject obj,
 }
 
 bool
-BinaryBlock::obj_enumerate(JSContext *cx, HandleObject obj, JSIterateOp enum_op,
+TypedContents::obj_enumerate(JSContext *cx, HandleObject obj, JSIterateOp enum_op,
                            MutableHandleValue statep, MutableHandleId idp)
 {
     uint32_t index;
@@ -2195,10 +2109,287 @@ BinaryBlock::obj_enumerate(JSContext *cx, HandleObject obj, JSIterateOp enum_op,
 }
 
 /* static */ size_t
-BinaryBlock::dataOffset()
+TypedContents::dataOffset()
 {
     return JSObject::getPrivateDataOffset(JS_TYPEDOBJ_SLOTS + 1);
 }
+
+///////////////////////////////////////////////////////////////////////////
+// Typed Objects
+
+Class TypedObject::class_ = {
+    "TypedObject",
+    Class::NON_NATIVE |
+    JSCLASS_HAS_RESERVED_SLOTS(JS_TYPEDOBJ_SLOTS) |
+    JSCLASS_HAS_PRIVATE |
+    JSCLASS_IMPLEMENTS_BARRIERS,
+    JS_PropertyStub,
+    JS_DeletePropertyStub,
+    JS_PropertyStub,
+    JS_StrictPropertyStub,
+    JS_EnumerateStub,
+    JS_ResolveStub,
+    JS_ConvertStub,
+    TypedContents::obj_finalize,
+    NULL,           /* checkAccess */
+    NULL,           /* call        */
+    NULL,           /* construct   */
+    NULL,           /* hasInstance */
+    TypedContents::obj_trace,
+    JS_NULL_CLASS_EXT,
+    {
+        TypedContents::obj_lookupGeneric,
+        TypedContents::obj_lookupProperty,
+        TypedContents::obj_lookupElement,
+        TypedContents::obj_lookupSpecial,
+        TypedContents::obj_defineGeneric,
+        TypedContents::obj_defineProperty,
+        TypedContents::obj_defineElement,
+        TypedContents::obj_defineSpecial,
+        TypedContents::obj_getGeneric,
+        TypedContents::obj_getProperty,
+        TypedContents::obj_getElement,
+        TypedContents::obj_getElementIfPresent,
+        TypedContents::obj_getSpecial,
+        TypedContents::obj_setGeneric,
+        TypedContents::obj_setProperty,
+        TypedContents::obj_setElement,
+        TypedContents::obj_setSpecial,
+        TypedContents::obj_getGenericAttributes,
+        TypedContents::obj_setGenericAttributes,
+        TypedContents::obj_deleteProperty,
+        TypedContents::obj_deleteElement,
+        TypedContents::obj_deleteSpecial,
+        TypedContents::obj_enumerate,
+        NULL, /* thisObject */
+    }
+};
+
+/*static*/ JSObject *
+TypedObject::createZeroed(JSContext *cx, HandleObject type)
+{
+    Rooted<TypedObject*> obj(cx, createUnattached<TypedObject>(cx, type));
+    if (!obj)
+        return NULL;
+
+    TypeRepresentation *typeRepr = typeRepresentation(*type);
+    size_t memsize = typeRepr->size();
+    void *memory = JS_malloc(cx, memsize);
+    if (!memory)
+        return NULL;
+    memset(memory, 0, memsize);
+    obj->attach(memory);
+    return obj;
+}
+
+/*static*/ bool
+TypedObject::construct(JSContext *cx, unsigned int argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    RootedObject callee(cx, &args.callee());
+    JS_ASSERT(IsTypeObject(*callee));
+
+    RootedObject obj(cx, createZeroed(cx, callee));
+    if (!obj)
+        return false;
+
+    if (argc == 1) {
+        RootedValue initial(cx, args[0]);
+        if (!ConvertAndCopyTo(cx, obj, initial))
+            return false;
+    }
+
+    args.rval().setObject(*obj);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////
+// Handles
+
+Class TypedHandle::class_ = {
+    "Handle",
+    Class::NON_NATIVE |
+    JSCLASS_HAS_RESERVED_SLOTS(JS_TYPEDOBJ_SLOTS) |
+    JSCLASS_HAS_PRIVATE |
+    JSCLASS_IMPLEMENTS_BARRIERS,
+    JS_PropertyStub,
+    JS_DeletePropertyStub,
+    JS_PropertyStub,
+    JS_StrictPropertyStub,
+    JS_EnumerateStub,
+    JS_ResolveStub,
+    JS_ConvertStub,
+    TypedContents::obj_finalize,
+    NULL,           /* checkAccess */
+    NULL,           /* call        */
+    NULL,           /* construct   */
+    NULL,           /* hasInstance */
+    TypedContents::obj_trace,
+    JS_NULL_CLASS_EXT,
+    {
+        TypedContents::obj_lookupGeneric,
+        TypedContents::obj_lookupProperty,
+        TypedContents::obj_lookupElement,
+        TypedContents::obj_lookupSpecial,
+        TypedContents::obj_defineGeneric,
+        TypedContents::obj_defineProperty,
+        TypedContents::obj_defineElement,
+        TypedContents::obj_defineSpecial,
+        TypedContents::obj_getGeneric,
+        TypedContents::obj_getProperty,
+        TypedContents::obj_getElement,
+        TypedContents::obj_getElementIfPresent,
+        TypedContents::obj_getSpecial,
+        TypedContents::obj_setGeneric,
+        TypedContents::obj_setProperty,
+        TypedContents::obj_setElement,
+        TypedContents::obj_setSpecial,
+        TypedContents::obj_getGenericAttributes,
+        TypedContents::obj_setGenericAttributes,
+        TypedContents::obj_deleteProperty,
+        TypedContents::obj_deleteElement,
+        TypedContents::obj_deleteSpecial,
+        TypedContents::obj_enumerate,
+        NULL, /* thisObject */
+    }
+};
+
+const JSFunctionSpec TypedHandle::handleStaticMethods[] = {
+    {"move", {NULL, NULL}, 2, 0, "HandleMove"},
+    {"get", {NULL, NULL}, 0, 0, "HandleGet"},
+    {"set", {NULL, NULL}, 1, 0, "HandleSet"},
+    {"isHandle", {NULL, NULL}, 1, 0, "HandleTest"},
+    JS_FS_END
+};
+
+///////////////////////////////////////////////////////////////////////////
+// Intrinsics
+
+bool
+js::NewTypedHandle(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(argc == 1);
+    JS_ASSERT(args[0].isObject() && IsTypeObject(args[0].toObject()));
+
+    RootedObject typeObj(cx, &args[0].toObject());
+    Rooted<TypedHandle*> obj(
+        cx, TypedContents::createUnattached<TypedHandle>(cx, typeObj));
+    if (!obj)
+        return false;
+    args.rval().setObject(*obj);
+    return true;
+}
+
+bool
+js::NewDerivedTypedContents(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(argc == 3);
+    JS_ASSERT(args[0].isObject() && IsTypeObject(args[0].toObject()));
+    JS_ASSERT(args[1].isObject() && HasTypedContents(args[1].toObject()));
+    JS_ASSERT(args[2].isInt32());
+
+    RootedObject typeObj(cx, &args[0].toObject());
+    RootedObject owner(cx, &args[1].toObject());
+    int32_t offset = args[2].toInt32();
+
+    Rooted<TypedContents*> obj(
+        cx, TypedContents::createDerived(cx, typeObj, owner, offset));
+    if (!obj)
+        return false;
+
+    args.rval().setObject(*obj);
+    return true;
+}
+
+bool
+js::AttachHandle(ThreadSafeContext *, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(argc == 3);
+    JS_ASSERT(args[0].isObject() && args[0].toObject().is<TypedHandle>());
+    JS_ASSERT(args[1].isObject() && HasTypedContents(args[1].toObject()));
+    JS_ASSERT(args[2].isInt32());
+
+    TypedHandle &handle = args[0].toObject().as<TypedHandle>();
+    handle.attach(args[1].toObject(), args[2].toInt32());
+    return true;
+}
+
+const JSJitInfo js::AttachHandleJitInfo =
+    JS_JITINFO_NATIVE_PARALLEL(
+        JSParallelNativeThreadSafeWrapper<js::AttachHandle>);
+
+bool
+js::ObjectIsTypeObject(ThreadSafeContext *, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(argc == 1);
+    JS_ASSERT(args[0].isObject());
+    args.rval().setBoolean(IsTypeObject(args[0].toObject()));
+    return true;
+}
+
+const JSJitInfo js::ObjectIsTypeObjectJitInfo =
+    JS_JITINFO_NATIVE_PARALLEL(
+        JSParallelNativeThreadSafeWrapper<js::ObjectIsTypeObject>);
+
+bool
+js::ObjectIsTypeRepresentation(ThreadSafeContext *, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(argc == 1);
+    JS_ASSERT(args[0].isObject());
+    args.rval().setBoolean(TypeRepresentation::isOwnerObject(args[0].toObject()));
+    return true;
+}
+
+const JSJitInfo js::ObjectIsTypeRepresentationJitInfo =
+    JS_JITINFO_NATIVE_PARALLEL(
+        JSParallelNativeThreadSafeWrapper<js::ObjectIsTypeRepresentation>);
+
+bool
+js::ObjectIsTypedHandle(ThreadSafeContext *, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(argc == 1);
+    JS_ASSERT(args[0].isObject());
+    args.rval().setBoolean(args[0].toObject().is<TypedHandle>());
+    return true;
+}
+
+const JSJitInfo js::ObjectIsTypedHandleJitInfo =
+    JS_JITINFO_NATIVE_PARALLEL(
+        JSParallelNativeThreadSafeWrapper<js::ObjectIsTypedHandle>);
+
+bool
+js::ObjectIsTypedObject(ThreadSafeContext *, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(argc == 1);
+    JS_ASSERT(args[0].isObject());
+    args.rval().setBoolean(args[0].toObject().is<TypedObject>());
+    return true;
+}
+
+const JSJitInfo js::ObjectIsTypedObjectJitInfo =
+    JS_JITINFO_NATIVE_PARALLEL(
+        JSParallelNativeThreadSafeWrapper<js::ObjectIsTypedObject>);
+
+bool
+js::IsAttached(ThreadSafeContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(args[0].isObject() && HasTypedContents(args[0].toObject()));
+    args.rval().setBoolean(TypedMem(args[0].toObject()) != NULL);
+    return true;
+}
+
+const JSJitInfo js::IsAttachedJitInfo =
+    JS_JITINFO_NATIVE_PARALLEL(
+        JSParallelNativeThreadSafeWrapper<js::IsAttached>);
 
 bool
 js::ClampToUint8(ThreadSafeContext *, unsigned argc, Value *vp)
@@ -2219,14 +2410,14 @@ js::Memcpy(ThreadSafeContext *, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     JS_ASSERT(args.length() == 5);
-    JS_ASSERT(args[0].isObject() && IsBlock(args[0].toObject()));
+    JS_ASSERT(args[0].isObject() && HasTypedContents(args[0].toObject()));
     JS_ASSERT(args[1].isInt32());
-    JS_ASSERT(args[2].isObject() && IsBlock(args[2].toObject()));
+    JS_ASSERT(args[2].isObject() && HasTypedContents(args[2].toObject()));
     JS_ASSERT(args[3].isInt32());
     JS_ASSERT(args[4].isInt32());
 
-    uint8_t *target = BlockMem(args[0].toObject()) + args[1].toInt32();
-    uint8_t *source = BlockMem(args[2].toObject()) + args[3].toInt32();
+    uint8_t *target = TypedMem(args[0].toObject()) + args[1].toInt32();
+    uint8_t *source = TypedMem(args[2].toObject()) + args[3].toInt32();
     int32_t size = args[4].toInt32();
     memcpy(target, source, size);
     args.rval().setUndefined();
@@ -2243,11 +2434,16 @@ js::StoreScalar<T>::Func(ThreadSafeContext *, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     JS_ASSERT(args.length() == 3);
-    JS_ASSERT(args[0].isObject() && IsBlock(args[0].toObject()));
+    JS_ASSERT(args[0].isObject() && HasTypedContents(args[0].toObject()));
     JS_ASSERT(args[1].isInt32());
     JS_ASSERT(args[2].isNumber());
 
-    T *target = (T*) (BlockMem(args[0].toObject()) + args[1].toInt32());
+    int32_t offset = args[1].toInt32();
+
+    // Should be guaranteed by the typed objects API:
+    JS_ASSERT(offset % alignof(T) == 0);
+
+    T *target = (T*) (TypedMem(args[0].toObject()) + offset);
     double d = args[2].toNumber();
     *target = ConvertScalar<T>(d);
     args.rval().setUndefined();

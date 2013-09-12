@@ -108,16 +108,16 @@ class StructType : public JSObject
                                  HandleValue from, uint8_t *mem);
 };
 
-/* Binary data objects and handles */
-class BinaryBlock
+/*
+ * Base type for typed objects and handles. Basically any type whose
+ * contents consists of typed memory.
+ */
+class TypedContents : public JSObject
 {
   private:
-    // Creates a binary data object of the given type and class, but with
-    // a NULL memory pointer. Caller must use setPrivate() to set the
-    // memory pointer properly.
-    static JSObject *createNull(JSContext *cx, HandleObject type,
-                                HandleValue owner);
+    static const bool IsTypedContents = true;
 
+  protected:
     static void obj_finalize(js::FreeOp *op, JSObject *obj);
 
     static void obj_trace(JSTracer *trace, JSObject *object);
@@ -193,8 +193,6 @@ class BinaryBlock
                                 MutableHandleValue statep, MutableHandleId idp);
 
   public:
-    static Class class_;
-
     // Returns the offset in bytes within the object where the `void*`
     // pointer can be found.
     static size_t dataOffset();
@@ -202,18 +200,99 @@ class BinaryBlock
     static bool isBlock(HandleObject val);
     static uint8_t *mem(HandleObject val);
 
+    static TypedContents *createUnattachedWithClass(JSContext *cx,
+                                                    Class *clasp,
+                                                    HandleObject type);
+
+    // Creates an unattached typed object or handle (depending on the
+    // type parameter T). Caller should later invoke one of the
+    // `attach()` methods below.
+    //
+    // Arguments:
+    // - type: type object for resulting object
+    template<class T>
+    static T *createUnattached(JSContext *cx, HandleObject type);
+
+    // creates a block that aliases the memory pointed at by `owner`
+    // at the given offset
+    static TypedContents *createDerived(JSContext *cx,
+                                        HandleObject type,
+                                        HandleObject typedContents,
+                                        size_t offset);
+
+    // If `this` is the owner of the memory, use this.
+    void attach(void *mem);
+
+    // Otherwise, use this to attach to memory owned by another object.
+    void attach(JSObject &owner, uint32_t offset);
+};
+
+class TypedObject : public TypedContents
+{
+  public:
+    static Class class_;
+
     // creates zeroed memory of size of type
     static JSObject *createZeroed(JSContext *cx, HandleObject type);
-
-    // creates a block that aliases the memory owned by `owner` at the
-    // given offset
-    static JSObject *createDerived(JSContext *cx, HandleObject type,
-                                   HandleObject owner, size_t offset);
 
     // user-accessible constructor (`new TypeDescriptor(...)`)
     static bool construct(JSContext *cx, unsigned int argc, jsval *vp);
 };
 
+class TypedHandle : public TypedContents
+{
+  public:
+    static Class class_;
+    static const JSFunctionSpec handleStaticMethods[];
+};
+
+// Usage: NewTypedHandle(typeObj)
+//
+// Constructs a new, unattached instance of `Handle`.
+bool NewTypedHandle(JSContext *cx, unsigned argc, Value *vp);
+
+// Usage: NewDerivedTypedContents(typeObj, owner, offset)
+//
+// Constructs a new, unattached instance of `Handle`.
+bool NewDerivedTypedContents(JSContext *cx, unsigned argc, Value *vp);
+
+// Usage: AttachHandle(handle, newOwner, newOffset)
+//
+// Moves `handle` to point at the memory owned by `newOwner` with
+// the offset `newOffset`.
+bool AttachHandle(ThreadSafeContext *cx, unsigned argc, Value *vp);
+extern const JSJitInfo AttachHandleJitInfo;
+
+// Usage: ObjectIsTypeObject(obj)
+//
+// True if `obj` is a type object.
+bool ObjectIsTypeObject(ThreadSafeContext *cx, unsigned argc, Value *vp);
+extern const JSJitInfo ObjectIsTypeObjectJitInfo;
+
+// Usage: ObjectIsTypeRepresentation(obj)
+//
+// True if `obj` is a type representation object.
+bool ObjectIsTypeRepresentation(ThreadSafeContext *cx, unsigned argc, Value *vp);
+extern const JSJitInfo ObjectIsTypeRepresentationJitInfo;
+
+// Usage: ObjectIsTypedHandle(obj)
+//
+// True if `obj` is a handle.
+bool ObjectIsTypedHandle(ThreadSafeContext *cx, unsigned argc, Value *vp);
+extern const JSJitInfo ObjectIsTypedHandleJitInfo;
+
+// Usage: ObjectIsTypedObject(obj)
+//
+// True if `obj` is a typed object.
+bool ObjectIsTypedObject(ThreadSafeContext *cx, unsigned argc, Value *vp);
+extern const JSJitInfo ObjectIsTypedObjectJitInfo;
+
+// Usage: IsAttached(obj)
+//
+// Given a TypedContents `obj`, returns true if `obj` is
+// "attached" (i.e., its data pointer is NULL).
+bool IsAttached(ThreadSafeContext *cx, unsigned argc, Value *vp);
+extern const JSJitInfo IsAttachedJitInfo;
 
 // Usage: ClampToUint8(v)
 //
@@ -228,8 +307,9 @@ extern const JSJitInfo ClampToUint8JitInfo;
 // Intrinsic function. Copies size bytes from the data for
 // `sourceTypedObj` at `sourceOffset` into the data for
 // `targetTypedObj` at `targetOffset`.
+//
+// Both `sourceTypedObj` and `targetTypedObj` must be attached.
 bool Memcpy(ThreadSafeContext *cx, unsigned argc, Value *vp);
-
 extern const JSJitInfo MemcpyJitInfo;
 
 // Usage: StoreScalar(targetTypedObj, targetOffset, value)
@@ -237,6 +317,7 @@ extern const JSJitInfo MemcpyJitInfo;
 // Intrinsic function. Stores value (which must be an int32 or uint32)
 // by `scalarTypeRepr` (which must be a type repr obj) and stores the
 // value at the memory for `targetTypedObj` at offset `targetOffset`.
+// `targetTypedObj` must be attached.
 template<typename T>
 class StoreScalar {
   public:
