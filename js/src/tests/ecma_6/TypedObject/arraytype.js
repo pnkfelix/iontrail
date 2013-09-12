@@ -168,12 +168,17 @@ function runTests() {
     assertEq(indexPropDesc.enumerable, true);
     assertEq(indexPropDesc.writable, true);
 
-
     var lengthPropDesc = Object.getOwnPropertyDescriptor(as, 'length');
     assertEq(typeof lengthPropDesc == "undefined", false);
     assertEq(lengthPropDesc.configurable, false);
     assertEq(lengthPropDesc.enumerable, false);
     assertEq(lengthPropDesc.writable, false);
+
+    var counter = 0;
+    for (var nm in as) {
+      assertEq(+nm, counter++);
+    }
+    assertEq(counter, as.length);
 
     assertThrows(function() Object.defineProperty(o, "foo", { value: "bar" }));
 

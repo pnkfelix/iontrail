@@ -23,6 +23,10 @@
 #include "jsatominlines.h"
 #include "jsobjinlines.h"
 
+#define NORMAL_JS_PROPS (JSPROP_ENUMERATE |                                   \
+                         JSPROP_READONLY |                                    \
+                         JSPROP_PERMANENT)
+
 using mozilla::DebugOnly;
 
 using namespace js;
@@ -450,17 +454,17 @@ NumericType<type, T>::call(JSContext *cx, unsigned argc, Value *vp)
  * returns a JSObject which can be set as A.prototype.
  */
 JSObject *
-SetupAndGetPrototypeObjectForComplexTypeInstance(JSContext *cx,
-                                                 HandleObject typeObjectCtor)
+CreatePrototypeObjectForComplexTypeInstance(JSContext *cx,
+                                            HandleObject typeObjectCtor)
 {
     RootedValue ctorPrototypeVal(cx);
     if (!JSObject::getProperty(cx, typeObjectCtor, typeObjectCtor,
                                cx->names().classPrototype,
                                &ctorPrototypeVal))
         return NULL;
-
     JS_ASSERT(ctorPrototypeVal.isObject()); // immutable binding
     RootedObject ctorPrototypeObj(cx, &ctorPrototypeVal.toObject());
+
     RootedValue ctorPrototypePrototypeVal(cx);
     if (!JSObject::getProperty(cx, ctorPrototypeObj, ctorPrototypeObj,
                                cx->names().classPrototype,
@@ -511,7 +515,7 @@ InitClass(JSContext *cx,
     if (!JSObject::defineProperty(cx, proto, cx->names().classPrototype,
                                   protoProtoValue,
                                   NULL, NULL,
-                                  JSPROP_READONLY | JSPROP_PERMANENT))
+                                  NORMAL_JS_PROPS))
         return NULL;
 
     // Create ctor itself
@@ -809,7 +813,7 @@ InitializeCommonTypeDescriptorProperties(JSContext *cx,
     if (!JSObject::defineProperty(cx, obj, cx->names().byteLength,
                                   typeByteLength,
                                   NULL, NULL,
-                                  JSPROP_READONLY | JSPROP_PERMANENT))
+                                  NORMAL_JS_PROPS))
         return false;
 
     // byteAlignment
@@ -817,7 +821,7 @@ InitializeCommonTypeDescriptorProperties(JSContext *cx,
     if (!JSObject::defineProperty(cx, obj, cx->names().byteAlignment,
                                   typeByteAlignment,
                                   NULL, NULL,
-                                  JSPROP_READONLY | JSPROP_PERMANENT))
+                                  NORMAL_JS_PROPS))
         return false;
 
     // variable -- always false since we do not yet support variable-size types
@@ -825,27 +829,37 @@ InitializeCommonTypeDescriptorProperties(JSContext *cx,
     if (!JSObject::defineProperty(cx, obj, cx->names().variable,
                                   variable,
                                   NULL, NULL,
-                                  JSPROP_READONLY | JSPROP_PERMANENT))
+                                  NORMAL_JS_PROPS))
         return false;
 
     return true;
 }
 
 JSObject *
-ArrayType::create(JSContext *cx, HandleObject arrayTypeGlobal,
-                  HandleObject elementType, size_t length)
+ArrayType::create(JSContext *cx,
+                  HandleObject metaTypeObject,
+                  HandleObject elementType,
+                  size_t length)
 {
     JS_ASSERT(elementType);
     JS_ASSERT(IsTypeObject(*elementType));
 
     TypeRepresentation *elementTypeRepr = typeRepresentation(*elementType);
     RootedObject typeReprObj(
-        cx,
-        ArrayTypeRepresentation::Create(cx, elementTypeRepr, length));
+        cx, ArrayTypeRepresentation::Create(cx, elementTypeRepr, length));
     if (!typeReprObj)
         return NULL;
 
-    RootedObject obj(cx, NewBuiltinClassInstance(cx, &ArrayType::class_));
+    RootedValue prototypeVal(cx);
+    if (!JSObject::getProperty(cx, metaTypeObject, metaTypeObject,
+                               cx->names().classPrototype,
+                               &prototypeVal))
+        return NULL;
+    JS_ASSERT(prototypeVal.isObject()); // immutable binding
+
+    RootedObject obj(
+        cx, NewObjectWithClassProto(cx, &ArrayType::class_,
+                                    &prototypeVal.toObject(), NULL));
     if (!obj)
         return NULL;
     obj->initReservedSlot(JS_TYPEOBJ_SLOT_TYPE_REPR,
@@ -854,7 +868,7 @@ ArrayType::create(JSContext *cx, HandleObject arrayTypeGlobal,
     RootedValue elementTypeVal(cx, ObjectValue(*elementType));
     if (!JSObject::defineProperty(cx, obj, cx->names().elementType,
                                   elementTypeVal, NULL, NULL,
-                                  JSPROP_READONLY | JSPROP_PERMANENT))
+                                  NORMAL_JS_PROPS))
         return NULL;
 
     obj->initReservedSlot(JS_TYPEOBJ_SLOT_ARRAY_ELEM_TYPE,
@@ -863,15 +877,14 @@ ArrayType::create(JSContext *cx, HandleObject arrayTypeGlobal,
     RootedValue lengthVal(cx, Int32Value(length));
     if (!JSObject::defineProperty(cx, obj, cx->names().length,
                                   lengthVal, NULL, NULL,
-                                  JSPROP_READONLY | JSPROP_PERMANENT))
+                                  NORMAL_JS_PROPS))
         return NULL;
 
     if (!InitializeCommonTypeDescriptorProperties(cx, obj, typeReprObj))
         return NULL;
 
-    RootedObject prototypeObj(cx,
-        SetupAndGetPrototypeObjectForComplexTypeInstance(cx, arrayTypeGlobal));
-
+    RootedObject prototypeObj(
+        cx, CreatePrototypeObjectForComplexTypeInstance(cx, metaTypeObject));
     if (!prototypeObj)
         return NULL;
 
@@ -1029,19 +1042,18 @@ StructType::layout(JSContext *cx, HandleObject structType, HandleObject fields)
 
     // Construct the `TypeRepresentation*`.
     RootedObject typeReprObj(
-        cx,
-        StructTypeRepresentation::Create(cx, ids, fieldTypeReprObjs));
+        cx, StructTypeRepresentation::Create(cx, ids, fieldTypeReprObjs));
     if (!typeReprObj)
         return false;
     StructTypeRepresentation *typeRepr =
-        TypeRepresentation::fromOwnerObject(typeReprObj)->asStruct();
+        TypeRepresentation::fromOwnerObject(*typeReprObj)->asStruct();
     structType->initReservedSlot(JS_TYPEOBJ_SLOT_TYPE_REPR,
                                  ObjectValue(*typeReprObj));
 
     // Construct for internal use an array with the type object for each field.
     RootedObject fieldTypeVec(
-        cx,
-        NewDenseCopiedArray(cx, fieldTypeObjs.length(), fieldTypeObjs.begin()));
+        cx, NewDenseCopiedArray(cx, fieldTypeObjs.length(),
+                                fieldTypeObjs.begin()));
     if (!fieldTypeVec)
         return false;
 
@@ -1056,15 +1068,14 @@ StructType::layout(JSContext *cx, HandleObject structType, HandleObject fields)
             return false;
     }
     RootedObject fieldNamesVec(
-        cx,
-        NewDenseCopiedArray(cx, fieldNameValues.length(),
-                            fieldNameValues.begin()));
+        cx, NewDenseCopiedArray(cx, fieldNameValues.length(),
+                                fieldNameValues.begin()));
     if (!fieldNamesVec)
         return false;
     RootedValue fieldNamesVecValue(cx, ObjectValue(*fieldNamesVec));
     if (!JSObject::defineProperty(cx, structType, cx->names().fieldNames,
                                   fieldNamesVecValue, NULL, NULL,
-                                  JSPROP_READONLY | JSPROP_PERMANENT))
+                                  NORMAL_JS_PROPS))
         return false;
 
     // Construct the fieldNames, fieldOffsets and fieldTypes objects:
@@ -1085,36 +1096,45 @@ StructType::layout(JSContext *cx, HandleObject structType, HandleObject fields)
         RootedValue offset(cx, NumberValue(field.offset));
         if (!JSObject::defineGeneric(cx, fieldOffsets, fieldId,
                                      offset, NULL, NULL,
-                                     JSPROP_READONLY | JSPROP_PERMANENT))
+                                     NORMAL_JS_PROPS))
             return false;
 
         // fieldTypes[id] = typeObj
         if (!JSObject::defineGeneric(cx, fieldTypes, fieldId,
                                      fieldTypeObjs.handleAt(i), NULL, NULL,
-                                     JSPROP_READONLY | JSPROP_PERMANENT))
+                                     NORMAL_JS_PROPS))
             return false;
     }
 
     RootedValue fieldOffsetsValue(cx, ObjectValue(*fieldOffsets));
     if (!JSObject::defineProperty(cx, structType, cx->names().fieldOffsets,
                                   fieldOffsetsValue, NULL, NULL,
-                                  JSPROP_READONLY | JSPROP_PERMANENT))
+                                  NORMAL_JS_PROPS))
         return false;
 
     RootedValue fieldTypesValue(cx, ObjectValue(*fieldTypes));
     if (!JSObject::defineProperty(cx, structType, cx->names().fieldTypes,
                                   fieldTypesValue, NULL, NULL,
-                                  JSPROP_READONLY | JSPROP_PERMANENT))
+                                  NORMAL_JS_PROPS))
         return false;
 
     return true;
 }
 
 JSObject *
-StructType::create(JSContext *cx, HandleObject structTypeGlobal,
+StructType::create(JSContext *cx, HandleObject metaTypeObject,
                    HandleObject fields)
 {
-    RootedObject obj(cx, NewBuiltinClassInstance(cx, &StructType::class_));
+    RootedValue prototypeVal(cx);
+    if (!JSObject::getProperty(cx, metaTypeObject, metaTypeObject,
+                               cx->names().classPrototype,
+                               &prototypeVal))
+        return NULL;
+    JS_ASSERT(prototypeVal.isObject()); // immutable binding
+
+    RootedObject obj(
+        cx, NewObjectWithClassProto(cx, &StructType::class_,
+                                    &prototypeVal.toObject(), NULL));
     if (!obj)
         return NULL;
 
@@ -1129,9 +1149,8 @@ StructType::create(JSContext *cx, HandleObject structTypeGlobal,
     if (!InitializeCommonTypeDescriptorProperties(cx, obj, typeReprObj))
         return NULL;
 
-    RootedObject prototypeObj(cx,
-        SetupAndGetPrototypeObjectForComplexTypeInstance(cx, structTypeGlobal));
-
+    RootedObject prototypeObj(
+        cx, CreatePrototypeObjectForComplexTypeInstance(cx, metaTypeObject));
     if (!prototypeObj)
         return NULL;
 
@@ -1153,9 +1172,9 @@ StructType::construct(JSContext *cx, unsigned int argc, Value *vp)
     CallArgs args = CallArgsFromVp(argc, vp);
 
     if (argc >= 1 && args[0].isObject()) {
-        RootedObject structTypeGlobal(cx, &args.callee());
+        RootedObject metaTypeObject(cx, &args.callee());
         RootedObject fields(cx, &args[0].toObject());
-        RootedObject obj(cx, create(cx, structTypeGlobal, fields));
+        RootedObject obj(cx, create(cx, metaTypeObject, fields));
         if (!obj)
             return false;
         args.rval().setObject(*obj);
@@ -1325,7 +1344,7 @@ js_InitTypedObjectClass(JSContext *cx, HandleObject obj)
     if (!JSObject::defineProperty(cx, module, arrayTypeName,
                                   arrayTypeValue,
                                   NULL, NULL,
-                                  JSPROP_READONLY | JSPROP_PERMANENT))
+                                  NORMAL_JS_PROPS))
         return NULL;
 
     // StructType.
@@ -2124,7 +2143,7 @@ BinaryBlock::obj_enumerate(JSContext *cx, HandleObject obj, JSIterateOp enum_op,
           case JSENUMERATE_INIT_ALL:
           case JSENUMERATE_INIT:
             statep.setInt32(0);
-            idp.set(INT_TO_JSID(typeRepr->asArray()->length() + 1));
+            idp.set(INT_TO_JSID(typeRepr->asArray()->length()));
             break;
 
           case JSENUMERATE_NEXT:
@@ -2133,11 +2152,8 @@ BinaryBlock::obj_enumerate(JSContext *cx, HandleObject obj, JSIterateOp enum_op,
             if (index < typeRepr->asArray()->length()) {
                 idp.set(INT_TO_JSID(index));
                 statep.setInt32(index + 1);
-            } else if (index == typeRepr->asArray()->length()) {
-                idp.set(NameToId(cx->names().length));
-                statep.setInt32(index + 1);
             } else {
-                JS_ASSERT(index == typeRepr->asArray()->length() + 1);
+                JS_ASSERT(index == typeRepr->asArray()->length());
                 statep.setNull();
             }
 
