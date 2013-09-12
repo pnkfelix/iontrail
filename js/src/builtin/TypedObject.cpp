@@ -45,6 +45,11 @@ const Class js::TypedObjectClass = {
     JS_ConvertStub
 };
 
+static const JSFunctionSpec TypedObjectMethods[] = {
+    {"objectType", {NULL, NULL}, 1, 0, "TypeOfTypedDatum"},
+    JS_FS_END
+};
+
 static void
 ReportCannotConvertTo(JSContext *cx, HandleValue fromValue, const char *toType)
 {
@@ -1263,6 +1268,9 @@ js_InitTypedObjectClass(JSContext *cx, HandleObject obj)
     {
         return NULL;
     }
+
+    if (!JS_DefineFunctions(cx, module, TypedObjectMethods))
+        return NULL;
 
     // uint8, uint16, etc
 
