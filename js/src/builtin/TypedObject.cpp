@@ -743,7 +743,8 @@ ArrayType::subarray(JSContext *cx, unsigned int argc, Value *vp)
     int32_t elementSize = typeRepr->element()->size();
     size_t offset = elementSize * begin;
 
-    RootedObject subarray(cx, BinaryBlock::createDerived(cx, subArrayType, thisObj, offset));
+    RootedObject subarray(
+        cx, TypedContents::createDerived(cx, subArrayType, thisObj, offset));
     if (!subarray)
         return false;
 
@@ -1088,11 +1089,9 @@ StructType::layout(JSContext *cx, HandleObject structType, HandleObject fields)
     // fieldOffsets : { string: integer, ... }
     // fieldTypes : { string: Type, ... }
     RootedObject fieldOffsets(
-        cx,
-        NewObjectWithClassProto(cx, &JSObject::class_, nullptr, nullptr));
+        cx, NewObjectWithClassProto(cx, &JSObject::class_, NULL, NULL));
     RootedObject fieldTypes(
-        cx,
-        NewObjectWithClassProto(cx, &JSObject::class_, nullptr, nullptr));
+        cx, NewObjectWithClassProto(cx, &JSObject::class_, NULL, NULL));
     for (size_t i = 0; i < typeRepr->fieldCount(); i++) {
         const StructField &field = typeRepr->field(i);
         RootedId fieldId(cx, field.id);
