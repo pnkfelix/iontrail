@@ -473,6 +473,15 @@ function HandleTest(obj) {
 ///////////////////////////////////////////////////////////////////////////
 // Miscellaneous
 
+// Warning: user exposed!
+function TypeOfTypedDatum(obj) {
+  if (!IsObject(obj) || !ObjectIsTypedDatum(obj))
+    ThrowError(JSMSG_TYPEDOBJECT_HANDLE_BAD_ARGS,
+               1, "typed object");
+
+  return DATUM_TYPE_OBJ(obj);
+}
+
 function ObjectIsTypedDatum(obj) {
   return ObjectIsTypedObject(obj) || ObjectIsTypedHandle(obj);
 }
