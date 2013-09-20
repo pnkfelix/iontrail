@@ -283,38 +283,6 @@ IsTypedDatumOfKind(JSObject &obj, TypeRepresentation::Kind kind)
     return repr->kind() == kind;
 }
 
-static bool
-TypeEquivalent(JSContext *cx, unsigned int argc, Value *vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-
-    RootedObject thisObj(cx, ToObjectIfObject(args.thisv()));
-    if (!thisObj || !IsTypeObject(*thisObj)) {
-        JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL,
-                             JSMSG_INCOMPATIBLE_PROTO,
-                             "Type", "equivalent",
-                             InformalValueTypeName(args.thisv()));
-        return false;
-    }
-
-    if (args.length() < 1) {
-        JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_MORE_ARGS_NEEDED,
-                             "Type.equivalent", "1", "s");
-        return false;
-    }
-
-    RootedObject otherObj(cx, ToObjectIfObject(args[0]));
-    if (!otherObj || !IsTypeObject(*otherObj)) {
-        JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_TYPEDOBJECT_NOT_TYPE_OBJECT);
-        return false;
-    }
-
-    TypeRepresentation *thisRepr = typeRepresentation(*thisObj);
-    TypeRepresentation *otherRepr = typeRepresentation(*otherObj);
-    args.rval().setBoolean(thisRepr == otherRepr);
-    return true;
-}
-
 #define BINARYDATA_NUMERIC_CLASSES(constant_, type_, name_)                   \
 {                                                                             \
     #name_,                                                                   \
@@ -336,6 +304,7 @@ TypeEquivalent(JSContext *cx, unsigned int argc, Value *vp)
 
 static const JSFunctionSpec NumericTypeObjectMethods[] = {
     {"handle", {NULL, NULL}, 2, 0, "HandleCreate"},
+    {"equivalent", {NULL, NULL}, 1, 0, "TypeObjectEquivalent"},
     JS_FS_END
 };
 
@@ -520,6 +489,7 @@ const JSFunctionSpec ArrayType::typeObjectMethods[] = {
     {"handle", {NULL, NULL}, 2, 0, "HandleCreate"},
     JS_FN("repeat", ArrayType::repeat, 1, 0),
     JS_FN("toSource", ArrayType::toSource, 0, 0),
+    {"equivalent", {NULL, NULL}, 1, 0, "TypeObjectEquivalent"},
     JS_FS_END
 };
 
@@ -761,13 +731,6 @@ InitializeCommonTypeDescriptorProperties(JSContext *cx,
     TypeRepresentation *typeRepr =
         TypeRepresentation::fromOwnerObject(*typeReprOwnerObj);
 
-    // equivalent()
-    if (!JS_DefineFunction(cx, obj, "equivalent",
-                           TypeEquivalent, 1, 0))
-    {
-        return false;
-    }
-
     // byteLength
     RootedValue typeByteLength(cx, NumberValue(typeRepr->size()));
     if (!JSObject::defineProperty(cx, obj, cx->names().byteLength,
@@ -955,6 +918,7 @@ const JSPropertySpec StructType::typeObjectProperties[] = {
 const JSFunctionSpec StructType::typeObjectMethods[] = {
     {"handle", {NULL, NULL}, 2, 0, "HandleCreate"},
     JS_FN("toSource", StructType::toSource, 0, 0),
+    {"equivalent", {NULL, NULL}, 1, 0, "TypeObjectEquivalent"},
     JS_FS_END
 };
 
