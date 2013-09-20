@@ -506,7 +506,8 @@ const JSPropertySpec ArrayType::typedObjectProperties[] = {
 
 const JSFunctionSpec ArrayType::typedObjectMethods[] = {
     JS_FN("subarray", ArrayType::subarray, 2, 0),
-    {"forEach", {nullptr, nullptr}, 1, 0, "ArrayForEach"},
+    {"forEach", {NULL, NULL}, 1, 0, "ArrayForEach"},
+    {"redimension", {NULL, NULL}, 1, 0, "TypedArrayRedimension"},
     JS_FS_END
 };
 

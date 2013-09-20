@@ -409,6 +409,47 @@ function TypeObjectEquivalent(otherTypeObj) {
   return TYPE_TYPE_REPR(this) === TYPE_TYPE_REPR(otherTypeObj);
 }
 
+// Warning: user exposed!
+function TypedArrayRedimension(newArrayType) {
+  if (!IsObject(this) || !ObjectIsTypedDatum(this))
+    ThrowError(JSMSG_TYPEDOBJECT_HANDLE_BAD_ARGS, "this", "typed array");
+
+  var oldArrayType = DATUM_TYPE_OBJ(this);
+  var oldElementType = oldArrayType;
+  var oldElementCount = 1;
+  while (REPR_KIND(TYPE_TYPE_REPR(oldElementType)) == JS_TYPEREPR_ARRAY_KIND) {
+    oldElementCount *= oldElementType.length;
+    oldElementType = oldElementType.elementType;
+  }
+
+  if (!IsObject(newArrayType) || !ObjectIsTypeObject(newArrayType))
+    ThrowError(JSMSG_TYPEDOBJECT_HANDLE_BAD_ARGS, 1, "type object");
+
+  var newElementType = newArrayType;
+  var newElementCount = 1;
+  while (REPR_KIND(TYPE_TYPE_REPR(newElementType)) == JS_TYPEREPR_ARRAY_KIND) {
+    newElementCount *= newElementType.length;
+    newElementType = newElementType.elementType;
+  }
+
+  if (oldElementCount !== newElementCount)
+    ThrowError(JSMSG_TYPEDOBJECT_HANDLE_BAD_ARGS,
+               1,
+               "New number of elements does not match old number of elements");
+
+  if (!oldElementType.equivalent(newElementType))
+    ThrowError(JSMSG_TYPEDOBJECT_HANDLE_BAD_ARGS,
+               1,
+               "New element type " + newElementType.toSource() +
+               "does not match old element type " + oldElementType.toSource());
+
+  assert(REPR_SIZE(TYPE_TYPE_REPR(oldArrayType)) ==
+         REPR_SIZE(TYPE_TYPE_REPR(newArrayType)),
+         "Byte sizes should be equal");
+
+  return NewDerivedTypedDatum(newArrayType, this, 0);
+}
+
 ///////////////////////////////////////////////////////////////////////////
 // Handles
 //
