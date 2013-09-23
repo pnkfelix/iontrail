@@ -1211,7 +1211,7 @@ DefineSimpleTypeObject(JSContext *cx,
 
     RootedObject numFun(cx, NewObjectWithClassProto(cx, &T::class_, funcProto, global));
     if (!numFun)
-        return NULL;
+        return false;
 
     RootedObject typeReprObj(cx, T::TypeRepr::Create(cx, type));
     if (!typeReprObj)
@@ -1224,18 +1224,18 @@ DefineSimpleTypeObject(JSContext *cx,
         return false;
 
     if (!JS_DefineFunctions(cx, numFun, T::typeObjectMethods))
-        return NULL;
+        return false;
 
     const char *name = T::TypeRepr::typeName(type);
     RootedPropertyName className(cx, PropertyNameFromCString(cx, name));
     if (!className)
-        return NULL;
+        return false;
 
     RootedValue numFunValue(cx, ObjectValue(*numFun));
     if (!JSObject::defineProperty(cx, module, className,
                                   numFunValue, NULL, NULL, 0))
     {
-        return NULL;
+        return false;
     }
 
     return true;
