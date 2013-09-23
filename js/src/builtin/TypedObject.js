@@ -512,7 +512,7 @@ function HandleCreate(obj, ...path) {
 // Handle.move: user exposed!
 function HandleMove(handle, obj, ...path) {
   if (!ObjectIsTypedHandle(handle))
-    ThrowError(JSMSG_INCOMPATIBLE_PROTO, "Handle", "set", typeof value);
+    ThrowError(JSMSG_INCOMPATIBLE_PROTO, "Handle", "move", "value");
 
   HandleMoveInternal(handle, obj, path);
 }
@@ -522,7 +522,7 @@ function HandleMoveInternal(handle, obj, path) {
          "HandleMoveInternal: not typed handle");
 
   if (!IsObject(obj) || !ObjectIsTypedDatum(obj))
-    ThrowError(JSMSG_INCOMPATIBLE_PROTO);
+    ThrowError(JSMSG_INCOMPATIBLE_PROTO, "Handle", "move", "value");
 
   var ptr = TypedObjectPointer.fromTypedDatum(obj);
   for (var i = 0; i < path.length; i++)
@@ -534,7 +534,7 @@ function HandleMoveInternal(handle, obj, path) {
 // Handle.get: user exposed!
 function HandleGet(handle) {
   if (!ObjectIsTypedHandle(handle))
-    ThrowError(JSMSG_INCOMPATIBLE_PROTO, "Handle", "set", typeof value);
+    ThrowError(JSMSG_INCOMPATIBLE_PROTO, "Handle", "get", "value");
 
   if (!ObjectIsAttached(handle))
     ThrowError(JSMSG_TYPEDOBJECT_HANDLE_UNATTACHED);
@@ -546,7 +546,7 @@ function HandleGet(handle) {
 // Handle.set: user exposed!
 function HandleSet(handle, value) {
   if (!ObjectIsTypedHandle(handle))
-    ThrowError(JSMSG_INCOMPATIBLE_PROTO, "Handle", "set", typeof value);
+    ThrowError(JSMSG_INCOMPATIBLE_PROTO, "Handle", "set", "value");
 
   if (!ObjectIsAttached(handle))
     ThrowError(JSMSG_TYPEDOBJECT_HANDLE_UNATTACHED);
