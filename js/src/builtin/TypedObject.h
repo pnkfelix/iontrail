@@ -103,22 +103,27 @@ namespace js {
  */
 extern const Class TypedObjectClass;
 
-template <ScalarTypeRepresentation::Type type, typename T>
-class NumericType
+// Type for scalar type constructors like `uint8`
+class ScalarType
 {
-  private:
-    static const Class * typeToClass();
   public:
-    static bool reify(JSContext *cx, void *mem, MutableHandleValue vp);
+    static const Class class_;
+    static const JSFunctionSpec typeObjectMethods[];
+    typedef ScalarTypeRepresentation TypeRepr;
+
     static bool call(JSContext *cx, unsigned argc, Value *vp);
 };
 
-/*
- * These are the classes of the scalar type descriptors, like `uint8`,
- * `uint16` etc. Each of these classes has exactly one instance that
- * is pre-created.
- */
-extern const Class NumericTypeClasses[ScalarTypeRepresentation::TYPE_MAX];
+// Type for reference type constructors like `Any`
+class ReferenceType
+{
+  public:
+    static const Class class_;
+    static const JSFunctionSpec typeObjectMethods[];
+    typedef ReferenceTypeRepresentation TypeRepr;
+
+    static bool call(JSContext *cx, unsigned argc, Value *vp);
+};
 
 /*
  * Type descriptor created by `new ArrayType(...)`
@@ -147,8 +152,6 @@ class ArrayType : public JSObject
                             HandleObject elementType, size_t length);
     static bool repeat(JSContext *cx, unsigned int argc, jsval *vp);
     static bool subarray(JSContext *cx, unsigned int argc, jsval *vp);
-
-    static bool toSource(JSContext *cx, unsigned int argc, jsval *vp);
 
     static JSObject *elementType(JSContext *cx, HandleObject obj);
 };
@@ -185,8 +188,6 @@ class StructType : public JSObject
     // This is the function that gets called when the user
     // does `new StructType(...)`. It produces a struct type object.
     static bool construct(JSContext *cx, unsigned int argc, jsval *vp);
-
-    static bool toSource(JSContext *cx, unsigned int argc, jsval *vp);
 
     static bool convertAndCopyTo(JSContext *cx,
                                  StructTypeRepresentation *typeRepr,
@@ -306,7 +307,7 @@ class TypedDatum : public JSObject
                                      size_t offset);
 
     // If `this` is the owner of the memory, use this.
-    void attach(void *mem);
+    void attach(uint8_t *mem);
 
     // Otherwise, use this to attach to memory referenced by another datum.
     void attach(JSObject &datum, uint32_t offset);
@@ -433,6 +434,24 @@ class StoreScalar {
 };
 
 /*
+ * Usage: StoreReference(targetTypedObj, targetOffset, value)
+ *
+ * Intrinsic function. Stores value (which must be an int32 or uint32)
+ * by `scalarTypeRepr` (which must be a type repr obj) and stores the
+ * value at the memory for `targetTypedObj` at offset `targetOffset`.
+ * `targetTypedObj` must be attached.
+ */
+template<typename T>
+class StoreReference {
+  private:
+    static void store(T* heap, const Value &v);
+
+  public:
+    static bool Func(ThreadSafeContext *cx, unsigned argc, Value *vp);
+    static const JSJitInfo JitInfo;
+};
+
+/*
  * Usage: LoadScalar(targetTypedObj, targetOffset, value)
  *
  * Intrinsic function. Loads value (which must be an int32 or uint32)
@@ -442,6 +461,24 @@ class StoreScalar {
  */
 template<typename T>
 class LoadScalar {
+  public:
+    static bool Func(ThreadSafeContext *cx, unsigned argc, Value *vp);
+    static const JSJitInfo JitInfo;
+};
+
+/*
+ * Usage: LoadReference(targetTypedObj, targetOffset, value)
+ *
+ * Intrinsic function. Stores value (which must be an int32 or uint32)
+ * by `scalarTypeRepr` (which must be a type repr obj) and stores the
+ * value at the memory for `targetTypedObj` at offset `targetOffset`.
+ * `targetTypedObj` must be attached.
+ */
+template<typename T>
+class LoadReference {
+  private:
+    static void load(T* heap, MutableHandleValue v);
+
   public:
     static bool Func(ThreadSafeContext *cx, unsigned argc, Value *vp);
     static const JSJitInfo JitInfo;

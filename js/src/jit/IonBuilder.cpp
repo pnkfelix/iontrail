@@ -8265,6 +8265,9 @@ IonBuilder::getPropTryTypedObject(bool *emitted,
         return true;
 
     switch (fieldTypeReprs.kind()) {
+      case TypeRepresentation::Reference:
+        return true;
+
       case TypeRepresentation::Struct:
       case TypeRepresentation::Array:
         return getPropTryComplexPropOfTypedObject(emitted,
@@ -8805,6 +8808,7 @@ IonBuilder::setPropTryTypedObject(bool *emitted, MDefinition *obj,
         return true;
 
     switch (fieldTypeReprs.kind()) {
+      case TypeRepresentation::Reference:
       case TypeRepresentation::Struct:
       case TypeRepresentation::Array:
         // For now, only optimize storing scalars.

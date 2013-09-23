@@ -109,10 +109,15 @@ ToObjectIfObject(HandleValue value)
 }
 
 static inline bool
-IsNumericTypeObject(JSObject &type)
+IsScalarTypeObject(JSObject &type)
 {
-    return &NumericTypeClasses[0] <= type.getClass() &&
-           type.getClass() < &NumericTypeClasses[ScalarTypeRepresentation::TYPE_MAX];
+    return type.hasClass(&ScalarType::class_);
+}
+
+static inline bool
+IsReferenceTypeObject(JSObject &type)
+{
+    return type.hasClass(&ReferenceType::class_);
 }
 
 static inline bool
@@ -128,15 +133,10 @@ IsStructTypeObject(JSObject &type)
 }
 
 static inline bool
-IsComplexTypeObject(JSObject &type)
-{
-    return IsArrayTypeObject(type) || IsStructTypeObject(type);
-}
-
-static inline bool
 IsTypeObject(JSObject &type)
 {
-    return IsNumericTypeObject(type) || IsComplexTypeObject(type);
+    return IsScalarTypeObject(type) || IsArrayTypeObject(type) ||
+           IsStructTypeObject(type) || IsReferenceTypeObject(type);
 }
 
 static inline bool
@@ -190,6 +190,31 @@ PropertyNameFromCString(JSContext *cx, const char *cstr)
         return NULL;
 
     return atom->asPropertyName();
+}
+
+static bool
+TypeObjectToSource(JSContext *cx, unsigned int argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    RootedObject thisObj(cx, ToObjectIfObject(args.thisv()));
+    if (!thisObj || !IsTypeObject(*thisObj)) {
+        JS_ReportErrorNumber(cx, js_GetErrorMessage,
+                             NULL, JSMSG_TYPEDOBJECT_HANDLE_BAD_ARGS,
+                             "this", "type object");
+        return false;
+    }
+
+    StringBuffer contents(cx);
+    if (!typeRepresentation(*thisObj)->appendString(cx, contents))
+        return false;
+
+    RootedString result(cx, contents.finishString());
+    if (!result)
+        return false;
+
+    args.rval().setString(result);
+    return true;
 }
 
 /*
@@ -283,33 +308,38 @@ IsTypedDatumOfKind(JSObject &obj, TypeRepresentation::Kind kind)
     return repr->kind() == kind;
 }
 
-#define BINARYDATA_NUMERIC_CLASSES(constant_, type_, name_)                   \
-{                                                                             \
-    #name_,                                                                   \
-    JSCLASS_HAS_RESERVED_SLOTS(JS_TYPEOBJ_SCALAR_SLOTS),                      \
-    JS_PropertyStub,       /* addProperty */                                  \
-    JS_DeletePropertyStub, /* delProperty */                                  \
-    JS_PropertyStub,       /* getProperty */                                  \
-    JS_StrictPropertyStub, /* setProperty */                                  \
-    JS_EnumerateStub,                                                         \
-    JS_ResolveStub,                                                           \
-    JS_ConvertStub,                                                           \
-    NULL,                                                                     \
-    NULL,                                                                     \
-    NumericType<constant_, type_>::call,                                      \
-    NULL,                                                                     \
-    NULL,                                                                     \
-    NULL                                                                      \
-},
+/***************************************************************************
+ * Scalar type objects
+ *
+ * Scalar type objects like `uint8`, `uint16`, are all instances of
+ * the ScalarType class. Like all type objects, they have a reserved
+ * slot pointing to a TypeRepresentation object, which is used to
+ * distinguish which scalar type object this actually is.
+ */
 
-static const JSFunctionSpec NumericTypeObjectMethods[] = {
+const Class js::ScalarType::class_ = {
+    "Scalar",
+    JSCLASS_HAS_RESERVED_SLOTS(JS_TYPEOBJ_SCALAR_SLOTS),
+    JS_PropertyStub,       /* addProperty */
+    JS_DeletePropertyStub, /* delProperty */
+    JS_PropertyStub,       /* getProperty */
+    JS_StrictPropertyStub, /* setProperty */
+    JS_EnumerateStub,
+    JS_ResolveStub,
+    JS_ConvertStub,
+    NULL,
+    NULL,
+    ScalarType::call,
+    NULL,
+    NULL,
+    NULL
+};
+
+const JSFunctionSpec js::ScalarType::typeObjectMethods[] = {
+    JS_FN("toSource", TypeObjectToSource, 0, 0),
     {"handle", {NULL, NULL}, 2, 0, "HandleCreate"},
     {"equivalent", {NULL, NULL}, 1, 0, "TypeObjectEquivalent"},
     JS_FS_END
-};
-
-const Class js::NumericTypeClasses[ScalarTypeRepresentation::TYPE_MAX] = {
-    JS_FOR_EACH_SCALAR_TYPE_REPR(BINARYDATA_NUMERIC_CLASSES)
 };
 
 template <typename T>
@@ -326,22 +356,8 @@ static T ConvertScalar(double d)
     }
 }
 
-template<ScalarTypeRepresentation::Type N>
-static bool
-NumericTypeToString(JSContext *cx, unsigned int argc, Value *vp)
-{
-    JS_STATIC_ASSERT(N < ScalarTypeRepresentation::TYPE_MAX);
-    CallArgs args = CallArgsFromVp(argc, vp);
-    JSString *s = JS_NewStringCopyZ(cx, ScalarTypeRepresentation::typeName(N));
-    if (!s)
-        return false;
-    args.rval().set(StringValue(s));
-    return true;
-}
-
-template <ScalarTypeRepresentation::Type type, typename T>
 bool
-NumericType<type, T>::call(JSContext *cx, unsigned argc, Value *vp)
+ScalarType::call(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     if (args.length() < 1) {
@@ -350,6 +366,9 @@ NumericType<type, T>::call(JSContext *cx, unsigned argc, Value *vp)
         return false;
     }
 
+    ScalarTypeRepresentation *typeRepr = typeRepresentation(args.callee())->asScalar();
+    ScalarTypeRepresentation::Type type = typeRepr->type();
+
     double number;
     if (!ToNumber(cx, args[0], &number))
         return false;
@@ -357,10 +376,102 @@ NumericType<type, T>::call(JSContext *cx, unsigned argc, Value *vp)
     if (type == ScalarTypeRepresentation::TYPE_UINT8_CLAMPED)
         number = ClampDoubleToUint8(number);
 
-    T converted = ConvertScalar<T>(number);
-    args.rval().setNumber((double) converted);
+    switch (type) {
+#define SCALARTYPE_CALL(constant_, type_, name_)                             \
+      case constant_: {                                                       \
+          type_ converted = ConvertScalar<type_>(number);                     \
+          args.rval().setNumber((double) converted);                          \
+          return true;                                                        \
+      }
+
+        JS_FOR_EACH_SCALAR_TYPE_REPR(SCALARTYPE_CALL)
+#undef BINARYDATA_SCALAR_DEFINE
+
+    }
     return true;
 }
+
+/***************************************************************************
+ * Reference type objects
+ *
+ * Reference type objects like `Any` or `Object` basically work the
+ * same way that the scalar type objects do. There is one class with
+ * many instances, and each instance has a reserved slot with a
+ * TypeRepresentation object, which is used to distinguish which
+ * reference type object this actually is.
+ */
+
+const Class js::ReferenceType::class_ = {
+    "Reference",
+    JSCLASS_HAS_RESERVED_SLOTS(JS_TYPEOBJ_SCALAR_SLOTS),
+    JS_PropertyStub,       /* addProperty */
+    JS_DeletePropertyStub, /* delProperty */
+    JS_PropertyStub,       /* getProperty */
+    JS_StrictPropertyStub, /* setProperty */
+    JS_EnumerateStub,
+    JS_ResolveStub,
+    JS_ConvertStub,
+    NULL,
+    NULL,
+    ReferenceType::call,
+    NULL,
+    NULL,
+    NULL
+};
+
+const JSFunctionSpec js::ReferenceType::typeObjectMethods[] = {
+    JS_FN("toSource", TypeObjectToSource, 0, 0),
+    {"handle", {NULL, NULL}, 2, 0, "HandleCreate"},
+    {"equivalent", {NULL, NULL}, 1, 0, "TypeObjectEquivalent"},
+    JS_FS_END
+};
+
+bool
+js::ReferenceType::call(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    JS_ASSERT(IsReferenceTypeObject(args.callee()));
+    ReferenceTypeRepresentation *typeRepr =
+        typeRepresentation(args.callee())->asReference();
+
+    if (args.length() < 1) {
+        JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL,
+                             JSMSG_MORE_ARGS_NEEDED,
+                             typeRepr->typeName(), "0", "s");
+        return false;
+    }
+
+    switch (typeRepr->type()) {
+      case ReferenceTypeRepresentation::TYPE_ANY:
+        args.rval().set(args[0]);
+        return true;
+
+      case ReferenceTypeRepresentation::TYPE_OBJECT:
+      {
+        RootedObject obj(cx, ToObject(cx, args[0]));
+        if (!obj)
+            return false;
+        args.rval().setObject(*obj);
+        return true;
+      }
+
+      case ReferenceTypeRepresentation::TYPE_STRING:
+      {
+        RootedString obj(cx, ToString<CanGC>(cx, args[0]));
+        if (!obj)
+            return false;
+        args.rval().setString(&*obj);
+        return true;
+      }
+    }
+
+    MOZ_ASSUME_UNREACHABLE("Unhandled Reference type");
+}
+
+/***************************************************************************
+ * ArrayType class
+ */
 
 /*
  * For code like:
@@ -403,66 +514,6 @@ CreatePrototypeObjectForComplexTypeInstance(JSContext *cx,
     return NewObjectWithGivenProto(cx, &JSObject::class_, proto, NULL);
 }
 
-template<typename T>
-static JSObject *
-InitClass(JSContext *cx,
-          Handle<GlobalObject*> global)
-{
-    RootedAtom className(cx, Atomize(cx, T::class_.name,
-                                     strlen(T::class_.name)));
-    if (!className)
-        return NULL;
-
-    RootedObject funcProto(cx, global->getOrCreateFunctionPrototype(cx));
-    if (!funcProto)
-        return NULL;
-
-    // Create ctor.prototype, which inherits from Function.__proto__
-
-    RootedObject proto(
-        cx, NewObjectWithGivenProto(cx, &JSObject::class_, funcProto,
-                                    global, SingletonObject));
-    if (!proto)
-        return NULL;
-
-    // Create ctor.prototype.prototype, which inherits from Object.__proto__
-
-    RootedObject objProto(cx, global->getOrCreateObjectPrototype(cx));
-    if (!objProto)
-        return NULL;
-    RootedObject protoProto(
-        cx, NewObjectWithGivenProto(cx, &JSObject::class_, objProto,
-                                    global, SingletonObject));
-    if (!proto)
-        return NULL;
-
-    RootedValue protoProtoValue(cx, ObjectValue(*protoProto));
-    if (!JSObject::defineProperty(cx, proto, cx->names().classPrototype,
-                                  protoProtoValue,
-                                  NULL, NULL,
-                                  NORMAL_JS_PROPS))
-        return NULL;
-
-    // Create ctor itself
-
-    RootedFunction ctor(cx,
-                        global->createConstructor(cx, T::construct,
-                                                  className, 2));
-    if (!ctor ||
-        !LinkConstructorAndPrototype(cx, ctor, proto) ||
-        !DefinePropertiesAndBrand(cx, proto,
-                                  T::typeObjectProperties,
-                                  T::typeObjectMethods) ||
-        !DefinePropertiesAndBrand(cx, protoProto,
-                                  T::typedObjectProperties,
-                                  T::typedObjectMethods))
-    {
-        return NULL;
-    }
-
-    return ctor;
-}
-
 const Class ArrayType::class_ = {
     "ArrayType",
     JSCLASS_HAS_RESERVED_SLOTS(JS_TYPEOBJ_ARRAY_SLOTS),
@@ -488,7 +539,7 @@ const JSPropertySpec ArrayType::typeObjectProperties[] = {
 const JSFunctionSpec ArrayType::typeObjectMethods[] = {
     {"handle", {NULL, NULL}, 2, 0, "HandleCreate"},
     JS_FN("repeat", ArrayType::repeat, 1, 0),
-    JS_FN("toSource", ArrayType::toSource, 0, 0),
+    JS_FN("toSource", TypeObjectToSource, 0, 0),
     {"equivalent", {NULL, NULL}, 1, 0, "TypeObjectEquivalent"},
     JS_FS_END
 };
@@ -561,32 +612,6 @@ ArrayType::repeat(JSContext *cx, unsigned int argc, Value *vp)
         return false;
 
     args.rval().setObject(*binaryArray);
-    return true;
-}
-
-bool
-ArrayType::toSource(JSContext *cx, unsigned int argc, Value *vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-
-    RootedObject thisObj(cx, ToObjectIfObject(args.thisv()));
-    if (!thisObj || !IsArrayTypeObject(*thisObj)) {
-        JS_ReportErrorNumber(cx, js_GetErrorMessage,
-                             NULL, JSMSG_INCOMPATIBLE_PROTO,
-                             "ArrayType", "toSource",
-                             InformalValueTypeName(args.thisv()));
-        return false;
-    }
-
-    StringBuffer contents(cx);
-    if (!typeRepresentation(*thisObj)->appendString(cx, contents))
-        return false;
-
-    RootedString result(cx, contents.finishString());
-    if (!result)
-        return false;
-
-    args.rval().setString(result);
     return true;
 }
 
@@ -732,24 +757,26 @@ InitializeCommonTypeDescriptorProperties(JSContext *cx,
     TypeRepresentation *typeRepr =
         TypeRepresentation::fromOwnerObject(*typeReprOwnerObj);
 
-    // byteLength
-    RootedValue typeByteLength(cx, NumberValue(typeRepr->size()));
-    if (!JSObject::defineProperty(cx, obj, cx->names().byteLength,
-                                  typeByteLength,
-                                  NULL, NULL,
-                                  NORMAL_JS_PROPS))
-    {
-        return false;
-    }
+    if (typeRepr->pod()) {
+        // byteLength
+        RootedValue typeByteLength(cx, NumberValue(typeRepr->size()));
+        if (!JSObject::defineProperty(cx, obj, cx->names().byteLength,
+                                      typeByteLength,
+                                      NULL, NULL,
+                                      NORMAL_JS_PROPS))
+        {
+            return false;
+        }
 
-    // byteAlignment
-    RootedValue typeByteAlignment(cx, NumberValue(typeRepr->alignment()));
-    if (!JSObject::defineProperty(cx, obj, cx->names().byteAlignment,
-                                  typeByteAlignment,
-                                  NULL, NULL,
-                                  NORMAL_JS_PROPS))
-    {
-        return false;
+        // byteAlignment
+        RootedValue typeByteAlignment(cx, NumberValue(typeRepr->alignment()));
+        if (!JSObject::defineProperty(cx, obj, cx->names().byteAlignment,
+                                      typeByteAlignment,
+                                      NULL, NULL,
+                                      NORMAL_JS_PROPS))
+        {
+            return false;
+        }
     }
 
     // variable -- always false since we do not yet support variable-size types
@@ -890,8 +917,8 @@ ArrayType::construct(JSContext *cx, unsigned argc, Value *vp)
 }
 
 /*********************************
- * Structs
- *********************************/
+ * StructType class
+ */
 
 const Class StructType::class_ = {
     "StructType",
@@ -918,7 +945,7 @@ const JSPropertySpec StructType::typeObjectProperties[] = {
 
 const JSFunctionSpec StructType::typeObjectMethods[] = {
     {"handle", {NULL, NULL}, 2, 0, "HandleCreate"},
-    JS_FN("toSource", StructType::toSource, 0, 0),
+    JS_FN("toSource", TypeObjectToSource, 0, 0),
     {"equivalent", {NULL, NULL}, 1, 0, "TypeObjectEquivalent"},
     JS_FS_END
 };
@@ -1124,77 +1151,155 @@ StructType::construct(JSContext *cx, unsigned int argc, Value *vp)
     return false;
 }
 
-bool
-StructType::toSource(JSContext *cx, unsigned int argc, Value *vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
+/******************************************************************************
+ * Creating the TypedObject "module"
+ *
+ * We create one global, `TypedObject`, which contains the following
+ * members:
+ *
+ * 1. uint8, uint16, etc
+ * 2. ArrayType
+ * 3. StructType
+ *
+ * Each of these is a function and hence their prototype is
+ * `Function.__proto__` (in terms of the JS Engine, they are not
+ * JSFunctions but rather instances of their own respective JSClasses
+ * which override the call and construct operations).
+ *
+ * Each type object also has its own `prototype` field. Therefore,
+ * using `StructType` as an example, the basic setup is:
+ *
+ *   StructType --__proto__--> Function.__proto__
+ *        |
+ *    prototype -- prototype --> { }
+ *        |
+ *        v
+ *       { } -----__proto__--> Function.__proto__
+ *
+ * When a new type object (e.g., an instance of StructType) is created,
+ * it will look as follows:
+ *
+ *   MyStruct -__proto__-> StructType.prototype -__proto__-> Function.__proto__
+ *        |                          |
+ *        |                     prototype
+ *        |                          |
+ *        |                          v
+ *    prototype -----__proto__----> { }
+ *        |
+ *        v
+ *       { } --__proto__-> Object.prototype
+ *
+ * Finally, when an instance of `MyStruct` is created, its
+ * structure is as follows:
+ *
+ *    object -__proto__->
+ *      MyStruct.prototype -__proto__->
+ *        StructType.prototype.prototype -__proto__->
+ *          Objcet.prototype
+ */
 
-    RootedObject thisObj(cx, ToObjectIfObject(args.thisv()));
-    if (!thisObj || !IsStructTypeObject(*thisObj)) {
-        JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_INCOMPATIBLE_PROTO,
-                             "StructType", "toSource",
-                             InformalValueTypeName(args.thisv()));
+// Here `T` is either `ScalarType` or `ReferenceType`
+template<typename T>
+static bool
+DefineSimpleTypeObject(JSContext *cx,
+                       HandleObject global,
+                       HandleObject module,
+                       typename T::TypeRepr::Type type)
+{
+    RootedObject funcProto(cx, JS_GetFunctionPrototype(cx, global));
+    JS_ASSERT(funcProto);
+
+    RootedObject numFun(cx, NewObjectWithClassProto(cx, &T::class_, funcProto, global));
+    if (!numFun)
+        return NULL;
+
+    RootedObject typeReprObj(cx, T::TypeRepr::Create(cx, type));
+    if (!typeReprObj)
         return false;
+
+    numFun->initReservedSlot(JS_TYPEOBJ_SLOT_TYPE_REPR,
+                             ObjectValue(*typeReprObj));
+
+    if (!InitializeCommonTypeDescriptorProperties(cx, numFun, typeReprObj))
+        return false;
+
+    if (!JS_DefineFunctions(cx, numFun, T::typeObjectMethods))
+        return NULL;
+
+    const char *name = T::TypeRepr::typeName(type);
+    RootedPropertyName className(cx, PropertyNameFromCString(cx, name));
+    if (!className)
+        return NULL;
+
+    RootedValue numFunValue(cx, ObjectValue(*numFun));
+    if (!JSObject::defineProperty(cx, module, className,
+                                  numFunValue, NULL, NULL, 0))
+    {
+        return NULL;
     }
 
-    StringBuffer contents(cx);
-    if (!typeRepresentation(*thisObj)->appendString(cx, contents))
-        return false;
-
-    RootedString result(cx, contents.finishString());
-    if (!result)
-        return false;
-
-    args.rval().setString(result);
     return true;
 }
 
-///////////////////////////////////////////////////////////////////////////
+template<typename T>
+static JSObject *
+DefineMetaTypeObject(JSContext *cx,
+                     Handle<GlobalObject*> global)
+{
+    RootedAtom className(cx, Atomize(cx, T::class_.name,
+                                     strlen(T::class_.name)));
+    if (!className)
+        return NULL;
 
-///////////////////////////////////////////////////////////////////////////
-// Creating the TypedObject "module"
-//
-// We create one global, `TypedObject`, which contains the following
-// members:
-//
-// 1. uint8, uint16, etc
-// 2. ArrayType
-// 3. StructType
-//
-// Each of these is a function and hence their prototype is
-// `Function.__proto__` (in terms of the JS Engine, they are not
-// JSFunctions but rather instances of their own respective JSClasses
-// which override the call and construct operations).
-//
-// Each type object also has its own `prototype` field. Therefore,
-// using `StructType` as an example, the basic setup is:
-//
-//   StructType --__proto__--> Function.__proto__
-//        |
-//    prototype
-//        |
-//        v
-//       { } -----__proto__--> Function.__proto__
-//
-// When a new type object (e.g., an instance of StructType) is created,
-// it will look as follows:
-//
-//   MyStruct -__proto__-> StructType.prototype -__proto__-> Function.__proto__
-//        |
-//    prototype
-//        |
-//        v
-//       { } --__proto__-> Object.prototype
-//
-// Finally, when an instance of `MyStruct` is created, its
-// structure is as follows:
-//
-//    object ----__proto__--> MyStruct.prototype
+    RootedObject funcProto(cx, global->getOrCreateFunctionPrototype(cx));
+    if (!funcProto)
+        return NULL;
 
-template<ScalarTypeRepresentation::Type type>
-static bool
-DefineNumericClass(JSContext *cx, HandleObject global,
-                   HandleObject module, const char *name);
+    // Create ctor.prototype, which inherits from Function.__proto__
+
+    RootedObject proto(
+        cx, NewObjectWithGivenProto(cx, &JSObject::class_, funcProto,
+                                    global, SingletonObject));
+    if (!proto)
+        return NULL;
+
+    // Create ctor.prototype.prototype, which inherits from Object.__proto__
+
+    RootedObject objProto(cx, global->getOrCreateObjectPrototype(cx));
+    if (!objProto)
+        return NULL;
+    RootedObject protoProto(
+        cx, NewObjectWithGivenProto(cx, &JSObject::class_, objProto,
+                                    global, SingletonObject));
+    if (!proto)
+        return NULL;
+
+    RootedValue protoProtoValue(cx, ObjectValue(*protoProto));
+    if (!JSObject::defineProperty(cx, proto, cx->names().classPrototype,
+                                  protoProtoValue,
+                                  NULL, NULL,
+                                  NORMAL_JS_PROPS))
+        return NULL;
+
+    // Create ctor itself
+
+    RootedFunction ctor(cx,
+                        global->createConstructor(cx, T::construct,
+                                                  className, 2));
+    if (!ctor ||
+        !LinkConstructorAndPrototype(cx, ctor, proto) ||
+        !DefinePropertiesAndBrand(cx, proto,
+                                  T::typeObjectProperties,
+                                  T::typeObjectMethods) ||
+        !DefinePropertiesAndBrand(cx, protoProto,
+                                  T::typedObjectProperties,
+                                  T::typedObjectMethods))
+    {
+        return NULL;
+    }
+
+    return ctor;
+}
 
 JSObject *
 js_InitTypedObjectClass(JSContext *cx, HandleObject obj)
@@ -1237,17 +1342,23 @@ js_InitTypedObjectClass(JSContext *cx, HandleObject obj)
     if (!JS_DefineFunctions(cx, module, TypedObjectMethods))
         return NULL;
 
-    // uint8, uint16, etc
+    // uint8, uint16, any, etc
 
-#define BINARYDATA_NUMERIC_DEFINE(constant_, type_, name_)                    \
-    if (!DefineNumericClass<constant_>(cx, global, module, #name_))           \
+#define BINARYDATA_SCALAR_DEFINE(constant_, type_, name_)                       \
+    if (!DefineSimpleTypeObject<ScalarType>(cx, global, module, constant_))     \
         return NULL;
-    JS_FOR_EACH_SCALAR_TYPE_REPR(BINARYDATA_NUMERIC_DEFINE)
-#undef BINARYDATA_NUMERIC_DEFINE
+    JS_FOR_EACH_SCALAR_TYPE_REPR(BINARYDATA_SCALAR_DEFINE)
+#undef BINARYDATA_SCALAR_DEFINE
+
+#define BINARYDATA_REFERENCE_DEFINE(constant_, type_, name_)                    \
+    if (!DefineSimpleTypeObject<ReferenceType>(cx, global, module, constant_))  \
+        return NULL;
+    JS_FOR_EACH_REFERENCE_TYPE_REPR(BINARYDATA_REFERENCE_DEFINE)
+#undef BINARYDATA_REFERENCE_DEFINE
 
     // ArrayType.
 
-    RootedObject arrayType(cx, InitClass<ArrayType>(cx, global));
+    RootedObject arrayType(cx, DefineMetaTypeObject<ArrayType>(cx, global));
     if (!arrayType)
         return NULL;
 
@@ -1269,7 +1380,7 @@ js_InitTypedObjectClass(JSContext *cx, HandleObject obj)
 
     // StructType.
 
-    RootedObject structType(cx, InitClass<StructType>(cx, global));
+    RootedObject structType(cx, DefineMetaTypeObject<StructType>(cx, global));
     if (!structType)
         return NULL;
 
@@ -1324,60 +1435,12 @@ js_InitTypedObjectDummy(JSContext *cx, HandleObject obj)
     MOZ_ASSUME_UNREACHABLE("Class should already be initialized");
 }
 
-template<ScalarTypeRepresentation::Type type>
-static bool
-DefineNumericClass(JSContext *cx,
-                   HandleObject global,
-                   HandleObject module,
-                   const char *name)
-{
-    RootedObject funcProto(cx, JS_GetFunctionPrototype(cx, global));
-    JS_ASSERT(funcProto);
-
-    RootedObject numFun(cx, NewObjectWithClassProto(cx, &NumericTypeClasses[type],
-                                                    funcProto, global));
-    if (!numFun)
-        return NULL;
-
-    RootedObject typeReprObj(cx, ScalarTypeRepresentation::Create(cx, type));
-    if (!typeReprObj)
-        return false;
-
-    numFun->initReservedSlot(JS_TYPEOBJ_SLOT_TYPE_REPR,
-                             ObjectValue(*typeReprObj));
-
-    if (!InitializeCommonTypeDescriptorProperties(cx, numFun, typeReprObj))
-        return false;
-
-    if (!JS_DefineFunctions(cx, numFun, NumericTypeObjectMethods))
-        return NULL;
-
-    if (!JS_DefineFunction(cx, numFun, "toString",
-                           NumericTypeToString<type>, 0, 0))
-        return false;
-
-    if (!JS_DefineFunction(cx, numFun, "toSource",
-                           NumericTypeToString<type>, 0, 0))
-    {
-        return false;
-    }
-
-    RootedPropertyName className(cx, PropertyNameFromCString(cx, name));
-    if (!className)
-        return NULL;
-
-    RootedValue numFunValue(cx, ObjectValue(*numFun));
-    if (!JSObject::defineProperty(cx, module, className,
-                                  numFunValue, NULL, NULL, 0))
-    {
-        return NULL;
-    }
-
-    return true;
-}
-
-///////////////////////////////////////////////////////////////////////////
-// Typed datums
+/******************************************************************************
+ * Typed datums
+ *
+ * Datums represent either typed objects or handles. See comment in
+ * TypedObject.h.
+ */
 
 template<class T>
 /*static*/ T *
@@ -1405,7 +1468,7 @@ TypedDatum::createUnattachedWithClass(JSContext *cx,
     JS_ASSERT(clasp->hasPrivate());
 
     RootedObject proto(cx);
-    if (IsNumericTypeObject(*type)) {
+    if (IsScalarTypeObject(*type)) {
         proto = type->global().getOrCreateObjectPrototype(cx);
     } else {
         RootedValue protoVal(cx);
@@ -1428,7 +1491,7 @@ TypedDatum::createUnattachedWithClass(JSContext *cx,
 
     // Tag the type object for this instance with the type
     // representation, if that has not been done already.
-    if (cx->typeInferenceEnabled() && !IsNumericTypeObject(*type)) {
+    if (cx->typeInferenceEnabled() && !IsScalarTypeObject(*type)) {
         // FIXME                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~
         RootedTypeObject typeObj(cx, obj->getType(cx));
         if (typeObj) {
@@ -1442,7 +1505,7 @@ TypedDatum::createUnattachedWithClass(JSContext *cx,
 }
 
 /*static*/ void
-TypedDatum::attach(void *memory)
+TypedDatum::attach(uint8_t *memory)
 {
     setPrivate(memory);
     setReservedSlot(JS_TYPEDOBJ_SLOT_OWNER, ObjectValue(*this));
@@ -1517,6 +1580,11 @@ TypedDatum::obj_trace(JSTracer *trace, JSObject *object)
 
     for (size_t i = 0; i < JS_TYPEDOBJ_SLOTS; i++)
         gc::MarkSlot(trace, &object->getReservedSlotRef(i), "TypedObjectSlot");
+
+    uint8_t *mem = TypedMem(*object);
+    TypeRepresentation *repr = typeRepresentation(*GetType(*object));
+    if (!repr->pod())
+        repr->traceInstance(trace, mem);
 }
 
 /*static*/ void
@@ -1547,9 +1615,11 @@ TypedDatum::obj_lookupGeneric(JSContext *cx, HandleObject obj, HandleId id,
 
     switch (typeRepr->kind()) {
       case TypeRepresentation::Scalar:
+      case TypeRepresentation::Reference:
         break;
 
-      case TypeRepresentation::Array: {
+      case TypeRepresentation::Array:
+      {
         uint32_t index;
         if (js_IdIsIndex(id, &index))
             return obj_lookupElement(cx, obj, index, objp, propp);
@@ -1562,7 +1632,8 @@ TypedDatum::obj_lookupGeneric(JSContext *cx, HandleObject obj, HandleId id,
         break;
       }
 
-      case TypeRepresentation::Struct: {
+      case TypeRepresentation::Struct:
+      {
         RootedObject type(cx, GetType(*obj));
         JS_ASSERT(IsStructTypeObject(*type));
         StructTypeRepresentation *typeRepr =
@@ -1721,6 +1792,7 @@ TypedDatum::obj_getGeneric(JSContext *cx, HandleObject obj, HandleObject receive
     TypeRepresentation *typeRepr = typeRepresentation(*type);
     switch (typeRepr->kind()) {
       case TypeRepresentation::Scalar:
+      case TypeRepresentation::Reference:
         break;
 
       case TypeRepresentation::Array:
@@ -1779,6 +1851,7 @@ TypedDatum::obj_getElementIfPresent(JSContext *cx, HandleObject obj,
 
     switch (typeRepr->kind()) {
       case TypeRepresentation::Scalar:
+      case TypeRepresentation::Reference:
       case TypeRepresentation::Struct:
         break;
 
@@ -1829,6 +1902,7 @@ TypedDatum::obj_setGeneric(JSContext *cx, HandleObject obj, HandleId id,
 
     switch (typeRepr->kind()) {
       case ScalarTypeRepresentation::Scalar:
+      case TypeRepresentation::Reference:
         break;
 
       case ScalarTypeRepresentation::Array:
@@ -1872,11 +1946,12 @@ TypedDatum::obj_setElement(JSContext *cx, HandleObject obj, uint32_t index,
     TypeRepresentation *typeRepr = typeRepresentation(*type);
 
     switch (typeRepr->kind()) {
-      case ScalarTypeRepresentation::Scalar:
-      case ScalarTypeRepresentation::Struct:
+      case TypeRepresentation::Scalar:
+      case TypeRepresentation::Reference:
+      case TypeRepresentation::Struct:
         break;
 
-      case ScalarTypeRepresentation::Array: {
+      case TypeRepresentation::Array: {
         ArrayTypeRepresentation *arrayTypeRepr = typeRepr->asArray();
 
         if (index >= arrayTypeRepr->length()) {
@@ -1913,6 +1988,7 @@ TypedDatum::obj_getGenericAttributes(JSContext *cx, HandleObject obj,
 
     switch (typeRepr->kind()) {
       case TypeRepresentation::Scalar:
+      case TypeRepresentation::Reference:
         break;
 
       case TypeRepresentation::Array:
@@ -1952,6 +2028,7 @@ IsOwnId(JSContext *cx, HandleObject obj, HandleId id)
 
     switch (typeRepr->kind()) {
       case TypeRepresentation::Scalar:
+      case TypeRepresentation::Reference:
         return false;
 
       case TypeRepresentation::Array:
@@ -2043,6 +2120,7 @@ TypedDatum::obj_enumerate(JSContext *cx, HandleObject obj, JSIterateOp enum_op,
 
     switch (typeRepr->kind()) {
       case TypeRepresentation::Scalar:
+      case TypeRepresentation::Reference:
         switch (enum_op) {
           case JSENUMERATE_INIT_ALL:
           case JSENUMERATE_INIT:
@@ -2119,8 +2197,9 @@ TypedDatum::dataOffset()
     return JSObject::getPrivateDataOffset(JS_TYPEDOBJ_SLOTS + 1);
 }
 
-///////////////////////////////////////////////////////////////////////////
-// Typed Objects
+/******************************************************************************
+ * Typed Objects
+ */
 
 const Class TypedObject::class_ = {
     "TypedObject",
@@ -2179,10 +2258,10 @@ TypedObject::createZeroed(JSContext *cx, HandleObject type)
 
     TypeRepresentation *typeRepr = typeRepresentation(*type);
     size_t memsize = typeRepr->size();
-    void *memory = JS_malloc(cx, memsize);
+    uint8_t *memory = (uint8_t*) JS_malloc(cx, memsize);
     if (!memory)
         return NULL;
-    memset(memory, 0, memsize);
+    typeRepr->initInstance(cx->runtime(), memory);
     obj->attach(memory);
     return obj;
 }
@@ -2209,8 +2288,9 @@ TypedObject::construct(JSContext *cx, unsigned int argc, Value *vp)
     return true;
 }
 
-///////////////////////////////////////////////////////////////////////////
-// Handles
+/******************************************************************************
+ * Handles
+ */
 
 const Class TypedHandle::class_ = {
     "Handle",
@@ -2268,8 +2348,9 @@ const JSFunctionSpec TypedHandle::handleStaticMethods[] = {
     JS_FS_END
 };
 
-///////////////////////////////////////////////////////////////////////////
-// Intrinsics
+/******************************************************************************
+ * Intrinsics
+ */
 
 bool
 js::NewTypedHandle(JSContext *cx, unsigned argc, Value *vp)
@@ -2463,6 +2544,33 @@ js::StoreScalar<T>::JitInfo =
 
 template<typename T>
 bool
+js::StoreReference<T>::Func(ThreadSafeContext *, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(args.length() == 3);
+    JS_ASSERT(args[0].isObject() && IsTypedDatum(args[0].toObject()));
+    JS_ASSERT(args[1].isInt32());
+
+    int32_t offset = args[1].toInt32();
+
+    // Should be guaranteed by the typed objects API:
+    JS_ASSERT(offset % alignof(T) == 0);
+
+    uint8_t *mem = TypedMem(args[0].toObject()) + offset;
+    T *heap = reinterpret_cast<T*>(mem);
+    store(heap, args[2]);
+    args.rval().setUndefined();
+    return true;
+}
+
+template<typename T>
+const JSJitInfo
+js::StoreReference<T>::JitInfo =
+    JS_JITINFO_NATIVE_PARALLEL(
+        JSParallelNativeThreadSafeWrapper<Func>);
+
+template<typename T>
+bool
 js::LoadScalar<T>::Func(ThreadSafeContext *, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
@@ -2486,7 +2594,96 @@ js::LoadScalar<T>::JitInfo =
     JS_JITINFO_NATIVE_PARALLEL(
         JSParallelNativeThreadSafeWrapper<Func>);
 
-#define PREDECLARED_LOAD_AND_STORE(_constant, _type, _name)                   \
+template<typename T>
+bool
+js::LoadReference<T>::Func(ThreadSafeContext *, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(args.length() == 2);
+    JS_ASSERT(args[0].isObject() && IsTypedDatum(args[0].toObject()));
+    JS_ASSERT(args[1].isInt32());
+
+    int32_t offset = args[1].toInt32();
+
+    // Should be guaranteed by the typed objects API:
+    JS_ASSERT(offset % alignof(T) == 0);
+
+    uint8_t *mem = TypedMem(args[0].toObject()) + offset;
+    T *heap = reinterpret_cast<T*>(mem);
+    load(heap, args.rval());
+    return true;
+}
+
+template<typename T>
+const JSJitInfo
+js::LoadReference<T>::JitInfo =
+    JS_JITINFO_NATIVE_PARALLEL(
+        JSParallelNativeThreadSafeWrapper<Func>);
+
+namespace js {
+
+// Because the precise syntax for storing values/objects/strings
+// differs, we abstract it away using specialized variants of the
+// private methods `store()` and `load()`.
+
+template<>
+void
+StoreReference<js::HeapValue>::store(js::HeapValue *heap, const Value &v)
+{
+    *heap = v;
+}
+
+template<>
+void
+StoreReference<js::HeapPtrObject>::store(js::HeapPtrObject *heap, const Value &v)
+{
+    JS_ASSERT(v.isObjectOrNull()); // or else Store_object is being misused
+    *heap = v.toObjectOrNull();
+}
+
+template<>
+void
+StoreReference<js::HeapPtrString>::store(js::HeapPtrString *heap, const Value &v)
+{
+    JS_ASSERT(v.isString()); // or else Store_string is being misused
+    *heap = v.toString();
+}
+
+template<>
+void
+LoadReference<js::HeapValue>::load(js::HeapValue *heap,
+                                   MutableHandleValue v)
+{
+    v.set(*heap);
+}
+
+template<>
+void
+LoadReference<js::HeapPtrObject>::load(js::HeapPtrObject *heap,
+                                       MutableHandleValue v)
+{
+    if (*heap)
+        v.setObject(**heap);
+    else
+        v.setNull();
+}
+
+template<>
+void
+LoadReference<js::HeapPtrString>::load(js::HeapPtrString *heap,
+                                       MutableHandleValue v)
+{
+    v.setString(*heap);
+}
+
+} // namespace js
+
+#define PREDECLARED_LOAD_AND_STORE_SCALAR(_constant, _type, _name)            \
     namespace js { template class StoreScalar<_type>;                         \
                    template class LoadScalar<_type>; }
-JS_FOR_EACH_UNIQUE_SCALAR_TYPE_REPR_CTYPE(PREDECLARED_LOAD_AND_STORE)
+JS_FOR_EACH_UNIQUE_SCALAR_TYPE_REPR_CTYPE(PREDECLARED_LOAD_AND_STORE_SCALAR)
+
+#define PREDECLARED_LOAD_AND_STORE_REFERENCE(_constant, _type, _name)         \
+    namespace js { template class StoreReference<_type>;                      \
+                   template class LoadReference<_type>; }
+JS_FOR_EACH_REFERENCE_TYPE_REPR(PREDECLARED_LOAD_AND_STORE_REFERENCE)
