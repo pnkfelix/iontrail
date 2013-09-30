@@ -197,10 +197,10 @@ TypeRepresentationSet::kind()
 size_t
 TypeRepresentationSet::arrayLength()
 {
-    JS_ASSERT(kind() == TypeRepresentation::Array);
-    const size_t result = get(0)->asArray()->length();
+    JS_ASSERT(kind() == TypeRepresentation::SizedArray);
+    const size_t result = get(0)->asSizedArray()->length();
     for (size_t i = 1; i < length(); i++) {
-        if (get(i)->asArray()->length() != result)
+        if (get(i)->asSizedArray()->length() != result)
             return SIZE_MAX;
     }
     return result;
@@ -210,11 +210,11 @@ bool
 TypeRepresentationSet::arrayElementType(IonBuilder &builder,
                                         TypeRepresentationSet *out)
 {
-    JS_ASSERT(kind() == TypeRepresentation::Array);
+    JS_ASSERT(kind() == TypeRepresentation::SizedArray);
 
     TypeRepresentationSetBuilder elementTypes;
     for (size_t i = 0; i < length(); i++) {
-        if (!elementTypes.insert(get(i)->asArray()->element()))
+        if (!elementTypes.insert(get(i)->asSizedArray()->element()))
             return false;
     }
     return elementTypes.build(builder, out);
