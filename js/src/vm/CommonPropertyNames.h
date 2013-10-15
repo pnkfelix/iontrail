@@ -13,6 +13,7 @@
 
 #define FOR_EACH_COMMON_PROPERTYNAME(macro) \
     macro(anonymous, anonymous, "anonymous") \
+     macro(Any, Any, "Any") \
     macro(apply, apply, "apply") \
     macro(arguments, arguments, "arguments") \
     macro(ArrayType, ArrayType, "ArrayType") \
@@ -74,6 +75,7 @@
     macro(getOwnPropertyNames, getOwnPropertyNames, "getOwnPropertyNames") \
     macro(getPropertyDescriptor, getPropertyDescriptor, "getPropertyDescriptor") \
     macro(global, global, "global") \
+    macro(Handle, Handle, "Handle") \
     macro(has, has, "has") \
     macro(hasOwn, hasOwn, "hasOwn") \
     macro(hasOwnProperty, hasOwnProperty, "hasOwnProperty") \

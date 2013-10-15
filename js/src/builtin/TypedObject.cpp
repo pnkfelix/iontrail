@@ -308,7 +308,7 @@ static JSObject *
 Prototype(JSContext *cx, HandleObject obj)
 {
     RootedValue prototypeVal(cx);
-    if (!JSObject::getProperty(cx, obj, obj, cx->names().classPrototype,
+    if (!JSObject::getProperty(cx, obj, obj, cx->names().prototype,
                                &prototypeVal))
     {
         return NULL;
@@ -599,7 +599,7 @@ InitializeCommonTypeDescriptorProperties(JSContext *cx,
         if (!JSObject::defineProperty(cx, obj, cx->names().byteLength,
                                       typeByteLength,
                                       NULL, NULL,
-                                      NORMAL_JS_PROPS))
+                                      JSPROP_READONLY | JSPROP_PERMANENT))
         {
             return false;
         }
@@ -610,7 +610,7 @@ InitializeCommonTypeDescriptorProperties(JSContext *cx,
         if (!JSObject::defineProperty(cx, obj, cx->names().byteAlignment,
                                       typeByteAlignment,
                                       NULL, NULL,
-                                      NORMAL_JS_PROPS))
+                                      JSPROP_READONLY | JSPROP_PERMANENT))
         {
             return false;
         }
@@ -757,14 +757,14 @@ ArrayType::dimension(JSContext *cx, unsigned int argc, jsval *vp)
     RootedValue lengthVal(cx, Int32Value(length));
     if (!JSObject::defineProperty(cx, obj, cx->names().length,
                                   lengthVal, NULL, NULL,
-                                  NORMAL_JS_PROPS))
+                                  JSPROP_READONLY | JSPROP_PERMANENT))
         return NULL;
 
     // Add `unsized` property which is only found.
     RootedValue unsizedTypeObjValue(cx, ObjectValue(*unsizedTypeObj));
     if (!JSObject::defineProperty(cx, obj, cx->names().unsized,
                                   unsizedTypeObjValue, NULL, NULL,
-                                  NORMAL_JS_PROPS))
+                                  JSPROP_READONLY | JSPROP_PERMANENT))
         return NULL;
 
     args.rval().setObject(*obj);
@@ -1056,7 +1056,8 @@ static bool
 DefineSimpleTypeObject(JSContext *cx,
                        HandleObject global,
                        HandleObject module,
-                       typename T::TypeRepr::Type type)
+                       typename T::TypeRepr::Type type,
+                       HandlePropertyName className)
 {
     RootedObject funcProto(cx, JS_GetFunctionPrototype(cx, global));
     JS_ASSERT(funcProto);
@@ -1076,11 +1077,6 @@ DefineSimpleTypeObject(JSContext *cx,
         return false;
 
     if (!JS_DefineFunctions(cx, numFun, T::typeObjectMethods))
-        return NULL;
-
-    const char *name = T::TypeRepr::typeName(type);
-    RootedPropertyName className(cx, PropertyNameFromCString(cx, name));
-    if (!className)
         return NULL;
 
     RootedValue numFunValue(cx, ObjectValue(*numFun));
@@ -1127,7 +1123,7 @@ DefineMetaTypeObject(JSContext *cx,
         return NULL;
 
     RootedValue protoProtoValue(cx, ObjectValue(*protoProto));
-    if (!JSObject::defineProperty(cx, proto, cx->names().classPrototype,
+    if (!JSObject::defineProperty(cx, proto, cx->names().prototype,
                                   protoProtoValue,
                                   nullptr, nullptr,
                                   JSPROP_READONLY | JSPROP_PERMANENT))
@@ -1183,13 +1179,15 @@ js_InitTypedObjectClass(JSContext *cx, HandleObject obj)
     // uint8, uint16, any, etc
 
 #define BINARYDATA_SCALAR_DEFINE(constant_, type_, name_)                       \
-    if (!DefineSimpleTypeObject<ScalarType>(cx, global, module, constant_))     \
+    if (!DefineSimpleTypeObject<ScalarType>(cx, global, module, constant_,      \
+                                            cx->names().name_))                 \
         return NULL;
     JS_FOR_EACH_SCALAR_TYPE_REPR(BINARYDATA_SCALAR_DEFINE)
 #undef BINARYDATA_SCALAR_DEFINE
 
 #define BINARYDATA_REFERENCE_DEFINE(constant_, type_, name_)                    \
-    if (!DefineSimpleTypeObject<ReferenceType>(cx, global, module, constant_))  \
+    if (!DefineSimpleTypeObject<ReferenceType>(cx, global, module, constant_,   \
+                                               cx->names().name_))              \
         return NULL;
     JS_FOR_EACH_REFERENCE_TYPE_REPR(BINARYDATA_REFERENCE_DEFINE)
 #undef BINARYDATA_REFERENCE_DEFINE
@@ -1239,16 +1237,11 @@ js_InitTypedObjectClass(JSContext *cx, HandleObject obj)
     if (!JS_DefineFunctions(cx, handle, TypedHandle::handleStaticMethods))
         return NULL;
 
-    RootedPropertyName handleTypeName(
-        cx, PropertyNameFromCString(cx, TypedHandle::class_.name));
-    if (!handleTypeName)
-        return NULL;
-
     RootedValue handleValue(cx, ObjectValue(*handle));
-    if (!JSObject::defineProperty(cx, module, handleTypeName,
+    if (!JSObject::defineProperty(cx, module, cx->names().Handle,
                                   handleValue,
                                   NULL, NULL,
-                                  NORMAL_JS_PROPS))
+                                  JSPROP_READONLY | JSPROP_PERMANENT))
     {
         return NULL;
     }
