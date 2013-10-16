@@ -1771,12 +1771,11 @@ StructFieldType(JSContext *cx,
     // In this scenario, line1.start.type() === Point1 and
     // line2.start.type() === Point2.
     RootedObject fieldTypes(
-        cx,
-        &type->getReservedSlot(JS_TYPEOBJ_SLOT_STRUCT_FIELD_TYPES).toObject());
+        cx, &type->getReservedSlot(JS_TYPEOBJ_SLOT_STRUCT_FIELD_TYPES).toObject());
     RootedValue fieldTypeVal(cx);
     if (!JSObject::getElement(cx, fieldTypes, fieldTypes,
                               fieldIndex, &fieldTypeVal))
-        return NULL;
+        return nullptr;
 
     return &fieldTypeVal.toObject();
 }
@@ -2268,7 +2267,7 @@ js::LoadScalar<T>::Func(ThreadSafeContext *, unsigned argc, Value *vp)
     int32_t offset = args[1].toInt32();
 
     // Should be guaranteed by the typed objects API:
-    JS_ASSERT(offset % alignof(T) == 0);
+    JS_ASSERT(offset % MOZ_ALIGNOF(T) == 0);
 
     T *target = (T*) (BlockMem(args[0].toObject()) + offset);
     args.rval().setNumber((double) *target);
