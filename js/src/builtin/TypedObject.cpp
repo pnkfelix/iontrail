@@ -705,7 +705,7 @@ ArrayType::construct(JSContext *cx, unsigned argc, Value *vp)
     // Extract ArrayType.prototype
     RootedObject arrayTypePrototype(cx, Prototype(cx, arrayTypeGlobal));
     if (!arrayTypePrototype)
-        return NULL;
+        return false;
 
     // Create the instance of ArrayType
     RootedObject obj(
@@ -758,14 +758,14 @@ ArrayType::dimension(JSContext *cx, unsigned int argc, jsval *vp)
     if (!JSObject::defineProperty(cx, obj, cx->names().length,
                                   lengthVal, NULL, NULL,
                                   JSPROP_READONLY | JSPROP_PERMANENT))
-        return NULL;
+        return false;
 
     // Add `unsized` property which is only found.
     RootedValue unsizedTypeObjValue(cx, ObjectValue(*unsizedTypeObj));
     if (!JSObject::defineProperty(cx, obj, cx->names().unsized,
                                   unsizedTypeObjValue, NULL, NULL,
                                   JSPROP_READONLY | JSPROP_PERMANENT))
-        return NULL;
+        return false;
 
     args.rval().setObject(*obj);
     return true;
@@ -1064,7 +1064,7 @@ DefineSimpleTypeObject(JSContext *cx,
 
     RootedObject numFun(cx, NewObjectWithClassProto(cx, &T::class_, funcProto, global));
     if (!numFun)
-        return NULL;
+        return false;
 
     RootedObject typeReprObj(cx, T::TypeRepr::Create(cx, type));
     if (!typeReprObj)
@@ -1077,13 +1077,13 @@ DefineSimpleTypeObject(JSContext *cx,
         return false;
 
     if (!JS_DefineFunctions(cx, numFun, T::typeObjectMethods))
-        return NULL;
+        return false;
 
     RootedValue numFunValue(cx, ObjectValue(*numFun));
     if (!JSObject::defineProperty(cx, module, className,
                                   numFunValue, NULL, NULL, 0))
     {
-        return NULL;
+        return false;
     }
 
     return true;
@@ -2166,7 +2166,7 @@ TypedObject::construct(JSContext *cx, unsigned int argc, Value *vp)
     Rooted<TypedObject*> obj(
         cx, createUnattached<TypedObject>(cx, callee, length));
     if (!obj)
-        return NULL;
+        return false;
 
     // Allocate and initialize the memory for this instance.
     // Also initialize the JS_DATUM_SLOT_LENGTH slot.
@@ -2178,7 +2178,7 @@ TypedObject::construct(JSContext *cx, unsigned int argc, Value *vp)
       {
         memory = (uint8_t*) JS_malloc(cx, typeRepr->asSized()->size());
         if (!memory)
-            return NULL;
+            return false;
         typeRepr->asSized()->initInstance(cx->runtime(), memory, 1);
         obj->attach(memory);
         break;
@@ -2188,7 +2188,7 @@ TypedObject::construct(JSContext *cx, unsigned int argc, Value *vp)
       {
         memory = (uint8_t*) JS_malloc(cx, typeRepr->asSizedArray()->size());
         if (!memory)
-            return NULL;
+            return false;
         typeRepr->asSizedArray()->initInstance(cx->runtime(), memory, 1);
         obj->attach(memory);
         break;
@@ -2204,12 +2204,12 @@ TypedObject::construct(JSContext *cx, unsigned int argc, Value *vp)
         if (!SafeMul(elementTypeRepr->size(), length, &totalSize)) {
             JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL,
                                  JSMSG_TYPEDOBJECT_TOO_BIG);
-            return NULL;
+            return false;
         }
 
         memory = (uint8_t*) JS_malloc(cx, totalSize);
         if (!memory)
-            return NULL;
+            return false;
 
         elementTypeRepr->initInstance(cx->runtime(), memory, length);
         obj->attach(memory);
