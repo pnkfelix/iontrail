@@ -179,6 +179,16 @@ TypeRepresentationSet::get(size_t i)
 }
 
 bool
+TypeRepresentationSet::allOfArrayKind()
+{
+    if (empty())
+        return false;
+
+    return kind() == TypeRepresentation::SizedArray ||
+        kind() == TypeRepresentation::UnsizedArray;
+}
+
+bool
 TypeRepresentationSet::allOfKind(TypeRepresentation::Kind aKind)
 {
     if (empty())
@@ -210,12 +220,20 @@ bool
 TypeRepresentationSet::arrayElementType(IonBuilder &builder,
                                         TypeRepresentationSet *out)
 {
-    JS_ASSERT(kind() == TypeRepresentation::SizedArray);
+    JS_ASSERT(kind() == TypeRepresentation::SizedArray ||
+              kind() == TypeRepresentation::UnsizedArray);
 
     TypeRepresentationSetBuilder elementTypes;
-    for (size_t i = 0; i < length(); i++) {
-        if (!elementTypes.insert(get(i)->asSizedArray()->element()))
-            return false;
+    if (kind() == TypeRepresentation::SizedArray) {
+        for (size_t i = 0; i < length(); i++) {
+            if (!elementTypes.insert(get(i)->asSizedArray()->element()))
+                return false;
+        }
+    } else {
+        for (size_t i = 0; i < length(); i++) {
+            if (!elementTypes.insert(get(i)->asUnsizedArray()->element()))
+                return false;
+        }
     }
     return elementTypes.build(builder, out);
 }

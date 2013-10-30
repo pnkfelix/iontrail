@@ -79,6 +79,7 @@ class TypeRepresentationSet {
     size_t length();
     TypeRepresentation *get(size_t i);
     bool allOfKind(TypeRepresentation::Kind kind);
+    bool allOfArrayKind();
 
     //////////////////////////////////////////////////////////////////////
     // The following operations are only valid on a non-empty set:
@@ -93,6 +94,12 @@ class TypeRepresentationSet {
     // Returns the length of the arrays in this set, or SIZE_MAX
     // if they are not all the same.
     size_t arrayLength();
+
+    //////////////////////////////////////////////////////////////////////
+    // Array operations
+    //
+    // Only valid when `kind() == TypeRepresentation::SizedArray`
+    // or `kind() == TypeRepresentation::UnsizedArray`
 
     // Returns a `TypeRepresentationSet` representing the element
     // types of the various array types in this set. The returned set
