@@ -56,6 +56,7 @@ class CodeGenerator : public CodeGeneratorSpecific
     bool link(JSContext *cx, types::CompilerConstraintList *constraints);
 
     bool visitLabel(LLabel *lir);
+    bool visitBreakInstruction(LBreakInstruction *lir);
     bool visitNop(LNop *lir);
     bool visitOsiPoint(LOsiPoint *lir);
     bool visitGoto(LGoto *lir);

@@ -150,6 +150,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitFromCharCode(MFromCharCode *ins);
     bool visitStart(MStart *start);
     bool visitOsrEntry(MOsrEntry *entry);
+    bool visitBreakInstruction(MBreakInstruction *bkpt);
     bool visitNop(MNop *nop);
     bool visitOsrValue(MOsrValue *value);
     bool visitOsrScopeChain(MOsrScopeChain *object);

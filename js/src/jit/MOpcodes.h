@@ -97,6 +97,7 @@ namespace jit {
     _(Start)                                                                \
     _(OsrEntry)                                                             \
     _(Nop)                                                                  \
+    _(BreakInstruction)                                                     \
     _(RegExp)                                                               \
     _(RegExpTest)                                                           \
     _(Lambda)                                                               \

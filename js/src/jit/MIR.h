@@ -8376,6 +8376,25 @@ class MNewDenseArrayPar : public MBinaryInstruction
     }
 };
 
+class MBreakInstruction : public MNullaryInstruction {
+protected:
+    MBreakInstruction()
+        : MNullaryInstruction()
+    {
+        setResultType(MIRType_None);
+        setGuard();
+    }
+
+public:
+    INSTRUCTION_HEADER(BreakInstruction)
+    static MBreakInstruction *New() {
+        return new MBreakInstruction();
+    }
+    AliasSet getAliasSet() const {
+        return AliasSet::None();
+    }
+};
+
 // A resume point contains the information needed to reconstruct the interpreter
 // state from a position in the JIT. See the big comment near resumeAfter() in
 // IonBuilder.cpp.

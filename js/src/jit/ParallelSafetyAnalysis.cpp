@@ -186,6 +186,7 @@ class ParallelSafetyVisitor : public MInstructionVisitor
     SAFE_OP(Start)
     UNSAFE_OP(OsrEntry)
     SAFE_OP(Nop)
+    SAFE_OP(BreakInstruction) // allows hitting gdb breakpoint in parallel code
     UNSAFE_OP(RegExp)
     CUSTOM_OP(Lambda)
     UNSAFE_OP(ImplicitThis)

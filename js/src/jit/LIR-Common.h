@@ -42,6 +42,12 @@ class LLabel : public LInstructionHelper<0, 0, 0>
     }
 };
 
+class LBreakInstruction : public LInstructionHelper<0, 0, 0>
+{
+  public:
+    LIR_HEADER(BreakInstruction)
+};
+
 class LNop : public LInstructionHelper<0, 0, 0>
 {
   public:

@@ -1520,6 +1520,13 @@ LIRGenerator::visitStart(MStart *start)
 }
 
 bool
+LIRGenerator::visitBreakInstruction(MBreakInstruction *bkpt) {
+    LBreakInstruction *lir = new LBreakInstruction;
+    bool result = add(lir);
+    return result;
+}
+
+bool
 LIRGenerator::visitNop(MNop *nop)
 {
     return true;

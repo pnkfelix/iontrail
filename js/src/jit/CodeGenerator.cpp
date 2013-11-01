@@ -815,6 +815,13 @@ CodeGenerator::visitLabel(LLabel *lir)
 }
 
 bool
+CodeGenerator::visitBreakInstruction(LBreakInstruction *lir)
+{
+    masm.breakpoint();
+    return true;
+}
+
+bool
 CodeGenerator::visitNop(LNop *lir)
 {
     return true;

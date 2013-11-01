@@ -9,6 +9,7 @@
 
 #define LIR_COMMON_OPCODE_LIST(_)   \
     _(Label)                        \
+    _(BreakInstruction)             \
     _(Nop)                          \
     _(OsiPoint)                     \
     _(MoveGroup)                    \
