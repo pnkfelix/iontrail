@@ -179,6 +179,15 @@ TypeRepresentationSet::get(size_t i)
 }
 
 bool
+TypeRepresentationSet::allOfKind(TypeRepresentation::Kind aKind)
+{
+    if (empty())
+        return false;
+
+    return kind() == aKind;
+}
+
+bool
 TypeRepresentationSet::allOfArrayKind()
 {
     if (empty())
@@ -189,12 +198,22 @@ TypeRepresentationSet::allOfArrayKind()
 }
 
 bool
-TypeRepresentationSet::allOfKind(TypeRepresentation::Kind aKind)
+TypeRepresentationSet::allHaveSameSize(size_t *out)
 {
     if (empty())
         return false;
 
-    return kind() == aKind;
+    if (!get(0)->isSized())
+        return false;
+
+    size_t size = get(0)->asSized()->size();
+    for (size_t i = 1; i < length(); i++) {
+        if (!get(i)->isSized() || get(i)->asSized()->size() != size)
+            return false;
+    }
+
+    *out = size;
+    return true;
 }
 
 TypeRepresentation::Kind

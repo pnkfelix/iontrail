@@ -440,12 +440,14 @@ class IonBuilder : public MIRGenerator
                                            MDefinition *obj,
                                            MDefinition *index,
                                            TypeRepresentationSet objTypeReprs,
-                                           TypeRepresentationSet elemTypeReprs);
+                                           TypeRepresentationSet elemTypeReprs,
+                                           size_t elemSize);
     bool getElemTryComplexElemOfTypedObject(bool *emitted,
                                             MDefinition *obj,
                                             MDefinition *index,
                                             TypeRepresentationSet objTypeReprs,
-                                            TypeRepresentationSet elemTypeReprs);
+                                            TypeRepresentationSet elemTypeReprs,
+                                            size_t elemSize);
 
     // Typed array helpers.
     MInstruction *getTypedArrayLength(MDefinition *obj);

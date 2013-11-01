@@ -79,7 +79,16 @@ class TypeRepresentationSet {
     size_t length();
     TypeRepresentation *get(size_t i);
     bool allOfKind(TypeRepresentation::Kind kind);
+
+    // Returns true only when non-empty and `kind()` is one of
+    // `TypeRepresentation::SizedArray`, `TypeRepresentation::UnsizedArray`
     bool allOfArrayKind();
+
+    // Returns true only if (1.) non-empty, (2.) for all types t in this
+    // set, `t.isSized()`, and (3.) there is some size S such that for all
+    // types t in this set, `t.size() == S`.  When the above holds, then
+    // also sets `*out` to S; otherwise leaves `*out` unchanged.
+    bool allHaveSameSize(size_t *out);
 
     //////////////////////////////////////////////////////////////////////
     // The following operations are only valid on a non-empty set:
